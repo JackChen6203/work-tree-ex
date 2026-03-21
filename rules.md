@@ -227,6 +227,14 @@ flowchart LR
 - CDN + WAF
 - Database backup + PITR
 
+### TLS / CDN 原則
+
+- 若正式環境使用 Cloudflare Proxy，預設採用 `Cloudflare Origin Certificate`
+- Cloudflare SSL/TLS mode 預設為 `Full (strict)`
+- Origin 伺服器必須只接受對應網域的 TLS 憑證與反向代理設定
+- 只有在需要「繞過 Cloudflare 直接連到 origin」時，才改採 `Let's Encrypt`
+- 憑證、私鑰、origin pull / edge 設定不得硬編碼於 repo，必須透過 secret 管理注入
+
 ## 4.4 工程標準
 
 ### Code style
@@ -2921,6 +2929,10 @@ Output must conform to the provided JSON schema exactly.
 
 - 前端：immutable asset + CDN
 - 後端：blue/green 或 rolling + canary
+- 若站點透過 Cloudflare Proxy 對外提供服務，origin Nginx 應採：
+  - `80` 僅用於導轉或 ACME / 驗證需求
+  - `443` 使用 Cloudflare Origin Certificate
+  - Cloudflare 端啟用 `Full (strict)`
 - migration：
   - 先 deploy 可相容 schema
   - 再 deploy app
