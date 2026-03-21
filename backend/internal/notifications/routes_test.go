@@ -42,3 +42,31 @@ func TestListAndReadNotification(t *testing.T) {
 		t.Fatalf("expected 204 mark-read, got %d", readW.Code)
 	}
 }
+
+func TestMarkAllNotificationsRead(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/read-all", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 mark-all-read, got %d", w.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list, got %d", listW.Code)
+	}
+
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+	for _, item := range items {
+		if item.ReadAt == nil {
+			t.Fatalf("expected notification %s to be read", item.ID)
+		}
+	}
+}

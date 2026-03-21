@@ -3,7 +3,7 @@ import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTr
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
-import { listNotifications, markNotificationRead } from "./notifications-api";
+import { listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, listItineraryDays } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
 import { createMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
@@ -177,6 +177,17 @@ export function useMarkNotificationReadMutation() {
 
   return useMutation({
     mutationFn: (notificationId: string) => markNotificationRead(notificationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+}
+
+export function useMarkAllNotificationsReadMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: markAllNotificationsRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }

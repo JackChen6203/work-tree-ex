@@ -2,12 +2,13 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
-import { useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
+import { useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
 
 export function NotificationsPage() {
   const { t } = useI18n();
   const { data: notifications = [], isLoading } = useNotificationsQuery();
   const markReadMutation = useMarkNotificationReadMutation();
+  const markAllReadMutation = useMarkAllNotificationsReadMutation();
 
   const items = useMemo(
     () =>
@@ -23,9 +24,7 @@ export function NotificationsPage() {
   );
 
   const markAllRead = () => {
-    for (const item of items.filter((candidate) => candidate.unread)) {
-      void markReadMutation.mutateAsync(item.id);
-    }
+    void markAllReadMutation.mutateAsync();
   };
 
   const markRead = (id: string) => {

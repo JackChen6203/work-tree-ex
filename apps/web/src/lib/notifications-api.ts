@@ -24,3 +24,14 @@ export async function markNotificationRead(notificationId: string) {
     throw new Error(`Mark read failed with status ${response.status}`);
   }
 }
+
+export async function markAllNotificationsRead() {
+  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/read-all`, {
+    method: "POST",
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mark all read failed with status ${response.status}`);
+  }
+}
