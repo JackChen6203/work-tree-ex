@@ -16,8 +16,8 @@
    - `docker compose --profile tools run --rm migrate`
    - `docker compose up -d api worker web`
 3. Open:
-   - Web: `http://localhost:3000`
-   - API health: `http://localhost:8080/healthz`
+   - Web: `http://localhost`
+   - API health: `http://localhost/healthz`
 
 ## GitHub Actions secrets
 
