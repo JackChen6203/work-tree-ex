@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateItineraryItemMutation, useItineraryDaysQuery } from "../../lib/queries";
+import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function ItineraryPage() {
@@ -9,6 +9,7 @@ export function ItineraryPage() {
   const pushToast = useUiStore((state) => state.pushToast);
   const { data: days = [], isLoading } = useItineraryDaysQuery(tripId);
   const createItem = useCreateItineraryItemMutation(tripId);
+  const deleteItem = useDeleteItineraryItemMutation(tripId);
 
   const addItem = async () => {
     const targetDay = days[0]?.dayId ?? "day-1";
@@ -20,6 +21,11 @@ export function ItineraryPage() {
       note: "由 itinerary page 建立"
     });
     pushToast("Itinerary item created");
+  };
+
+  const removeItem = async (itemId: string) => {
+    await deleteItem.mutateAsync(itemId);
+    pushToast("Itinerary item removed");
   };
 
   return (
@@ -63,9 +69,19 @@ export function ItineraryPage() {
                           {item.itemType} . sort #{item.sortOrder}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <StatusPill tone="neutral">v{item.version}</StatusPill>
                         <StatusPill tone="accent">{item.allDay ? "all-day" : "timed"}</StatusPill>
+                        <button
+                          className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                          disabled={deleteItem.isPending}
+                          onClick={() => {
+                            void removeItem(item.id);
+                          }}
+                          type="button"
+                        >
+                          Remove
+                        </button>
                       </div>
                     </div>
                     {item.note ? <p className="mt-3 text-sm text-ink/70">{item.note}</p> : null}

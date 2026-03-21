@@ -41,3 +41,9 @@ export function createItineraryItem(
     body: JSON.stringify(input)
   });
 }
+
+export function deleteItineraryItem(tripId: string, itemId: string) {
+  return apiRequest<void>(`/api/v1/trips/${tripId}/items/${itemId}`, {
+    method: "DELETE"
+  });
+}
