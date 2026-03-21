@@ -108,7 +108,7 @@ func estimateRoute(c *gin.Context) {
 	var costAmount *float64
 	var costCurrency *string
 	if mode == "transit" || mode == "taxi" || mode == "drive" {
-		cost := math.Round((float64(distanceMeters)/1000*220)+120) // mocked estimate in JPY
+		cost := math.Round((float64(distanceMeters) / 1000 * 220) + 120) // mocked estimate in JPY
 		costAmount = &cost
 		currency := "JPY"
 		costCurrency = &currency

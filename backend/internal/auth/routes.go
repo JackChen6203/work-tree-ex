@@ -3,8 +3,8 @@ package auth
 import (
 	"crypto/rand"
 	"fmt"
-	"net/mail"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"strings"
@@ -244,8 +244,8 @@ func requestMagicLink(c *gin.Context) {
 	authStateMu.Unlock()
 
 	response.JSON(c, http.StatusOK, gin.H{
-		"sent":       true,
-		"expiresIn":  600,
+		"sent":        true,
+		"expiresIn":   600,
 		"previewCode": code,
 	})
 }

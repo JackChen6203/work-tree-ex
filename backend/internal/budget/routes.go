@@ -18,51 +18,51 @@ type categoryPlan struct {
 }
 
 type budgetProfileInput struct {
-	TotalBudget    *float64       `json:"totalBudget"`
-	PerPersonBudget *float64      `json:"perPersonBudget"`
-	PerDayBudget   *float64       `json:"perDayBudget"`
-	Currency       string         `json:"currency"`
-	Categories     []categoryPlan `json:"categories"`
+	TotalBudget     *float64       `json:"totalBudget"`
+	PerPersonBudget *float64       `json:"perPersonBudget"`
+	PerDayBudget    *float64       `json:"perDayBudget"`
+	Currency        string         `json:"currency"`
+	Categories      []categoryPlan `json:"categories"`
 }
 
 type budgetProfile struct {
-	TripID         string         `json:"tripId"`
-	TotalBudget    *float64       `json:"totalBudget"`
-	PerPersonBudget *float64      `json:"perPersonBudget"`
-	PerDayBudget   *float64       `json:"perDayBudget"`
-	Currency       string         `json:"currency"`
-	Categories     []categoryPlan `json:"categories"`
-	Version        int            `json:"version"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	TripID          string         `json:"tripId"`
+	TotalBudget     *float64       `json:"totalBudget"`
+	PerPersonBudget *float64       `json:"perPersonBudget"`
+	PerDayBudget    *float64       `json:"perDayBudget"`
+	Currency        string         `json:"currency"`
+	Categories      []categoryPlan `json:"categories"`
+	Version         int            `json:"version"`
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
 }
 
 type expenseInput struct {
-	Category string   `json:"category"`
-	Amount   float64  `json:"amount"`
-	Currency string   `json:"currency"`
+	Category  string  `json:"category"`
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency"`
 	ExpenseAt *string `json:"expenseAt"`
-	Note     string   `json:"note"`
+	Note      string  `json:"note"`
 }
 
 type expense struct {
-	ID       string    `json:"id"`
-	TripID   string    `json:"tripId"`
-	Category string    `json:"category"`
-	Amount   float64   `json:"amount"`
-	Currency string    `json:"currency"`
-	ExpenseAt *string  `json:"expenseAt,omitempty"`
-	Note     string    `json:"note,omitempty"`
+	ID        string    `json:"id"`
+	TripID    string    `json:"tripId"`
+	Category  string    `json:"category"`
+	Amount    float64   `json:"amount"`
+	Currency  string    `json:"currency"`
+	ExpenseAt *string   `json:"expenseAt,omitempty"`
+	Note      string    `json:"note,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
 var (
-	budgetMu            sync.RWMutex
-	profilesByTrip      = map[string]budgetProfile{}
-	expensesByTrip      = map[string][]expense{}
-	budgetIdempotency   = map[string]string{}
-	expenseIdempotency  = map[string]string{}
-	expenseByID         = map[string]expense{}
+	budgetMu           sync.RWMutex
+	profilesByTrip     = map[string]budgetProfile{}
+	expensesByTrip     = map[string][]expense{}
+	budgetIdempotency  = map[string]string{}
+	expenseIdempotency = map[string]string{}
+	expenseByID        = map[string]expense{}
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
@@ -98,17 +98,17 @@ func getBudget(c *gin.Context) {
 	overBudget := profile.TotalBudget != nil && actual > (*profile.TotalBudget*1.1)
 
 	response.JSON(c, http.StatusOK, gin.H{
-		"tripId":         profile.TripID,
-		"totalBudget":    profile.TotalBudget,
+		"tripId":          profile.TripID,
+		"totalBudget":     profile.TotalBudget,
 		"perPersonBudget": profile.PerPersonBudget,
-		"perDayBudget":   profile.PerDayBudget,
-		"currency":       profile.Currency,
-		"categories":     profile.Categories,
-		"version":        profile.Version,
-		"actualSpend":    actual,
-		"overBudget":     overBudget,
-		"createdAt":      profile.CreatedAt,
-		"updatedAt":      profile.UpdatedAt,
+		"perDayBudget":    profile.PerDayBudget,
+		"currency":        profile.Currency,
+		"categories":      profile.Categories,
+		"version":         profile.Version,
+		"actualSpend":     actual,
+		"overBudget":      overBudget,
+		"createdAt":       profile.CreatedAt,
+		"updatedAt":       profile.UpdatedAt,
 	})
 }
 
@@ -207,13 +207,13 @@ func createExpense(c *gin.Context) {
 	}
 
 	item := expense{
-		ID:       uuid.NewString(),
-		TripID:   tripID,
-		Category: in.Category,
-		Amount:   in.Amount,
-		Currency: strings.ToUpper(in.Currency),
+		ID:        uuid.NewString(),
+		TripID:    tripID,
+		Category:  in.Category,
+		Amount:    in.Amount,
+		Currency:  strings.ToUpper(in.Currency),
 		ExpenseAt: in.ExpenseAt,
-		Note:     in.Note,
+		Note:      in.Note,
 		CreatedAt: time.Now().UTC(),
 	}
 

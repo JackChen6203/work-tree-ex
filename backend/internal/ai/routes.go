@@ -189,10 +189,10 @@ func adoptPlan(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"tripId":  tripID,
-		"planId":  planID,
-		"adopted": true,
-		"status":  item.Status,
+		"tripId":   tripID,
+		"planId":   planID,
+		"adopted":  true,
+		"status":   item.Status,
 		"warnings": item.Warnings,
 	}
 	adoptIdempotency[idempotencyKey] = result

@@ -47,10 +47,10 @@ type llmProvider struct {
 }
 
 type llmProviderInput struct {
-	Provider                  string `json:"provider"`
-	Label                     string `json:"label"`
-	EncryptedAPIKeyEnvelope   string `json:"encryptedApiKeyEnvelope"`
-	Model                     string `json:"model"`
+	Provider                string `json:"provider"`
+	Label                   string `json:"label"`
+	EncryptedAPIKeyEnvelope string `json:"encryptedApiKeyEnvelope"`
+	Model                   string `json:"model"`
 }
 
 var (

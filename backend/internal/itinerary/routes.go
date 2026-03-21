@@ -1,9 +1,9 @@
 package itinerary
 
 import (
-	"strconv"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -387,4 +387,3 @@ func cloneDays(days []itineraryDay) []itineraryDay {
 	}
 	return result
 }
-
