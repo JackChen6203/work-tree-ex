@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SurfaceCard } from "../../components/surface-card";
 import { useEstimateRouteMutation, useMapPlacesQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
@@ -16,7 +16,12 @@ interface EstimatedRouteCard {
 
 export function MapPage() {
   const pushToast = useUiStore((state) => state.pushToast);
-  const { data: places = [], isLoading } = useMapPlacesQuery("kyoto");
+  const [searchInput, setSearchInput] = useState("kyoto");
+  const [searchKeyword, setSearchKeyword] = useState("kyoto");
+  const [originId, setOriginId] = useState("");
+  const [destinationId, setDestinationId] = useState("");
+  const [travelMode, setTravelMode] = useState<"walk" | "transit" | "drive" | "taxi">("transit");
+  const { data: places = [], isLoading } = useMapPlacesQuery(searchKeyword);
   const estimateRoute = useEstimateRouteMutation();
   const [estimatedRoutes, setEstimatedRoutes] = useState<EstimatedRouteCard[]>([]);
 
@@ -34,22 +39,38 @@ export function MapPage() {
     [places]
   );
 
+  const originPoint = useMemo(() => points.find((point) => point.id === originId), [points, originId]);
+  const destinationPoint = useMemo(() => points.find((point) => point.id === destinationId), [points, destinationId]);
+
+  useEffect(() => {
+    if (points.length === 0) {
+      setOriginId("");
+      setDestinationId("");
+      return;
+    }
+    setOriginId((current) => current || points[0].id);
+    setDestinationId((current) => current || points[Math.min(1, points.length - 1)].id);
+  }, [points]);
+
+  const canEstimate = Boolean(originPoint && destinationPoint && originPoint.id !== destinationPoint.id);
+
   const runEstimate = async () => {
-    if (points.length < 2) {
+    if (!originPoint || !destinationPoint || originPoint.id === destinationPoint.id) {
+      pushToast("Select different origin and destination places first.");
       return;
     }
 
     const result = await estimateRoute.mutateAsync({
-      origin: { lat: points[0].lat, lng: points[0].lng },
-      destination: { lat: points[1].lat, lng: points[1].lng },
-      mode: "transit"
+      origin: { lat: originPoint.lat, lng: originPoint.lng },
+      destination: { lat: destinationPoint.lat, lng: destinationPoint.lng },
+      mode: travelMode
     });
 
     setEstimatedRoutes((prev) => [
       {
         id: crypto.randomUUID(),
-        originTitle: points[0].title,
-        destinationTitle: points[1].title,
+        originTitle: originPoint.title,
+        destinationTitle: destinationPoint.title,
         distanceKm: Math.round((result.distanceMeters / 1000) * 10) / 10,
         durationMin: Math.round(result.durationSeconds / 60),
         provider: result.provider,
@@ -69,7 +90,7 @@ export function MapPage() {
         action={
           <button
             className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
-            disabled={estimateRoute.isPending || points.length < 2}
+            disabled={estimateRoute.isPending || !canEstimate}
             onClick={() => {
               void runEstimate();
             }}
@@ -79,6 +100,42 @@ export function MapPage() {
           </button>
         }
       >
+        <form
+          className="mb-4 grid gap-3 rounded-[24px] bg-white/10 p-3 text-white md:grid-cols-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearchKeyword(searchInput.trim() || "kyoto");
+          }}
+        >
+          <label className="md:col-span-2">
+            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">Place search</span>
+            <input
+              className="w-full rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/60"
+              placeholder="Search city or POI"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+          </label>
+          <div>
+            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">Mode</span>
+            <select
+              className="w-full rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-sm text-white"
+              value={travelMode}
+              onChange={(event) => setTravelMode(event.target.value as "walk" | "transit" | "drive" | "taxi")}
+            >
+              <option value="transit">transit</option>
+              <option value="walk">walk</option>
+              <option value="drive">drive</option>
+              <option value="taxi">taxi</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button className="w-full rounded-xl bg-white/20 px-3 py-2 text-sm font-medium text-white hover:bg-white/30" type="submit">
+              Search
+            </button>
+          </div>
+        </form>
+
         <div className="relative min-h-[380px] overflow-hidden rounded-[28px] bg-ink">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(218,106,78,0.55),transparent_20%),radial-gradient(circle_at_80%_25%,rgba(244,239,230,0.18),transparent_15%),radial-gradient(circle_at_55%_70%,rgba(45,90,74,0.55),transparent_20%),linear-gradient(180deg,#12202d_0%,#1a2f2c_100%)]" />
           {points.slice(0, 5).map((item, index) => (
@@ -100,6 +157,38 @@ export function MapPage() {
       </SurfaceCard>
       <SurfaceCard eyebrow="Places" title="Daily linked POIs">
         {isLoading ? <div className="mb-3 rounded-[20px] bg-sand p-3 text-sm text-ink/65">Loading places...</div> : null}
+        {points.length >= 2 ? (
+          <div className="mb-4 grid gap-3 rounded-[20px] border border-ink/10 bg-white p-3 md:grid-cols-2">
+            <label>
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">Origin</span>
+              <select
+                className="w-full rounded-xl border border-ink/10 bg-sand px-3 py-2 text-sm text-ink"
+                value={originId}
+                onChange={(event) => setOriginId(event.target.value)}
+              >
+                {points.map((point) => (
+                  <option key={point.id} value={point.id}>
+                    {point.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">Destination</span>
+              <select
+                className="w-full rounded-xl border border-ink/10 bg-sand px-3 py-2 text-sm text-ink"
+                value={destinationId}
+                onChange={(event) => setDestinationId(event.target.value)}
+              >
+                {points.map((point) => (
+                  <option key={point.id} value={point.id}>
+                    {point.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
         <div className="space-y-3">
           {points.map((item) => (
             <div key={item.id} className="rounded-[24px] bg-sand p-4">
