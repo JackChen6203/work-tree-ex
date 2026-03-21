@@ -17,7 +17,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   hydrated: false,
   user: null,
   isOnline: true,
-  pendingMutations: 3,
+  pendingMutations: 0,
   hydrate: async () => {
     await new Promise((resolve) => window.setTimeout(resolve, 400));
     try {

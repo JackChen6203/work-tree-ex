@@ -138,6 +138,18 @@ export function DashboardPage() {
           <p>Module surfaces cover Trip, Itinerary, Budget, Map, AI Planner, and Notification entry points.</p>
           <p>State is split between TanStack Query for server cache and Zustand for app/session UI state.</p>
         </div>
+        <div className="mt-6 rounded-[24px] border border-ink/10 bg-white p-5">
+          <h3 className="font-display text-2xl font-bold text-ink">{t("auth.quickAccess")}</h3>
+          <p className="mt-2 text-sm text-ink/70">{t("auth.accessHint")}</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand" to="/welcome">
+              {t("auth.openWelcome")}
+            </Link>
+            <Link className="rounded-full border border-ink/15 bg-sand px-4 py-2 text-sm font-medium text-ink" to="/login">
+              {t("auth.openLogin")}
+            </Link>
+          </div>
+        </div>
         <div className="mt-6 rounded-[24px] border border-ink/10 bg-sand/70 p-5">
           <h3 className="font-display text-2xl font-bold text-ink">{t("dashboard.remainingTitle")}</h3>
           <p className="mt-2 text-sm text-ink/70">{t("dashboard.remainingDescription")}</p>

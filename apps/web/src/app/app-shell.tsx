@@ -36,7 +36,10 @@ export function AppShell() {
             <ShellNav />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3 self-start lg:self-center">
-            <LocaleSwitcher />
+            <div className="flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-xs font-medium text-ink/70">
+              <span>{t("shell.language")}</span>
+              <LocaleSwitcher />
+            </div>
             <div className="flex items-center gap-3 rounded-full bg-ink px-4 py-2 text-sand">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand text-sm font-bold text-ink">
                 {user?.avatar ?? "TT"}
