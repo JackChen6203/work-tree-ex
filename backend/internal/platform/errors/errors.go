@@ -2,6 +2,7 @@ package errors
 
 const (
 	CodeBadRequest         = "BAD_REQUEST"
+	CodeConflict           = "CONFLICT"
 	CodeUnauthorized       = "AUTH_UNAUTHORIZED"
 	CodeForbidden          = "AUTH_FORBIDDEN"
 	CodeTripNotFound       = "TRIP_NOT_FOUND"

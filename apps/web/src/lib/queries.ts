@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createTrip, getTrip, listTrips, patchTrip } from "./trips-api";
+import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip } from "./trips-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
 import { listNotifications, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, listItineraryDays } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
-import type { CreateTripInput, PatchTripInput } from "./trips-api";
+import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
   return useQuery({
@@ -43,6 +43,25 @@ export function usePatchTripMutation(tripId: string) {
     onSuccess: (trip) => {
       queryClient.invalidateQueries({ queryKey: ["trips"] });
       queryClient.setQueryData(["trips", trip.id], trip);
+    }
+  });
+}
+
+export function useTripMembersQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["trip-members", tripId],
+    queryFn: () => listTripMembers(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useAddTripMemberMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: AddTripMemberInput) => addTripMember(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
     }
   });
 }

@@ -4,9 +4,12 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
@@ -47,17 +50,44 @@ type tripPatchInput struct {
 	Status      *string `json:"status"`
 }
 
+type tripMember struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"userId,omitempty"`
+	Email       string    `json:"email,omitempty"`
+	DisplayName string    `json:"displayName,omitempty"`
+	Role        string    `json:"role"`
+	Status      string    `json:"status"`
+	JoinedAt    time.Time `json:"joinedAt"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+type addTripMemberInput struct {
+	UserID      string `json:"userId"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role"`
+}
+
+var (
+	membersMu      sync.RWMutex
+	tripMembers    = map[string][]tripMember{}
+	idempotentAdds = map[string]tripMember{}
+)
+
 func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/trips", listTrips)
 	v1.POST("/trips", createTrip)
 	v1.GET("/trips/:tripId", getTrip)
 	v1.PATCH("/trips/:tripId", patchTrip)
-	v1.GET("/trips/:tripId/members", func(c *gin.Context) {
-		response.NotImplemented(c, "GET /trips/{tripId}/members")
-	})
-	v1.POST("/trips/:tripId/members", func(c *gin.Context) {
-		response.NotImplemented(c, "POST /trips/{tripId}/members")
-	})
+	v1.GET("/trips/:tripId/members", listTripMembers)
+	v1.POST("/trips/:tripId/members", addTripMember)
+}
+
+func resetMemberStoreForTests() {
+	membersMu.Lock()
+	defer membersMu.Unlock()
+	tripMembers = map[string][]tripMember{}
+	idempotentAdds = map[string]tripMember{}
 }
 
 func listTrips(c *gin.Context) {
@@ -174,6 +204,106 @@ func patchTrip(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, t)
+}
+
+func listTripMembers(c *gin.Context) {
+	tripID := c.Param("tripId")
+	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
+		if errors.Is(err, ErrTripNotFound) {
+			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
+		return
+	}
+
+	membersMu.RLock()
+	items := append([]tripMember{}, tripMembers[tripID]...)
+	membersMu.RUnlock()
+
+	response.JSON(c, http.StatusOK, items)
+}
+
+func addTripMember(c *gin.Context) {
+	tripID := c.Param("tripId")
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if idempotencyKey == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "Idempotency-Key header is required", nil)
+		return
+	}
+
+	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
+		if errors.Is(err, ErrTripNotFound) {
+			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
+		return
+	}
+
+	var in addTripMemberInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(in.UserID) == "" && strings.TrimSpace(in.Email) == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "userId or email is required", nil)
+		return
+	}
+
+	if !isValidMemberRole(in.Role) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "role must be owner/editor/commenter/viewer", nil)
+		return
+	}
+
+	key := tripID + ":" + idempotencyKey
+	membersMu.Lock()
+	if existing, ok := idempotentAdds[key]; ok {
+		membersMu.Unlock()
+		response.JSON(c, http.StatusOK, existing)
+		return
+	}
+
+	for _, m := range tripMembers[tripID] {
+		if strings.TrimSpace(in.UserID) != "" && m.UserID == strings.TrimSpace(in.UserID) {
+			membersMu.Unlock()
+			response.Error(c, http.StatusConflict, perrors.CodeConflict, "member already exists", gin.H{"userId": in.UserID})
+			return
+		}
+		if strings.TrimSpace(in.Email) != "" && strings.EqualFold(m.Email, strings.TrimSpace(in.Email)) {
+			membersMu.Unlock()
+			response.Error(c, http.StatusConflict, perrors.CodeConflict, "member already exists", gin.H{"email": in.Email})
+			return
+		}
+	}
+
+	now := time.Now().UTC()
+	item := tripMember{
+		ID:          uuid.NewString(),
+		UserID:      strings.TrimSpace(in.UserID),
+		Email:       strings.TrimSpace(in.Email),
+		DisplayName: strings.TrimSpace(in.DisplayName),
+		Role:        strings.TrimSpace(in.Role),
+		Status:      "active",
+		JoinedAt:    now,
+		CreatedAt:   now,
+	}
+
+	tripMembers[tripID] = append(tripMembers[tripID], item)
+	idempotentAdds[key] = item
+	membersMu.Unlock()
+
+	response.JSON(c, http.StatusCreated, item)
+}
+
+func isValidMemberRole(role string) bool {
+	switch strings.TrimSpace(role) {
+	case "owner", "editor", "commenter", "viewer":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateCreateInput(in tripCreateInput) error {

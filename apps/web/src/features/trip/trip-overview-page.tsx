@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { usePatchTripMutation, useTripQuery } from "../../lib/queries";
+import { useAddTripMemberMutation, usePatchTripMutation, useTripMembersQuery, useTripQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 interface TripPatchValues {
@@ -16,11 +16,19 @@ interface TripPatchValues {
   status: "draft" | "active" | "archived";
 }
 
+interface AddMemberValues {
+  email: string;
+  displayName: string;
+  role: "editor" | "commenter" | "viewer";
+}
+
 export function TripOverviewPage() {
   const { tripId } = useParams();
   const pushToast = useUiStore((state) => state.pushToast);
   const { data: trip, isLoading, error } = useTripQuery(tripId ?? "");
+  const { data: members = [] } = useTripMembersQuery(tripId ?? "");
   const patchTrip = usePatchTripMutation(tripId ?? "");
+  const addTripMember = useAddTripMemberMutation(tripId ?? "");
   const form = useForm<TripPatchValues>({
     values: trip
       ? {
@@ -34,6 +42,13 @@ export function TripOverviewPage() {
           status: trip.status
         }
       : undefined
+  });
+  const memberForm = useForm<AddMemberValues>({
+    defaultValues: {
+      email: "",
+      displayName: "",
+      role: "viewer"
+    }
   });
 
   if (isLoading) {
@@ -50,6 +65,20 @@ export function TripOverviewPage() {
       input: values
     });
     pushToast(`Trip updated: ${updated.name}`);
+  });
+
+  const onAddMember = memberForm.handleSubmit(async (values) => {
+    await addTripMember.mutateAsync({
+      email: values.email,
+      displayName: values.displayName,
+      role: values.role
+    });
+    memberForm.reset({
+      email: "",
+      displayName: "",
+      role: values.role
+    });
+    pushToast("Member added");
   });
 
   return (
@@ -72,11 +101,26 @@ export function TripOverviewPage() {
             </div>
             <div>
               <p className="text-sm text-white/70">Members</p>
-              <p className="mt-1 text-lg font-medium">{trip.travelersCount}</p>
+              <p className="mt-1 text-lg font-medium">{members.length || trip.travelersCount}</p>
             </div>
             <div>
               <p className="text-sm text-white/70">Version</p>
               <p className="mt-1 text-lg font-medium">v{trip.version}</p>
+            </div>
+          </div>
+          <div className="mt-6 rounded-2xl border border-white/25 bg-white/10 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-white/70">Collaboration members</p>
+            {members.length === 0 ? <p className="mt-2 text-sm text-white/75">No members added yet.</p> : null}
+            <div className="mt-3 grid gap-2">
+              {members.map((member) => (
+                <div className="flex items-center justify-between rounded-xl border border-white/20 px-3 py-2" key={member.id}>
+                  <div>
+                    <p className="text-sm font-medium">{member.displayName || member.email || member.userId || "Unknown"}</p>
+                    <p className="text-xs text-white/70">{member.email || member.userId}</p>
+                  </div>
+                  <StatusPill tone="accent">{member.role}</StatusPill>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -132,6 +176,28 @@ export function TripOverviewPage() {
           </div>
           <button className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white" disabled={patchTrip.isPending} type="submit">
             {patchTrip.isPending ? "Saving..." : "Save trip"}
+          </button>
+        </form>
+        <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onAddMember}>
+          <p className="text-sm font-semibold text-ink">Add member</p>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-ink">Email</span>
+            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email", { required: true })} />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-ink">Display name</span>
+            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("displayName")} />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-ink">Role</span>
+            <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("role")}> 
+              <option value="viewer">viewer</option>
+              <option value="commenter">commenter</option>
+              <option value="editor">editor</option>
+            </select>
+          </label>
+          <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={addTripMember.isPending} type="submit">
+            {addTripMember.isPending ? "Adding..." : "Add member"}
           </button>
         </form>
       </SurfaceCard>

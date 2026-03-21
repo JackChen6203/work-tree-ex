@@ -30,6 +30,34 @@ export interface PatchTripInput extends Partial<CreateTripInput> {
   status?: "draft" | "active" | "archived";
 }
 
+interface TripMemberApiModel {
+  id: string;
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  role: "owner" | "editor" | "commenter" | "viewer";
+  status: "active" | "removed";
+  joinedAt: string;
+  createdAt: string;
+}
+
+export interface TripMember {
+  id: string;
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  role: "owner" | "editor" | "commenter" | "viewer";
+  status: "active" | "removed";
+  joinedAt: string;
+}
+
+export interface AddTripMemberInput {
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  role: "owner" | "editor" | "commenter" | "viewer";
+}
+
 const gradients = [
   "from-[#24403a] via-[#376052] to-[#b4cdc2]",
   "from-[#36243a] via-[#6e4d63] to-[#f0d6ce]",
@@ -91,4 +119,32 @@ export async function patchTrip(tripId: string, version: number, input: PatchTri
     body: JSON.stringify(input)
   });
   return mapTrip(data);
+}
+
+function mapTripMember(item: TripMemberApiModel): TripMember {
+  return {
+    id: item.id,
+    userId: item.userId,
+    email: item.email,
+    displayName: item.displayName,
+    role: item.role,
+    status: item.status,
+    joinedAt: item.joinedAt
+  };
+}
+
+export async function listTripMembers(tripId: string) {
+  const data = await apiRequest<TripMemberApiModel[]>(`/api/v1/trips/${tripId}/members`);
+  return data.map(mapTripMember);
+}
+
+export async function addTripMember(tripId: string, input: AddTripMemberInput) {
+  const data = await apiRequest<TripMemberApiModel>(`/api/v1/trips/${tripId}/members`, {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": crypto.randomUUID()
+    },
+    body: JSON.stringify(input)
+  });
+  return mapTripMember(data);
 }
