@@ -26,14 +26,22 @@ jobs:
           chmod 600 ~/.ssh/oracle_vps_key
           ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Upload repository
+      - name: Verify SSH access
         run: |
-          rsync -az --delete \
-            --exclude ".git" \
-            --exclude "apps/web/node_modules" \
-            --exclude "apps/web/dist" \
-            -e "ssh -i ~/.ssh/oracle_vps_key" \
-            ./ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo connected"
+
+      - name: Sync repository on server
+        run: |
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            mkdir -p ${{ env.DEPLOY_PATH }} &&
+            if [ ! -d ${{ env.DEPLOY_PATH }}/.git ]; then
+              git clone https://github.com/JackChen6203/work-tree-ex.git ${{ env.DEPLOY_PATH }};
+            else
+              cd ${{ env.DEPLOY_PATH }} &&
+              git fetch --all --prune &&
+              git reset --hard origin/main;
+            fi
+          "
 
       - name: Write server env file
         run: |
