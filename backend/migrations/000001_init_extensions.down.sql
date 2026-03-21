@@ -1,3 +1,3 @@
-DROP EXTENSION IF EXISTS citext;
-DROP EXTENSION IF EXISTS postgis;
-DROP EXTENSION IF EXISTS "uuid-ossp";
+-- Keep shared extensions installed during rollback.
+-- This makes full rollback idempotent across CI and managed Postgres instances
+-- where extension removal can be restricted or fail despite schema teardown.

@@ -31,7 +31,7 @@ func TestCreateAndGetTrip(t *testing.T) {
 		"currency":        "JPY",
 		"travelersCount":  2,
 	}
-	body, _ := json.Marshal(createBody)
+	body := mustMarshal(t, createBody)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -50,7 +50,10 @@ func TestCreateAndGetTrip(t *testing.T) {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
 
-	tripID, _ := created.Data["id"].(string)
+	tripID, ok := created.Data["id"].(string)
+	if !ok {
+		t.Fatalf("expected trip id to be a string")
+	}
 	if tripID == "" {
 		t.Fatalf("expected trip id")
 	}
@@ -75,7 +78,7 @@ func TestCreateTripRequiresIdempotencyKey(t *testing.T) {
 		"currency":       "TWD",
 		"travelersCount": 1,
 	}
-	body, _ := json.Marshal(createBody)
+	body := mustMarshal(t, createBody)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -98,7 +101,7 @@ func TestPatchTripVersionConflict(t *testing.T) {
 		"currency":       "JPY",
 		"travelersCount": 2,
 	}
-	body, _ := json.Marshal(createBody)
+	body := mustMarshal(t, createBody)
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips", bytes.NewBuffer(body))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -109,11 +112,16 @@ func TestPatchTripVersionConflict(t *testing.T) {
 	var created struct {
 		Data map[string]any `json:"data"`
 	}
-	_ = json.Unmarshal(createW.Body.Bytes(), &created)
-	tripID, _ := created.Data["id"].(string)
+	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+	tripID, ok := created.Data["id"].(string)
+	if !ok {
+		t.Fatalf("expected trip id to be a string")
+	}
 
 	patchBody := map[string]any{"name": "Updated Name"}
-	patchJSON, _ := json.Marshal(patchBody)
+	patchJSON := mustMarshal(t, patchBody)
 
 	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/"+tripID, bytes.NewBuffer(patchJSON))
 	patchReq.Header.Set("Content-Type", "application/json")
@@ -124,4 +132,15 @@ func TestPatchTripVersionConflict(t *testing.T) {
 	if patchW.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d", patchW.Code)
 	}
+}
+
+func mustMarshal(t *testing.T, value any) []byte {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("failed to marshal json: %v", err)
+	}
+
+	return data
 }

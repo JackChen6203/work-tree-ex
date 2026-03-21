@@ -51,7 +51,7 @@ func (r *postgresRepository) Create(ctx context.Context, in tripCreateInput, ide
 	if err != nil {
 		return trip{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTx(ctx, tx)
 
 	var existingTripID string
 	err = tx.QueryRow(ctx, `SELECT trip_id::text FROM trip_idempotency_keys WHERE idempotency_key = $1`, idempotencyKey).Scan(&existingTripID)
@@ -126,7 +126,7 @@ func (r *postgresRepository) Update(ctx context.Context, tripID string, expected
 	if err != nil {
 		return trip{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer rollbackTx(ctx, tx)
 
 	current, err := r.getByIDTxForUpdate(ctx, tx, tripID)
 	if err != nil {
@@ -246,4 +246,8 @@ func scanTrip(scanner rowScanner) (trip, error) {
 	t.StartDate = startDate.Format("2006-01-02")
 	t.EndDate = endDate.Format("2006-01-02")
 	return t, nil
+}
+
+func rollbackTx(ctx context.Context, tx pgx.Tx) {
+	_ = tx.Rollback(ctx)
 }

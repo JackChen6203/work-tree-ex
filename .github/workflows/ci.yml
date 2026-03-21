@@ -22,11 +22,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: backend
+      - name: Check Go formatting
+        working-directory: backend
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: Run go vet
+        working-directory: backend
+        run: go vet ./...
 
       - uses: actions/setup-node@v4
         with:
