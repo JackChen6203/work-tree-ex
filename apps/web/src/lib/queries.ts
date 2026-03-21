@@ -4,7 +4,7 @@ import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
-import { createItineraryItem, deleteItineraryItem, listItineraryDays } from "./itinerary-api";
+import { createItineraryItem, deleteItineraryItem, listItineraryDays, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
 import { createMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
@@ -229,6 +229,17 @@ export function useDeleteItineraryItemMutation(tripId: string) {
 
   return useMutation({
     mutationFn: (itemId: string) => deleteItineraryItem(tripId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
+    }
+  });
+}
+
+export function useReorderItineraryItemsMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { operations: Array<{ itemId: string; targetDayId: string; targetSortOrder: number }> }) => reorderItineraryItems(tripId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }

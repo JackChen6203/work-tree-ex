@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery } from "../../lib/queries";
+import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery, useReorderItineraryItemsMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function ItineraryPage() {
@@ -10,6 +10,7 @@ export function ItineraryPage() {
   const { data: days = [], isLoading } = useItineraryDaysQuery(tripId);
   const createItem = useCreateItineraryItemMutation(tripId);
   const deleteItem = useDeleteItineraryItemMutation(tripId);
+  const reorderItems = useReorderItineraryItemsMutation(tripId);
 
   const addItem = async () => {
     const targetDay = days[0]?.dayId ?? "day-1";
@@ -26,6 +27,19 @@ export function ItineraryPage() {
   const removeItem = async (itemId: string) => {
     await deleteItem.mutateAsync(itemId);
     pushToast("Itinerary item removed");
+  };
+
+  const moveItem = async (dayId: string, itemId: string, targetSortOrder: number) => {
+    await reorderItems.mutateAsync({
+      operations: [
+        {
+          itemId,
+          targetDayId: dayId,
+          targetSortOrder: targetSortOrder
+        }
+      ]
+    });
+    pushToast("Itinerary order updated");
   };
 
   return (
@@ -60,7 +74,7 @@ export function ItineraryPage() {
                 <StatusPill tone="neutral">Versioned reorder</StatusPill>
               </div>
               <div className="mt-5 grid gap-4">
-                {day.items.map((item) => (
+                {day.items.map((item, itemIndex) => (
                   <div key={item.id} className="rounded-[24px] bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -73,8 +87,28 @@ export function ItineraryPage() {
                         <StatusPill tone="neutral">v{item.version}</StatusPill>
                         <StatusPill tone="accent">{item.allDay ? "all-day" : "timed"}</StatusPill>
                         <button
+                          className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
+                          disabled={reorderItems.isPending || itemIndex === 0}
+                          onClick={() => {
+                            void moveItem(day.dayId, item.id, Math.max(item.sortOrder-1, 1));
+                          }}
+                          type="button"
+                        >
+                          Up
+                        </button>
+                        <button
+                          className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
+                          disabled={reorderItems.isPending || itemIndex === day.items.length - 1}
+                          onClick={() => {
+                            void moveItem(day.dayId, item.id, item.sortOrder + 1);
+                          }}
+                          type="button"
+                        >
+                          Down
+                        </button>
+                        <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
-                          disabled={deleteItem.isPending}
+                          disabled={deleteItem.isPending || reorderItems.isPending}
                           onClick={() => {
                             void removeItem(item.id);
                           }}

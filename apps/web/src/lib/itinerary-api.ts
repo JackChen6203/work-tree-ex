@@ -47,3 +47,18 @@ export function deleteItineraryItem(tripId: string, itemId: string) {
     method: "DELETE"
   });
 }
+
+export function reorderItineraryItems(
+  tripId: string,
+  input: {
+    operations: Array<{ itemId: string; targetDayId: string; targetSortOrder: number }>;
+  }
+) {
+  return apiRequest<ItineraryDayApi[]>(`/api/v1/trips/${tripId}/items/reorder`, {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": crypto.randomUUID()
+    },
+    body: JSON.stringify(input)
+  });
+}
