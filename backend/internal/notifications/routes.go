@@ -24,8 +24,8 @@ type notification struct {
 var (
 	notificationsMu sync.RWMutex
 	items           = []notification{
-		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "Kyoto Slow Spring 的候選方案可比較", Link: "/trips/kyoto-2026/ai-planner", CreatedAt: time.Now().Add(-3 * time.Minute).UTC()},
-		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "Mina 已加入行程並取得 editor 權限", Link: "/trips/kyoto-2026", CreatedAt: time.Now().Add(-1 * time.Hour).UTC()},
+		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較並採用到行程", Link: "/dashboard", CreatedAt: time.Now().Add(-3 * time.Minute).UTC()},
+		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "新成員已加入行程並取得編輯權限", Link: "/trips", CreatedAt: time.Now().Add(-1 * time.Hour).UTC()},
 	}
 )
 

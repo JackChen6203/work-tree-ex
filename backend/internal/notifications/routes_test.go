@@ -12,8 +12,8 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	notificationsMu.Lock()
 	items = []notification{
-		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較", Link: "/trips/kyoto-2026/ai-planner"},
-		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "Mina 已加入行程", Link: "/trips/kyoto-2026"},
+		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較", Link: "/dashboard"},
+		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "Mina 已加入行程", Link: "/trips"},
 	}
 	notificationsMu.Unlock()
 

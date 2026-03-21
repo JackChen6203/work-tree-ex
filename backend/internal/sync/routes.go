@@ -39,8 +39,10 @@ func bootstrap(c *gin.Context) {
 	}
 
 	if sinceVersion == 0 {
-		payload["changedTrips"] = []gin.H{{"id": "kyoto-2026", "version": 1}}
-		payload["changedDays"] = []gin.H{{"tripId": "kyoto-2026", "dayId": "day-1", "version": 1}}
+		if tripID != "" {
+			payload["changedTrips"] = []gin.H{{"id": tripID, "version": 1}}
+			payload["changedDays"] = []gin.H{{"tripId": tripID, "dayId": "day-1", "version": 1}}
+		}
 		payload["changedNotifications"] = []gin.H{{"id": "n-1", "version": 1}}
 	}
 
