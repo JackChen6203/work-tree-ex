@@ -7,6 +7,7 @@ import { listNotifications, markAllNotificationsRead, markNotificationRead } fro
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
 import { createMyLlmProvider, deleteMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
+import { getSyncBootstrap } from "./sync-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
@@ -270,6 +271,15 @@ export function useEstimateRouteMutation() {
   return useMutation({
     mutationFn: (input: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number }; mode: "walk" | "transit" | "drive" | "taxi" }) =>
       estimateRoute(input)
+  });
+}
+
+export function useSyncBootstrapQuery(tripId: string, sinceVersion = 0) {
+  return useQuery({
+    queryKey: ["sync-bootstrap", tripId, sinceVersion],
+    queryFn: () => getSyncBootstrap(tripId, sinceVersion),
+    enabled: true,
+    refetchInterval: 30000
   });
 }
 
