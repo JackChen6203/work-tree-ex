@@ -11,6 +11,7 @@ const (
 	CodeBudgetCurrency     = "BUDGET_INVALID_CURRENCY"
 	CodeMapProviderTimeout = "MAP_PROVIDER_TIMEOUT"
 	CodeAIProviderTimeout  = "AI_PROVIDER_TIMEOUT"
+	CodeAIDraftInvalid     = "AI_DRAFT_INVALID"
 	CodeRateLimitExceeded  = "RATE_LIMIT_EXCEEDED"
 	CodeInternalError      = "INTERNAL_ERROR"
 	CodeNotImplemented     = "NOT_IMPLEMENTED"

@@ -17,7 +17,7 @@ func setupAuthRouter() *gin.Engine {
 	authStateMu.Lock()
 	pendingCodes = map[string]codeEntry{}
 	oauthStates = map[string]oauthStateEntry{}
-	activeUser = nil
+	sessions = map[string]*sessionUser{}
 	authStateMu.Unlock()
 	_ = os.Setenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
@@ -64,8 +64,12 @@ func TestMagicLinkRequestVerifyAndSession(t *testing.T) {
 	if verifyW.Code != http.StatusOK {
 		t.Fatalf("expected verify status 200, got %d", verifyW.Code)
 	}
+	sessionCookie := verifyW.Result().Cookies()
 
 	sessionReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	for _, cookie := range sessionCookie {
+		sessionReq.AddCookie(cookie)
+	}
 	sessionW := httptest.NewRecorder()
 	r.ServeHTTP(sessionW, sessionReq)
 
@@ -146,8 +150,12 @@ func TestOAuthStartRedirectsAndCallbackSetsSession(t *testing.T) {
 	if !strings.Contains(finalLocation, "oauth=success") {
 		t.Fatalf("expected frontend success redirect, got %s", finalLocation)
 	}
+	sessionCookie := callbackW.Result().Cookies()
 
 	sessionReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	for _, cookie := range sessionCookie {
+		sessionReq.AddCookie(cookie)
+	}
 	sessionW := httptest.NewRecorder()
 	r.ServeHTTP(sessionW, sessionReq)
 

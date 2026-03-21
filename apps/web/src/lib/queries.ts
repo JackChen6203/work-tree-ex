@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createTrip, getTrip, listTrips, patchTrip } from "./trips-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
+import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
+import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
+import { listNotifications, markNotificationRead } from "./notifications-api";
+import { createItineraryItem, listItineraryDays } from "./itinerary-api";
+import { estimateRoute, searchPlaces } from "./maps-api";
 import type { CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
@@ -51,5 +56,143 @@ export function useRequestMagicLinkMutation() {
 export function useVerifyMagicLinkMutation() {
   return useMutation({
     mutationFn: ({ email, code }: { email: string; code: string }) => verifyMagicLink(email, code)
+  });
+}
+
+export function useAiPlansQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["ai-plans", tripId],
+    queryFn: () => listAiPlans(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useCreateAiPlanMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: {
+      providerConfigId: string;
+      title: string;
+      constraints: {
+        totalBudget: number;
+        currency: string;
+        pace: "relaxed" | "balanced" | "packed";
+        transportPreference: "walk" | "transit" | "taxi" | "mixed";
+        mustVisit: string[];
+        avoid: string[];
+      };
+    }) => createAiPlan(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
+    }
+  });
+}
+
+export function useAdoptAiPlanMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (planId: string) => adoptAiPlan(tripId, planId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
+    }
+  });
+}
+
+export function useBudgetProfileQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["budget", tripId],
+    queryFn: () => getBudgetProfile(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useExpensesQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["expenses", tripId],
+    queryFn: () => listExpenses(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useUpsertBudgetMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: {
+      totalBudget?: number;
+      perPersonBudget?: number;
+      perDayBudget?: number;
+      currency: string;
+      categories: Array<{ category: string; plannedAmount: number }>;
+    }) => upsertBudgetProfile(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
+    }
+  });
+}
+
+export function useCreateExpenseMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }) => createExpense(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
+      queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
+    }
+  });
+}
+
+export function useNotificationsQuery() {
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications
+  });
+}
+
+export function useMarkNotificationReadMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (notificationId: string) => markNotificationRead(notificationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+}
+
+export function useItineraryDaysQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["itinerary-days", tripId],
+    queryFn: () => listItineraryDays(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useCreateItineraryItemMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { dayId: string; title: string; itemType: string; allDay: boolean; note?: string }) => createItineraryItem(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
+    }
+  });
+}
+
+export function useMapPlacesQuery(query: string) {
+  return useQuery({
+    queryKey: ["map-places", query],
+    queryFn: () => searchPlaces(query),
+    enabled: query.trim().length > 0
+  });
+}
+
+export function useEstimateRouteMutation() {
+  return useMutation({
+    mutationFn: (input: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number }; mode: "walk" | "transit" | "drive" | "taxi" }) =>
+      estimateRoute(input)
   });
 }

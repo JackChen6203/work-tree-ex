@@ -1,24 +1,55 @@
+import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { itineraryDays } from "../../lib/mock-data";
+import { useCreateItineraryItemMutation, useItineraryDaysQuery } from "../../lib/queries";
+import { useUiStore } from "../../store/ui-store";
 
 export function ItineraryPage() {
+  const { tripId = "" } = useParams();
+  const pushToast = useUiStore((state) => state.pushToast);
+  const { data: days = [], isLoading } = useItineraryDaysQuery(tripId);
+  const createItem = useCreateItineraryItemMutation(tripId);
+
+  const addItem = async () => {
+    const targetDay = days[0]?.dayId ?? "day-1";
+    await createItem.mutateAsync({
+      dayId: targetDay,
+      title: "新行程項目",
+      itemType: "custom",
+      allDay: false,
+      note: "由 itinerary page 建立"
+    });
+    pushToast("Itinerary item created");
+  };
+
   return (
     <div className="grid gap-6">
       <SurfaceCard
         eyebrow="Itinerary Module"
         title="Daily timeline"
-        action={<button className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand">Add item</button>}
+        action={
+          <button
+            className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
+            disabled={createItem.isPending}
+            onClick={() => {
+              void addItem();
+            }}
+            type="button"
+          >
+            {createItem.isPending ? "Adding..." : "Add item"}
+          </button>
+        }
       >
+        {isLoading ? <div className="mb-4 rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading itinerary...</div> : null}
         <div className="grid gap-5">
-          {itineraryDays.map((day) => (
-            <div key={day.id} className="rounded-[28px] border border-ink/10 bg-sand/70 p-5">
+          {days.map((day, index) => (
+            <div key={day.dayId} className="rounded-[28px] border border-ink/10 bg-sand/70 p-5">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-ink/45">
-                    {day.label} . {day.date}
+                    Day {index + 1} . {day.date}
                   </p>
-                  <h3 className="mt-2 font-display text-2xl font-bold text-ink">{day.summary}</h3>
+                  <h3 className="mt-2 font-display text-2xl font-bold text-ink">{day.items.length} items planned</h3>
                 </div>
                 <StatusPill tone="neutral">Versioned reorder</StatusPill>
               </div>
@@ -29,21 +60,21 @@ export function ItineraryPage() {
                       <div>
                         <p className="text-sm font-semibold text-ink">{item.title}</p>
                         <p className="mt-1 text-sm text-ink/60">
-                          {item.time} . {item.location}
+                          {item.itemType} . sort #{item.sortOrder}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <StatusPill tone="neutral">{item.transit}</StatusPill>
-                        <StatusPill tone="accent">{item.cost}</StatusPill>
+                        <StatusPill tone="neutral">v{item.version}</StatusPill>
+                        <StatusPill tone="accent">{item.allDay ? "all-day" : "timed"}</StatusPill>
                       </div>
                     </div>
-                    {item.warning ? <p className="mt-3 text-sm text-coral">{item.warning}</p> : null}
-                    {item.draftDiff ? <p className="mt-2 text-sm text-pine">{item.draftDiff}</p> : null}
+                    {item.note ? <p className="mt-3 text-sm text-ink/70">{item.note}</p> : null}
                   </div>
                 ))}
               </div>
             </div>
           ))}
+          {!isLoading && days.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No itinerary days found.</div> : null}
         </div>
       </SurfaceCard>
     </div>

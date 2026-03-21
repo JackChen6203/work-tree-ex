@@ -37,6 +37,8 @@ type codeEntry struct {
 	ExpiresAt time.Time
 }
 
+const sessionCookieName = "tt_session"
+
 type oauthStateEntry struct {
 	Provider  string
 	ExpiresAt time.Time
@@ -105,7 +107,7 @@ var (
 	authStateMu  sync.Mutex
 	pendingCodes = map[string]codeEntry{}
 	oauthStates  = map[string]oauthStateEntry{}
-	activeUser   *sessionUser
+	sessions     = map[string]*sessionUser{}
 )
 
 func RegisterRoutes(group *gin.RouterGroup) {
@@ -162,10 +164,19 @@ func callbackOAuth(c *gin.Context) {
 		return
 	}
 
+	if reason := strings.TrimSpace(c.Query("error")); reason != "" {
+		frontendURL := buildFrontendBaseURL(c)
+		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=" + url.QueryEscape(reason)
+		c.Redirect(http.StatusFound, redirectURL)
+		return
+	}
+
 	state := strings.TrimSpace(c.Query("state"))
 	code := strings.TrimSpace(c.Query("code"))
 	if state == "" || code == "" {
-		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "oauth callback requires code and state", nil)
+		frontendURL := buildFrontendBaseURL(c)
+		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=missing_code_or_state"
+		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
 
@@ -174,13 +185,17 @@ func callbackOAuth(c *gin.Context) {
 	if !ok || time.Now().After(stateEntry.ExpiresAt) {
 		delete(oauthStates, state)
 		authStateMu.Unlock()
-		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "oauth state is invalid or expired", nil)
+		frontendURL := buildFrontendBaseURL(c)
+		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=invalid_state"
+		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
 	if stateEntry.Provider != provider {
 		delete(oauthStates, state)
 		authStateMu.Unlock()
-		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "oauth state provider mismatch", nil)
+		frontendURL := buildFrontendBaseURL(c)
+		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=provider_mismatch"
+		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
 	delete(oauthStates, state)
@@ -193,7 +208,11 @@ func callbackOAuth(c *gin.Context) {
 		Email:  email,
 		Avatar: strings.ToUpper(provider[:1]) + "U",
 	}
-	activeUser = user
+	if err := upsertSessionLocked(c, user); err != nil {
+		authStateMu.Unlock()
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create session", nil)
+		return
+	}
 	authStateMu.Unlock()
 
 	frontendURL := buildFrontendBaseURL(c)
@@ -270,7 +289,11 @@ func verifyMagicLink(c *gin.Context) {
 		Email:  email,
 		Avatar: avatarFromEmail(email),
 	}
-	activeUser = user
+	if err := upsertSessionLocked(c, user); err != nil {
+		authStateMu.Unlock()
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create session", nil)
+		return
+	}
 	authStateMu.Unlock()
 
 	response.JSON(c, http.StatusOK, gin.H{
@@ -283,18 +306,29 @@ func getSession(c *gin.Context) {
 	authStateMu.Lock()
 	defer authStateMu.Unlock()
 
-	if activeUser == nil {
+	sessionID, err := c.Cookie(sessionCookieName)
+	if err != nil || strings.TrimSpace(sessionID) == "" {
 		response.JSON(c, http.StatusOK, gin.H{"user": nil, "roles": []string{}})
 		return
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{"user": activeUser, "roles": []string{"owner"}})
+	user, ok := sessions[sessionID]
+	if !ok {
+		response.JSON(c, http.StatusOK, gin.H{"user": nil, "roles": []string{}})
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{"user": user, "roles": []string{"owner"}})
 }
 
 func logout(c *gin.Context) {
 	authStateMu.Lock()
-	activeUser = nil
+	if sessionID, err := c.Cookie(sessionCookieName); err == nil {
+		delete(sessions, sessionID)
+	}
 	authStateMu.Unlock()
+
+	clearSessionCookie(c)
 
 	response.NoContent(c)
 }
@@ -362,6 +396,43 @@ func buildFrontendBaseURL(c *gin.Context) string {
 	}
 
 	return "http://localhost:5173"
+}
+
+func upsertSessionLocked(c *gin.Context, user *sessionUser) error {
+	sessionID, err := generateOpaqueToken(48)
+	if err != nil {
+		return err
+	}
+
+	sessions[sessionID] = user
+	setSessionCookie(c, sessionID)
+	return nil
+}
+
+func setSessionCookie(c *gin.Context, sessionID string) {
+	isSecure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int((24 * time.Hour).Seconds()),
+	})
+}
+
+func clearSessionCookie(c *gin.Context) {
+	isSecure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 }
 
 func displayNameFromEmail(email string) string {

@@ -1,16 +1,30 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { AppLogo } from "../components/app-logo";
 import { LocaleSwitcher } from "../components/locale-switcher";
 import { ShellNav } from "../components/shell-nav";
 import { SyncStatusBar } from "../components/sync-status-bar";
 import { ToastRegion } from "../components/toast-region";
 import { OfflineBanner } from "../features/offline/offline-banner";
+import { trackEvent } from "../lib/analytics";
+import { logout } from "../lib/auth-api";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../store/session-store";
+import { useUiStore } from "../store/ui-store";
 
 export function AppShell() {
+  const navigate = useNavigate();
   const user = useSessionStore((state) => state.user);
+  const clearUser = useSessionStore((state) => state.clearUser);
+  const pushToast = useUiStore((state) => state.pushToast);
   const { t } = useI18n();
+
+  const onLogout = async () => {
+    await logout();
+    clearUser();
+    trackEvent({ name: "auth.session.logged_out" });
+    pushToast(t("auth.loggedOut"));
+    navigate("/welcome");
+  };
 
   return (
     <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-10">
@@ -31,6 +45,15 @@ export function AppShell() {
                 <p className="text-sm font-medium">{user?.name ?? t("common.guest")}</p>
                 <p className="text-xs text-sand/70">{user?.email ?? t("common.awaitingSession")}</p>
               </div>
+              <button
+                className="rounded-full bg-sand/20 px-3 py-1 text-xs font-medium text-sand transition hover:bg-sand/30"
+                onClick={() => {
+                  void onLogout();
+                }}
+                type="button"
+              >
+                {t("auth.logout")}
+              </button>
             </div>
           </div>
         </header>

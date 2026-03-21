@@ -40,5 +40,12 @@ export function oauthStartUrl(provider: string) {
 }
 
 export async function logout() {
-  await fetch(`${apiBaseUrl}/api/v1/auth/logout`, { method: "POST" });
+  const response = await fetch(`${apiBaseUrl}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Logout failed with status ${response.status}`);
+  }
 }

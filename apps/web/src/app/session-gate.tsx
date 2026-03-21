@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../store/session-store";
 
@@ -9,6 +10,7 @@ interface SessionGateProps {
 
 export function SessionGate({ children }: SessionGateProps) {
   const hydrated = useSessionStore((state) => state.hydrated);
+  const user = useSessionStore((state) => state.user);
   const hydrate = useSessionStore((state) => state.hydrate);
   const { t } = useI18n();
 
@@ -28,6 +30,10 @@ export function SessionGate({ children }: SessionGateProps) {
         </div>
       </div>
     );
+  }
+
+  if (!user) {
+    return <Navigate to="/welcome" replace />;
   }
 
   return <>{children}</>;

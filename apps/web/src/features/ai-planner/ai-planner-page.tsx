@@ -1,11 +1,55 @@
+import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { aiDrafts } from "../../lib/mock-data";
+import { useCreateAiPlanMutation, useAdoptAiPlanMutation, useAiPlansQuery } from "../../lib/queries";
+import { useUiStore } from "../../store/ui-store";
 
 export function AiPlannerPage() {
+  const { tripId = "" } = useParams();
+  const pushToast = useUiStore((state) => state.pushToast);
+  const { data: drafts = [], isLoading } = useAiPlansQuery(tripId);
+  const createPlan = useCreateAiPlanMutation(tripId);
+  const adoptPlan = useAdoptAiPlanMutation(tripId);
+
+  const runPlan = async () => {
+    await createPlan.mutateAsync({
+      providerConfigId: "default-provider",
+      title: "Kyoto Budget-aware Draft",
+      constraints: {
+        totalBudget: 70500,
+        currency: "JPY",
+        pace: "balanced",
+        transportPreference: "transit",
+        mustVisit: ["清水寺", "嵐山"],
+        avoid: ["過度換乘"]
+      }
+    });
+    pushToast("AI draft generated");
+  };
+
+  const onAdopt = async (planId: string) => {
+    const result = await adoptPlan.mutateAsync(planId);
+    pushToast(result.adopted ? "Draft adopted" : "Draft not adopted");
+  };
+
   return (
     <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-      <SurfaceCard eyebrow="AI Planner" title="Planning constraints">
+      <SurfaceCard
+        eyebrow="AI Planner"
+        title="Planning constraints"
+        action={
+          <button
+            className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
+            disabled={createPlan.isPending}
+            onClick={() => {
+              void runPlan();
+            }}
+            type="button"
+          >
+            {createPlan.isPending ? "Planning..." : "Run planning"}
+          </button>
+        }
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           {[
             "總預算 JPY 70,500",
@@ -27,16 +71,21 @@ export function AiPlannerPage() {
         </div>
       </SurfaceCard>
       <SurfaceCard eyebrow="Draft Compare" title="Candidate plans">
+        {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading AI drafts...</div> : null}
+        {!isLoading && drafts.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No drafts yet. Run planning to generate one.</div> : null}
         <div className="grid gap-4">
-          {aiDrafts.map((draft) => (
+          {drafts.map((draft) => (
             <div key={draft.id} className="rounded-[28px] border border-ink/10 bg-white p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-display text-2xl font-bold text-ink">{draft.name}</p>
+                  <p className="font-display text-2xl font-bold text-ink">{draft.title}</p>
                   <p className="mt-2 text-sm text-ink/65">{draft.summary}</p>
                 </div>
-                <StatusPill tone="accent">Score {draft.score}</StatusPill>
+                <StatusPill tone={draft.status === "invalid" ? "danger" : draft.status === "warning" ? "neutral" : "success"}>{draft.status}</StatusPill>
               </div>
+              <p className="mt-3 text-sm text-ink/60">
+                Est. {Math.round(draft.totalEstimated).toLocaleString()} {draft.currency} / Budget {Math.round(draft.budget).toLocaleString()} {draft.currency}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {draft.warnings.map((warning) => (
                   <StatusPill key={warning} tone="danger">
@@ -44,7 +93,16 @@ export function AiPlannerPage() {
                   </StatusPill>
                 ))}
               </div>
-              <button className="mt-5 rounded-full bg-pine px-4 py-2 text-sm font-medium text-white">Adopt via server transaction</button>
+              <button
+                className="mt-5 rounded-full bg-pine px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-ink/35"
+                disabled={draft.status === "invalid" || adoptPlan.isPending}
+                onClick={() => {
+                  void onAdopt(draft.id);
+                }}
+                type="button"
+              >
+                {adoptPlan.isPending ? "Adopting..." : "Adopt via server transaction"}
+              </button>
             </div>
           ))}
         </div>

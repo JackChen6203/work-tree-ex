@@ -50,6 +50,12 @@ OAuth provider client IDs (optional, used when available):
 
 When a provider client ID is not configured, `/api/v1/auth/oauth/:provider/start` runs in development shortcut mode and redirects directly to callback with a generated code so you can test the login flow end-to-end.
 
+Auth session notes:
+
+- Session is issued as an `HttpOnly` cookie (`tt_session`).
+- Frontend requests to backend must send credentials (`fetch` with `credentials: "include"`).
+- CORS `CORS_ALLOWED_ORIGINS` should include your web app origin (for example `http://localhost:5173`).
+
 ## MVP status
 
 - API/worker runnable skeleton

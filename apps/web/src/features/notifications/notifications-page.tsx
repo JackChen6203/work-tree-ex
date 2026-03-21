@@ -1,28 +1,35 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
-import { notifications } from "../../lib/mock-data";
+import { useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
 
 export function NotificationsPage() {
   const { t } = useI18n();
-  const [readIds, setReadIds] = useState<string[]>([]);
+  const { data: notifications = [], isLoading } = useNotificationsQuery();
+  const markReadMutation = useMarkNotificationReadMutation();
 
   const items = useMemo(
     () =>
       notifications.map((item) => ({
-        ...item,
-        unread: item.unread && !readIds.includes(item.id)
+        id: item.id,
+        title: item.title,
+        detail: item.body,
+        href: item.link,
+        unread: !item.readAt,
+        time: item.createdAt ? new Date(item.createdAt).toLocaleString() : ""
       })),
-    [readIds]
+    [notifications]
   );
 
   const markAllRead = () => {
-    setReadIds(notifications.map((item) => item.id));
+    for (const item of items.filter((candidate) => candidate.unread)) {
+      void markReadMutation.mutateAsync(item.id);
+    }
   };
 
   const markRead = (id: string) => {
-    setReadIds((current) => (current.includes(id) ? current : [...current, id]));
+    void markReadMutation.mutateAsync(id);
   };
 
   return (
@@ -35,6 +42,7 @@ export function NotificationsPage() {
         </button>
       }
     >
+      {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading notifications...</div> : null}
       <div className="space-y-3">
         {items.map((item) => (
           <Link
