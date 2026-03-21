@@ -154,3 +154,15 @@ export async function removeTripMember(tripId: string, memberId: string) {
     method: "DELETE"
   });
 }
+
+export async function updateTripMemberRole(
+  tripId: string,
+  memberId: string,
+  role: "owner" | "editor" | "commenter" | "viewer"
+) {
+  const data = await apiRequest<TripMemberApiModel>(`/api/v1/trips/${tripId}/members/${memberId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role })
+  });
+  return mapTripMember(data);
+}

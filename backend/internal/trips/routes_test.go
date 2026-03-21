@@ -225,6 +225,48 @@ func TestRemoveTripMemberNotFound(t *testing.T) {
 	}
 }
 
+func TestPatchTripMemberRole(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-patch")
+	memberID := addMemberForTest(t, r, tripID, "friend@example.com", "Friend", "viewer", "member-add-patch")
+
+	patchBody := mustMarshal(t, map[string]any{"role": "editor"})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/"+tripID+"/members/"+memberID, bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", patchW.Code, patchW.Body.String())
+	}
+
+	var patched struct {
+		Data struct {
+			Role string `json:"role"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(patchW.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("failed to decode patch response: %v", err)
+	}
+	if patched.Data.Role != "editor" {
+		t.Fatalf("expected role editor, got %s", patched.Data.Role)
+	}
+}
+
+func TestPatchTripMemberRoleValidation(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-patch-validation")
+	memberID := addMemberForTest(t, r, tripID, "friend@example.com", "Friend", "viewer", "member-add-patch-validation")
+
+	patchBody := mustMarshal(t, map[string]any{"role": "admin"})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/"+tripID+"/members/"+memberID, bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", patchW.Code, patchW.Body.String())
+	}
+}
+
 func TestAddTripMemberValidation(t *testing.T) {
 	r := setupRouter()
 	tripID := createTripForTest(t, r, "idem-members-validation")

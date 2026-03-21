@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip, removeTripMember } from "./trips-api";
+import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip, removeTripMember, updateTripMemberRole } from "./trips-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, deleteExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
@@ -73,6 +73,18 @@ export function useRemoveTripMemberMutation(tripId: string) {
 
   return useMutation({
     mutationFn: (memberId: string) => removeTripMember(tripId, memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
+    }
+  });
+}
+
+export function useUpdateTripMemberRoleMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ memberId, role }: { memberId: string; role: "owner" | "editor" | "commenter" | "viewer" }) =>
+      updateTripMemberRole(tripId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
     }

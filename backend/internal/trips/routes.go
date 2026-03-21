@@ -68,6 +68,10 @@ type addTripMemberInput struct {
 	Role        string `json:"role"`
 }
 
+type patchTripMemberInput struct {
+	Role string `json:"role"`
+}
+
 var (
 	membersMu      sync.RWMutex
 	tripMembers    = map[string][]tripMember{}
@@ -81,6 +85,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.PATCH("/trips/:tripId", patchTrip)
 	v1.GET("/trips/:tripId/members", listTripMembers)
 	v1.POST("/trips/:tripId/members", addTripMember)
+	v1.PATCH("/trips/:tripId/members/:memberId", patchTripMember)
 	v1.DELETE("/trips/:tripId/members/:memberId", removeTripMember)
 }
 
@@ -325,6 +330,49 @@ func removeTripMember(c *gin.Context) {
 		}
 		tripMembers[tripID] = append(current[:i], current[i+1:]...)
 		response.NoContent(c)
+		return
+	}
+
+	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "member not found", gin.H{"memberId": memberID})
+}
+
+func patchTripMember(c *gin.Context) {
+	tripID := c.Param("tripId")
+	memberID := strings.TrimSpace(c.Param("memberId"))
+	if memberID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "memberId is required", nil)
+		return
+	}
+
+	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
+		if errors.Is(err, ErrTripNotFound) {
+			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
+		return
+	}
+
+	var in patchTripMemberInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if !isValidMemberRole(in.Role) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "role must be owner/editor/commenter/viewer", nil)
+		return
+	}
+
+	membersMu.Lock()
+	defer membersMu.Unlock()
+
+	for i := range tripMembers[tripID] {
+		if tripMembers[tripID][i].ID != memberID {
+			continue
+		}
+		tripMembers[tripID][i].Role = strings.TrimSpace(in.Role)
+		response.JSON(c, http.StatusOK, tripMembers[tripID][i])
 		return
 	}
 

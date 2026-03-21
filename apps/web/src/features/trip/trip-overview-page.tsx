@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery } from "../../lib/queries";
+import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery, useUpdateTripMemberRoleMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 interface TripPatchValues {
@@ -30,6 +30,7 @@ export function TripOverviewPage() {
   const patchTrip = usePatchTripMutation(tripId ?? "");
   const addTripMember = useAddTripMemberMutation(tripId ?? "");
   const removeTripMember = useRemoveTripMemberMutation(tripId ?? "");
+  const updateMemberRole = useUpdateTripMemberRoleMutation(tripId ?? "");
   const form = useForm<TripPatchValues>({
     values: trip
       ? {
@@ -87,6 +88,11 @@ export function TripOverviewPage() {
     pushToast("Member removed");
   };
 
+  const onUpdateRole = async (memberId: string, role: "owner" | "editor" | "commenter" | "viewer") => {
+    await updateMemberRole.mutateAsync({ memberId, role });
+    pushToast("Member role updated");
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <SurfaceCard eyebrow="Trip Module" title={trip.name}>
@@ -125,10 +131,22 @@ export function TripOverviewPage() {
                     <p className="text-xs text-white/70">{member.email || member.userId}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <StatusPill tone="accent">{member.role}</StatusPill>
+                    <select
+                      className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white"
+                      defaultValue={member.role}
+                      disabled={updateMemberRole.isPending}
+                      onChange={(event) => {
+                        void onUpdateRole(member.id, event.target.value as "owner" | "editor" | "commenter" | "viewer");
+                      }}
+                    >
+                      <option value="owner">owner</option>
+                      <option value="editor">editor</option>
+                      <option value="commenter">commenter</option>
+                      <option value="viewer">viewer</option>
+                    </select>
                     <button
                       className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium text-white/90"
-                      disabled={removeTripMember.isPending}
+                      disabled={removeTripMember.isPending || updateMemberRole.isPending}
                       onClick={() => onRemoveMember(member.id)}
                       type="button"
                     >
