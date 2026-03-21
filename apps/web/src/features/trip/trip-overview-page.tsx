@@ -2,7 +2,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useAddTripMemberMutation, usePatchTripMutation, useTripMembersQuery, useTripQuery } from "../../lib/queries";
+import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 interface TripPatchValues {
@@ -29,6 +29,7 @@ export function TripOverviewPage() {
   const { data: members = [] } = useTripMembersQuery(tripId ?? "");
   const patchTrip = usePatchTripMutation(tripId ?? "");
   const addTripMember = useAddTripMemberMutation(tripId ?? "");
+  const removeTripMember = useRemoveTripMemberMutation(tripId ?? "");
   const form = useForm<TripPatchValues>({
     values: trip
       ? {
@@ -81,6 +82,11 @@ export function TripOverviewPage() {
     pushToast("Member added");
   });
 
+  const onRemoveMember = async (memberId: string) => {
+    await removeTripMember.mutateAsync(memberId);
+    pushToast("Member removed");
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <SurfaceCard eyebrow="Trip Module" title={trip.name}>
@@ -118,7 +124,17 @@ export function TripOverviewPage() {
                     <p className="text-sm font-medium">{member.displayName || member.email || member.userId || "Unknown"}</p>
                     <p className="text-xs text-white/70">{member.email || member.userId}</p>
                   </div>
-                  <StatusPill tone="accent">{member.role}</StatusPill>
+                  <div className="flex items-center gap-2">
+                    <StatusPill tone="accent">{member.role}</StatusPill>
+                    <button
+                      className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium text-white/90"
+                      disabled={removeTripMember.isPending}
+                      onClick={() => onRemoveMember(member.id)}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

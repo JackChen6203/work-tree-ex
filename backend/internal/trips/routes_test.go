@@ -182,6 +182,49 @@ func TestAddAndListTripMembers(t *testing.T) {
 	}
 }
 
+func TestRemoveTripMember(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-remove")
+
+	memberID := addMemberForTest(t, r, tripID, "friend@example.com", "Friend", "viewer", "member-add-remove")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/"+tripID+"/members/"+memberID, nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%s", deleteW.Code, deleteW.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID+"/members", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", listW.Code, listW.Body.String())
+	}
+
+	var listed struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("failed to decode list response: %v", err)
+	}
+	if len(listed.Data) != 0 {
+		t.Fatalf("expected 0 members after delete, got %d", len(listed.Data))
+	}
+}
+
+func TestRemoveTripMemberNotFound(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-remove-notfound")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/"+tripID+"/members/missing-member", nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", deleteW.Code, deleteW.Body.String())
+	}
+}
+
 func TestAddTripMemberValidation(t *testing.T) {
 	r := setupRouter()
 	tripID := createTripForTest(t, r, "idem-members-validation")
@@ -251,6 +294,36 @@ func createTripForTest(t *testing.T, r *gin.Engine, idempotencyKey string) strin
 	}
 
 	return tripID
+}
+
+func addMemberForTest(t *testing.T, r *gin.Engine, tripID, email, displayName, role, idempotencyKey string) string {
+	t.Helper()
+
+	body := mustMarshal(t, map[string]any{
+		"email":       email,
+		"displayName": displayName,
+		"role":        role,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/"+tripID+"/members", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", idempotencyKey)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	var created struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("failed to decode add member response: %v", err)
+	}
+	memberID, ok := created.Data["id"].(string)
+	if !ok || memberID == "" {
+		t.Fatalf("expected member id")
+	}
+	return memberID
 }
 
 func mustMarshal(t *testing.T, value any) []byte {

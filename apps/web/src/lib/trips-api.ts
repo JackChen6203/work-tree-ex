@@ -148,3 +148,9 @@ export async function addTripMember(tripId: string, input: AddTripMemberInput) {
   });
   return mapTripMember(data);
 }
+
+export async function removeTripMember(tripId: string, memberId: string) {
+  await apiRequest<void>(`/api/v1/trips/${tripId}/members/${memberId}`, {
+    method: "DELETE"
+  });
+}

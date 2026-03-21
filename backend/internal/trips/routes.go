@@ -81,6 +81,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.PATCH("/trips/:tripId", patchTrip)
 	v1.GET("/trips/:tripId/members", listTripMembers)
 	v1.POST("/trips/:tripId/members", addTripMember)
+	v1.DELETE("/trips/:tripId/members/:memberId", removeTripMember)
 }
 
 func resetMemberStoreForTests() {
@@ -295,6 +296,39 @@ func addTripMember(c *gin.Context) {
 	membersMu.Unlock()
 
 	response.JSON(c, http.StatusCreated, item)
+}
+
+func removeTripMember(c *gin.Context) {
+	tripID := c.Param("tripId")
+	memberID := strings.TrimSpace(c.Param("memberId"))
+	if memberID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "memberId is required", nil)
+		return
+	}
+
+	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
+		if errors.Is(err, ErrTripNotFound) {
+			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
+		return
+	}
+
+	membersMu.Lock()
+	defer membersMu.Unlock()
+
+	current := tripMembers[tripID]
+	for i := range current {
+		if current[i].ID != memberID {
+			continue
+		}
+		tripMembers[tripID] = append(current[:i], current[i+1:]...)
+		response.NoContent(c)
+		return
+	}
+
+	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "member not found", gin.H{"memberId": memberID})
 }
 
 func isValidMemberRole(role string) bool {
