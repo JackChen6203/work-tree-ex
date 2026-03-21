@@ -1,17 +1,19 @@
 import { NavLink } from "react-router-dom";
 import clsx from "clsx";
-
-const items = [
-  { to: "/", label: "Overview" },
-  { to: "/trips/kyoto-2026", label: "Trip" },
-  { to: "/trips/kyoto-2026/itinerary", label: "Itinerary" },
-  { to: "/trips/kyoto-2026/budget", label: "Budget" },
-  { to: "/trips/kyoto-2026/map", label: "Map" },
-  { to: "/trips/kyoto-2026/ai-planner", label: "AI Planner" },
-  { to: "/notifications", label: "Inbox" }
-];
+import { useI18n } from "../lib/i18n";
 
 export function ShellNav() {
+  const { t } = useI18n();
+  const items = [
+    { to: "/", label: t("nav.overview") },
+    { to: "/trips/kyoto-2026", label: t("nav.trip") },
+    { to: "/trips/kyoto-2026/itinerary", label: t("nav.itinerary") },
+    { to: "/trips/kyoto-2026/budget", label: t("nav.budget") },
+    { to: "/trips/kyoto-2026/map", label: t("nav.map") },
+    { to: "/trips/kyoto-2026/ai-planner", label: t("nav.aiPlanner") },
+    { to: "/notifications", label: t("nav.inbox") }
+  ];
+
   return (
     <nav className="flex flex-wrap gap-2">
       {items.map((item) => (

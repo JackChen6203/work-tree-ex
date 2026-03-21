@@ -33,6 +33,22 @@ The API starts at `http://0.0.0.0:8080` by default.
 - `HTTP_READ_TIMEOUT_SEC` (default: `10`)
 - `HTTP_WRITE_TIMEOUT_SEC` (default: `15`)
 - `HTTP_SHUTDOWN_TIMEOUT_SEC` (default: `10`)
+- `FRONTEND_BASE_URL` (default: `http://localhost:5173`)
+
+OAuth provider client IDs (optional, used when available):
+
+- `OAUTH_GOOGLE_CLIENT_ID`
+- `OAUTH_APPLE_CLIENT_ID`
+- `OAUTH_FACEBOOK_CLIENT_ID`
+- `OAUTH_X_CLIENT_ID`
+- `OAUTH_GITHUB_CLIENT_ID`
+- `OAUTH_LINE_CLIENT_ID`
+- `OAUTH_KAKAO_CLIENT_ID`
+- `OAUTH_WECHAT_CLIENT_ID`
+- `OAUTH_TRIPADVISOR_CLIENT_ID`
+- `OAUTH_BOOKING_CLIENT_ID`
+
+When a provider client ID is not configured, `/api/v1/auth/oauth/:provider/start` runs in development shortcut mode and redirects directly to callback with a generated code so you can test the login flow end-to-end.
 
 ## MVP status
 

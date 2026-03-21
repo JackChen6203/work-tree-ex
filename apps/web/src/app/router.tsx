@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./app-shell";
 import { SessionGate } from "./session-gate";
 import { AuthPage } from "../features/auth/auth-page";
+import { WelcomePage } from "../features/auth/welcome-page";
 import { DashboardPage } from "../features/dashboard/dashboard-page";
 import { TripOverviewPage } from "../features/trip/trip-overview-page";
 import { ItineraryPage } from "../features/itinerary/itinerary-page";
@@ -11,6 +12,10 @@ import { AiPlannerPage } from "../features/ai-planner/ai-planner-page";
 import { NotificationsPage } from "../features/notifications/notifications-page";
 
 export const router = createBrowserRouter([
+  {
+    path: "/welcome",
+    element: <WelcomePage />
+  },
   {
     path: "/login",
     element: <AuthPage />

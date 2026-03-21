@@ -5,6 +5,7 @@ import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
 import { useCreateTripMutation, useTripsQuery } from "../../lib/queries";
 import { trackEvent } from "../../lib/analytics";
+import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
 
 interface CreateTripFormValues {
@@ -18,6 +19,7 @@ interface CreateTripFormValues {
 }
 
 export function DashboardPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
@@ -135,6 +137,16 @@ export function DashboardPage() {
           <p>Session hydration, route protection, offline sync hint, toast region, and responsive navigation are in place.</p>
           <p>Module surfaces cover Trip, Itinerary, Budget, Map, AI Planner, and Notification entry points.</p>
           <p>State is split between TanStack Query for server cache and Zustand for app/session UI state.</p>
+        </div>
+        <div className="mt-6 rounded-[24px] border border-ink/10 bg-sand/70 p-5">
+          <h3 className="font-display text-2xl font-bold text-ink">{t("dashboard.remainingTitle")}</h3>
+          <p className="mt-2 text-sm text-ink/70">{t("dashboard.remainingDescription")}</p>
+          <ul className="mt-4 space-y-2 text-sm text-ink/75">
+            <li>{t("dashboard.remainingItem.1")}</li>
+            <li>{t("dashboard.remainingItem.2")}</li>
+            <li>{t("dashboard.remainingItem.3")}</li>
+            <li>{t("dashboard.remainingItem.4")}</li>
+          </ul>
         </div>
       </SurfaceCard>
     </div>
