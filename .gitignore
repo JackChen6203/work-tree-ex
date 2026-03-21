@@ -1,0 +1,53 @@
+# ── Environment ─────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Go ──────────────────────────────────────────────────────
+backend/api
+backend/worker
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# ── Node / Frontend ────────────────────────────────────────
+node_modules/
+dist/
+.next/
+.nuxt/
+*.tsbuildinfo
+.vite/
+
+# ── IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ──────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Terraform ───────────────────────────────────────────────
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/*.tfplan
+infra/terraform/.terraform.lock.hcl
+
+# ── Coverage / Test ─────────────────────────────────────────
+coverage/
+*.cover
+*.prof
+
+# ── OS ──────────────────────────────────────────────────────
+*.log
+tmp/

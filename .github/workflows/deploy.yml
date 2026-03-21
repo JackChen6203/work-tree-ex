@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  DEPLOY_PATH: /home/opc/apps/work-tree-ex
+  DEPLOY_HOST: 217.142.247.83
+  DEPLOY_USER: opc
+
+jobs:
+  deploy:
+    name: Deploy To Oracle VPS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/oracle_vps_key
+          chmod 600 ~/.ssh/oracle_vps_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Upload repository
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "apps/web/node_modules" \
+            --exclude "apps/web/dist" \
+            -e "ssh -i ~/.ssh/oracle_vps_key" \
+            ./ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Write server env file
+        run: |
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat > ${{ env.DEPLOY_PATH }}/.env" <<'EOF'
+          ${{ secrets.APP_ENV_FILE }}
+          EOF
+
+      - name: Deploy with Docker Compose
+        run: |
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && docker compose pull || true && docker compose --profile tools run --rm migrate && docker compose up -d --build"
