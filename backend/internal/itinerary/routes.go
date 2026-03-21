@@ -18,7 +18,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.DELETE("/trips/:tripId/items/:itemId", func(c *gin.Context) {
 		response.NotImplemented(c, "DELETE /trips/{tripId}/items/{itemId}")
 	})
-	v1.POST("/trips/:tripId/items:reorder", func(c *gin.Context) {
-		response.NotImplemented(c, "POST /trips/{tripId}/items:reorder")
+	v1.POST("/trips/:tripId/items/reorder", func(c *gin.Context) {
+		response.NotImplemented(c, "POST /trips/{tripId}/items/reorder")
 	})
 }
