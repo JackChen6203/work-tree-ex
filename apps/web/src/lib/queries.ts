@@ -6,7 +6,7 @@ import { createExpense, deleteExpense, getBudgetProfile, listExpenses, upsertBud
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
-import { createMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
+import { createMyLlmProvider, deleteMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
@@ -321,6 +321,17 @@ export function useCreateMyLlmProviderMutation() {
 
   return useMutation({
     mutationFn: createMyLlmProvider,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "llm-providers"] });
+    }
+  });
+}
+
+export function useDeleteMyLlmProviderMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (providerId: string) => deleteMyLlmProvider(providerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", "llm-providers"] });
     }

@@ -81,3 +81,9 @@ export function createMyLlmProvider(input: CreateLlmProviderInput) {
     body: JSON.stringify(input)
   });
 }
+
+export function deleteMyLlmProvider(providerId: string) {
+  return apiRequest<void>(`/api/v1/users/me/llm-providers/${providerId}`, {
+    method: "DELETE"
+  });
+}

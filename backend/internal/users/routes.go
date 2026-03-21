@@ -81,6 +81,7 @@ func RegisterRoutes(group *gin.RouterGroup) {
 	group.PUT("/me/preferences", putMyPreferences)
 	group.GET("/me/llm-providers", listMyProviders)
 	group.POST("/me/llm-providers", createMyProvider)
+	group.DELETE("/me/llm-providers/:providerId", deleteMyProvider)
 }
 
 func getMe(c *gin.Context) {
@@ -188,4 +189,26 @@ func createMyProvider(c *gin.Context) {
 	usersMu.Unlock()
 
 	response.JSON(c, http.StatusCreated, item)
+}
+
+func deleteMyProvider(c *gin.Context) {
+	providerID := strings.TrimSpace(c.Param("providerId"))
+	if providerID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "providerId is required", nil)
+		return
+	}
+
+	usersMu.Lock()
+	defer usersMu.Unlock()
+
+	for i := range providerList {
+		if providerList[i].ID != providerID {
+			continue
+		}
+		providerList = append(providerList[:i], providerList[i+1:]...)
+		response.NoContent(c)
+		return
+	}
+
+	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "provider not found", gin.H{"providerId": providerID})
 }

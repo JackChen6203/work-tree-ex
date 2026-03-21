@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { SurfaceCard } from "../../components/surface-card";
 import {
   useCreateMyLlmProviderMutation,
+  useDeleteMyLlmProviderMutation,
   useMyLlmProvidersQuery,
   useMyPreferencesQuery,
   useMyProfileQuery,
@@ -42,6 +43,7 @@ export function SettingsPage() {
   const patchProfile = usePatchMyProfileMutation();
   const putPreferences = usePutMyPreferencesMutation();
   const createProvider = useCreateMyLlmProviderMutation();
+  const deleteProvider = useDeleteMyLlmProviderMutation();
 
   const profileForm = useForm<ProfileFormValues>({
     values: profile
@@ -107,6 +109,11 @@ export function SettingsPage() {
     });
     pushToast("LLM provider added");
   });
+
+  const onDeleteProvider = async (providerId: string) => {
+    await deleteProvider.mutateAsync(providerId);
+    pushToast("LLM provider removed");
+  };
 
   if (profileLoading || preferencesLoading || providersLoading) {
     return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">Loading user settings...</div>;
@@ -214,9 +221,23 @@ export function SettingsPage() {
           {providers.length === 0 ? <p className="text-sm text-ink/60">No provider configs yet.</p> : null}
           {providers.map((provider) => (
             <div className="rounded-2xl border border-ink/10 bg-white p-4" key={provider.id}>
-              <p className="text-sm font-semibold text-ink">{provider.label || provider.provider}</p>
-              <p className="text-xs text-ink/65">Model: {provider.model}</p>
-              <p className="text-xs text-ink/65">Key: {provider.maskedKey}</p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink">{provider.label || provider.provider}</p>
+                  <p className="text-xs text-ink/65">Model: {provider.model}</p>
+                  <p className="text-xs text-ink/65">Key: {provider.maskedKey}</p>
+                </div>
+                <button
+                  className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                  disabled={deleteProvider.isPending}
+                  onClick={() => {
+                    void onDeleteProvider(provider.id);
+                  }}
+                  type="button"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
         </div>

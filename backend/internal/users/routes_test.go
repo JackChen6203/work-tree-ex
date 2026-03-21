@@ -142,3 +142,38 @@ func TestCreateAndListProviders(t *testing.T) {
 		t.Fatalf("expected at least one provider")
 	}
 }
+
+func TestDeleteProvider(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"provider":                "openai",
+		"label":                   "Delete Me",
+		"model":                   "gpt-4.1-mini",
+		"encryptedApiKeyEnvelope": "enc_delete_me_123456",
+	}
+	b, _ := json.Marshal(payload)
+	postReq := httptest.NewRequest(http.MethodPost, "/users/me/llm-providers", bytes.NewReader(b))
+	postReq.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	r.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", postRec.Code, postRec.Body.String())
+	}
+
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(postRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/users/me/llm-providers/"+created.Data.ID, nil)
+	deleteRec := httptest.NewRecorder()
+	r.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+}
