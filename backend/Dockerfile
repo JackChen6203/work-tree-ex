@@ -1,9 +1,12 @@
 # ---- Build Stage ----
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /src
+
+ARG TARGETOS
+ARG TARGETARCH
 
 # Cache dependency downloads
 COPY go.mod go.sum ./
@@ -12,12 +15,12 @@ RUN go mod download
 COPY . .
 
 # Build API binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-s -w" \
     -o /out/api ./cmd/api
 
 # Build Worker binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-s -w" \
     -o /out/worker ./cmd/worker
 
