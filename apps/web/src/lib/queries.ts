@@ -6,6 +6,7 @@ import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } fr
 import { listNotifications, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, listItineraryDays } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
+import { createMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
@@ -213,5 +214,59 @@ export function useEstimateRouteMutation() {
   return useMutation({
     mutationFn: (input: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number }; mode: "walk" | "transit" | "drive" | "taxi" }) =>
       estimateRoute(input)
+  });
+}
+
+export function useMyProfileQuery() {
+  return useQuery({
+    queryKey: ["users", "me"],
+    queryFn: getMyProfile
+  });
+}
+
+export function usePatchMyProfileMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: patchMyProfile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "me"] });
+    }
+  });
+}
+
+export function useMyPreferencesQuery() {
+  return useQuery({
+    queryKey: ["users", "preferences"],
+    queryFn: getMyPreferences
+  });
+}
+
+export function usePutMyPreferencesMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: putMyPreferences,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "preferences"] });
+    }
+  });
+}
+
+export function useMyLlmProvidersQuery() {
+  return useQuery({
+    queryKey: ["users", "llm-providers"],
+    queryFn: listMyLlmProviders
+  });
+}
+
+export function useCreateMyLlmProviderMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createMyLlmProvider,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "llm-providers"] });
+    }
   });
 }

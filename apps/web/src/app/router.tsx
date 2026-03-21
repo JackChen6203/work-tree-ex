@@ -10,6 +10,7 @@ import { BudgetPage } from "../features/budget/budget-page";
 import { MapPage } from "../features/map/map-page";
 import { AiPlannerPage } from "../features/ai-planner/ai-planner-page";
 import { NotificationsPage } from "../features/notifications/notifications-page";
+import { SettingsPage } from "../features/settings/settings-page";
 
 export const router = createBrowserRouter([
   {
@@ -34,7 +35,8 @@ export const router = createBrowserRouter([
       { path: "trips/:tripId/budget", element: <BudgetPage /> },
       { path: "trips/:tripId/map", element: <MapPage /> },
       { path: "trips/:tripId/ai-planner", element: <AiPlannerPage /> },
-      { path: "notifications", element: <NotificationsPage /> }
+      { path: "notifications", element: <NotificationsPage /> },
+      { path: "settings", element: <SettingsPage /> }
     ]
   }
 ]);

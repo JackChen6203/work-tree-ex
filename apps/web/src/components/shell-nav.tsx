@@ -11,7 +11,8 @@ export function ShellNav() {
     { to: "/trips/kyoto-2026/budget", label: t("nav.budget") },
     { to: "/trips/kyoto-2026/map", label: t("nav.map") },
     { to: "/trips/kyoto-2026/ai-planner", label: t("nav.aiPlanner") },
-    { to: "/notifications", label: t("nav.inbox") }
+    { to: "/notifications", label: t("nav.inbox") },
+    { to: "/settings", label: t("nav.settings") }
   ];
 
   return (
