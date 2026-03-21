@@ -1,16 +1,21 @@
 import { NavLink } from "react-router-dom";
 import clsx from "clsx";
 import { useI18n } from "../lib/i18n";
+import { useTripsQuery } from "../lib/queries";
 
 export function ShellNav() {
   const { t } = useI18n();
+  const { data: trips = [] } = useTripsQuery();
+  const activeTripId = trips[0]?.id;
+  const tripBase = activeTripId ? `/trips/${activeTripId}` : "/";
+
   const items = [
     { to: "/", label: t("nav.overview") },
-    { to: "/trips/kyoto-2026", label: t("nav.trip") },
-    { to: "/trips/kyoto-2026/itinerary", label: t("nav.itinerary") },
-    { to: "/trips/kyoto-2026/budget", label: t("nav.budget") },
-    { to: "/trips/kyoto-2026/map", label: t("nav.map") },
-    { to: "/trips/kyoto-2026/ai-planner", label: t("nav.aiPlanner") },
+    { to: tripBase, label: t("nav.trip") },
+    { to: activeTripId ? `${tripBase}/itinerary` : "/", label: t("nav.itinerary") },
+    { to: activeTripId ? `${tripBase}/budget` : "/", label: t("nav.budget") },
+    { to: activeTripId ? `${tripBase}/map` : "/", label: t("nav.map") },
+    { to: activeTripId ? `${tripBase}/ai-planner` : "/", label: t("nav.aiPlanner") },
     { to: "/notifications", label: t("nav.inbox") },
     { to: "/settings", label: t("nav.settings") }
   ];
