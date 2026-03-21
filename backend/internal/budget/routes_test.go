@@ -105,6 +105,69 @@ func TestBudgetRequiresCurrencyAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestDeleteExpense(t *testing.T) {
+	r := setupRouter()
+
+	expenseBody := mustJSON(t, map[string]any{
+		"category": "food",
+		"amount":   1200,
+		"currency": "JPY",
+	})
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-3/expenses", bytes.NewBuffer(expenseBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("Idempotency-Key", "e-delete-1")
+	postW := httptest.NewRecorder()
+	r.ServeHTTP(postW, postReq)
+	if postW.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", postW.Code)
+	}
+
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(postW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/t-3/expenses/"+created.Data.ID, nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", deleteW.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-3/expenses", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listW.Code)
+	}
+
+	var listed struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listed.Data) != 0 {
+		t.Fatalf("expected no expenses after delete, got %d", len(listed.Data))
+	}
+}
+
+func TestDeleteExpenseNotFound(t *testing.T) {
+	r := setupRouter()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/t-4/expenses/missing", nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+	if deleteW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", deleteW.Code)
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 

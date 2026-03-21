@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useBudgetProfileQuery, useCreateExpenseMutation, useExpensesQuery, useUpsertBudgetMutation } from "../../lib/queries";
+import { useBudgetProfileQuery, useCreateExpenseMutation, useDeleteExpenseMutation, useExpensesQuery, useUpsertBudgetMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function BudgetPage() {
@@ -11,6 +11,7 @@ export function BudgetPage() {
   const { data: expenses = [], isLoading: loadingExpenses } = useExpensesQuery(tripId);
   const upsertBudget = useUpsertBudgetMutation(tripId);
   const createExpense = useCreateExpenseMutation(tripId);
+  const deleteExpense = useDeleteExpenseMutation(tripId);
 
   const estimated = profile?.totalBudget ?? 0;
   const actual = profile?.actualSpend ?? 0;
@@ -39,6 +40,11 @@ export function BudgetPage() {
       note: "Pontocho dinner"
     });
     pushToast("Expense created");
+  };
+
+  const removeExpense = async (expenseId: string) => {
+    await deleteExpense.mutateAsync(expenseId);
+    pushToast("Expense removed");
   };
 
   return (
@@ -86,6 +92,27 @@ export function BudgetPage() {
       <SurfaceCard eyebrow="Breakdown" title="Estimated vs actual">
         {loadingExpenses ? <div className="rounded-[20px] bg-sand p-3 text-sm text-ink/65">Loading expenses...</div> : null}
         <div className="space-y-4">
+          {expenses.map((expense) => (
+            <div key={expense.id} className="rounded-[24px] border border-ink/10 bg-sand/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-ink">{expense.category}</p>
+                  <p className="text-sm text-ink/60">{expense.currency} {expense.amount.toLocaleString()} {expense.note ? `· ${expense.note}` : ""}</p>
+                </div>
+                <button
+                  className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                  disabled={deleteExpense.isPending}
+                  onClick={() => {
+                    void removeExpense(expense.id);
+                  }}
+                  type="button"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+
           {(profile?.categories ?? []).map((category) => {
             const categoryActual = expenses.filter((item) => item.category === category.category).reduce((sum, item) => sum + item.amount, 0);
             const variance = categoryActual - category.plannedAmount;

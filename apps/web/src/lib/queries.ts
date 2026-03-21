@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip, removeTripMember } from "./trips-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
-import { createExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
+import { createExpense, deleteExpense, getBudgetProfile, listExpenses, upsertBudgetProfile } from "./budget-api";
 import { listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
@@ -169,6 +169,18 @@ export function useCreateExpenseMutation(tripId: string) {
 
   return useMutation({
     mutationFn: (input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }) => createExpense(tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
+      queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
+    }
+  });
+}
+
+export function useDeleteExpenseMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (expenseId: string) => deleteExpense(tripId, expenseId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });

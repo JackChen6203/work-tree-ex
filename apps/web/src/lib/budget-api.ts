@@ -69,3 +69,9 @@ export function createExpense(
     body: JSON.stringify(input)
   });
 }
+
+export function deleteExpense(tripId: string, expenseId: string) {
+  return apiRequest<void>(`/api/v1/trips/${tripId}/expenses/${expenseId}`, {
+    method: "DELETE"
+  });
+}

@@ -70,6 +70,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.PUT("/trips/:tripId/budget", upsertBudget)
 	v1.GET("/trips/:tripId/expenses", listExpenses)
 	v1.POST("/trips/:tripId/expenses", createExpense)
+	v1.DELETE("/trips/:tripId/expenses/:expenseId", deleteExpense)
 }
 
 func getBudget(c *gin.Context) {
@@ -223,4 +224,34 @@ func createExpense(c *gin.Context) {
 	budgetMu.Unlock()
 
 	response.JSON(c, http.StatusCreated, item)
+}
+
+func deleteExpense(c *gin.Context) {
+	tripID := strings.TrimSpace(c.Param("tripId"))
+	expenseID := strings.TrimSpace(c.Param("expenseId"))
+	if expenseID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "expenseId is required", nil)
+		return
+	}
+
+	budgetMu.Lock()
+	defer budgetMu.Unlock()
+
+	item, ok := expenseByID[expenseID]
+	if !ok || item.TripID != tripID {
+		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "expense not found", gin.H{"expenseId": expenseID})
+		return
+	}
+
+	items := expensesByTrip[tripID]
+	filtered := make([]expense, 0, len(items))
+	for _, candidate := range items {
+		if candidate.ID != expenseID {
+			filtered = append(filtered, candidate)
+		}
+	}
+	expensesByTrip[tripID] = filtered
+	delete(expenseByID, expenseID)
+
+	response.NoContent(c)
 }
