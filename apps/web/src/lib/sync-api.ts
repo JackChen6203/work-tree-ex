@@ -17,6 +17,22 @@ export interface SyncBootstrapResponse {
   changedNotifications: SyncEntityVersion[];
 }
 
+export interface SyncFlushMutationInput {
+  id: string;
+  entityType: string;
+  entityId: string;
+  baseVersion: number;
+}
+
+export interface SyncFlushResponse {
+  tripId: string;
+  acceptedCount: number;
+  conflictCount: number;
+  conflicts: Array<{ id: string; reason: string; entityId: string; expectedVersion?: number }>;
+  nextVersion: number;
+  serverTime: string;
+}
+
 export function getSyncBootstrap(tripId: string, sinceVersion = 0) {
   const params = new URLSearchParams();
   params.set("sinceVersion", String(sinceVersion));
@@ -25,4 +41,14 @@ export function getSyncBootstrap(tripId: string, sinceVersion = 0) {
   }
 
   return apiRequest<SyncBootstrapResponse>(`/api/v1/sync/bootstrap?${params.toString()}`);
+}
+
+export function flushSyncMutations(tripId: string, mutations: SyncFlushMutationInput[]) {
+  return apiRequest<SyncFlushResponse>("/api/v1/sync/mutations/flush", {
+    method: "POST",
+    body: JSON.stringify({
+      tripId,
+      mutations
+    })
+  });
 }

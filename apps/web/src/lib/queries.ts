@@ -17,7 +17,7 @@ import {
   putMyNotificationPreferences,
   putMyPreferences
 } from "./users-api";
-import { getSyncBootstrap } from "./sync-api";
+import { flushSyncMutations, getSyncBootstrap } from "./sync-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
 export function useTripsQuery() {
@@ -350,6 +350,18 @@ export function useSyncBootstrapQuery(tripId: string, sinceVersion = 0) {
     queryFn: () => getSyncBootstrap(tripId, sinceVersion),
     enabled: true,
     refetchInterval: 30000
+  });
+}
+
+export function useFlushSyncMutationsMutation() {
+  return useMutation({
+    mutationFn: ({
+      tripId,
+      mutations
+    }: {
+      tripId: string;
+      mutations: Array<{ id: string; entityType: string; entityId: string; baseVersion: number }>;
+    }) => flushSyncMutations(tripId, mutations)
   });
 }
 
