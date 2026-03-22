@@ -171,3 +171,50 @@ func TestMarkNotificationUnread(t *testing.T) {
 		t.Fatalf("expected n-1 readAt to be nil after mark unread")
 	}
 }
+
+func TestCleanupReadNotifications(t *testing.T) {
+	r := setupRouter()
+
+	readReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/n-2/read", nil)
+	readW := httptest.NewRecorder()
+	r.ServeHTTP(readW, readReq)
+	if readW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 read, got %d", readW.Code)
+	}
+
+	cleanupReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/cleanup-read", nil)
+	cleanupW := httptest.NewRecorder()
+	r.ServeHTTP(cleanupW, cleanupReq)
+	if cleanupW.Code != http.StatusOK {
+		t.Fatalf("expected 200 cleanup, got %d body=%s", cleanupW.Code, cleanupW.Body.String())
+	}
+
+	var cleanupResp struct {
+		Data struct {
+			DeletedCount int `json:"deletedCount"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(cleanupW.Body.Bytes(), &cleanupResp); err != nil {
+		t.Fatalf("decode cleanup response: %v", err)
+	}
+	if cleanupResp.Data.DeletedCount != 1 {
+		t.Fatalf("expected deletedCount=1, got %d", cleanupResp.Data.DeletedCount)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list, got %d", listW.Code)
+	}
+
+	var listResp struct {
+		Data []notification `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listResp.Data) != 1 || listResp.Data[0].ID != "n-1" {
+		t.Fatalf("expected only unread n-1 to remain")
+	}
+}

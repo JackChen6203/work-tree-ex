@@ -10,6 +10,10 @@ export interface NotificationItemApi {
   createdAt?: string;
 }
 
+export interface CleanupReadNotificationsResponse {
+  deletedCount: number;
+}
+
 export function listNotifications(unreadOnly = false) {
   const params = new URLSearchParams();
   if (unreadOnly) {
@@ -50,6 +54,12 @@ export async function markAllNotificationsRead() {
   if (!response.ok) {
     throw new Error(`Mark all read failed with status ${response.status}`);
   }
+}
+
+export function cleanupReadNotifications() {
+  return apiRequest<CleanupReadNotificationsResponse>("/api/v1/notifications/cleanup-read", {
+    method: "POST"
+  });
 }
 
 export async function deleteNotification(notificationId: string) {

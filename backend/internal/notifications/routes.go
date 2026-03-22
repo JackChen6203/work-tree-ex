@@ -32,6 +32,7 @@ var (
 func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/notifications", listNotifications)
 	v1.POST("/notifications/read-all", markAllRead)
+	v1.POST("/notifications/cleanup-read", cleanupRead)
 	v1.POST("/notifications/:notificationId/read", markRead)
 	v1.POST("/notifications/:notificationId/unread", markUnread)
 	v1.DELETE("/notifications/:notificationId", deleteNotification)
@@ -108,6 +109,24 @@ func markAllRead(c *gin.Context) {
 	notificationsMu.Unlock()
 
 	response.NoContent(c)
+}
+
+func cleanupRead(c *gin.Context) {
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+
+	filtered := make([]notification, 0, len(items))
+	deletedCount := 0
+	for _, item := range items {
+		if item.ReadAt != nil {
+			deletedCount++
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	items = filtered
+
+	response.JSON(c, http.StatusOK, gin.H{"deletedCount": deletedCount})
 }
 
 func deleteNotification(c *gin.Context) {

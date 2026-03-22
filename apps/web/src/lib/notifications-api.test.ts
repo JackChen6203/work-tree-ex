@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "./notifications-api";
+import {
+  cleanupReadNotifications,
+  deleteNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  markNotificationUnread
+} from "./notifications-api";
 
 describe("notifications api", () => {
   beforeEach(() => {
@@ -27,6 +34,7 @@ describe("notifications api", () => {
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { deletedCount: 2 } }) })
       .mockResolvedValueOnce({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -34,6 +42,7 @@ describe("notifications api", () => {
     await markNotificationRead("n-1");
     await markNotificationUnread("n-1");
     await markAllNotificationsRead();
+    await cleanupReadNotifications();
     await deleteNotification("n-1");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -53,6 +62,11 @@ describe("notifications api", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
+      "http://localhost:8080/api/v1/notifications/cleanup-read",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
       "http://localhost:8080/api/v1/notifications/n-1",
       expect.objectContaining({ method: "DELETE" })
     );

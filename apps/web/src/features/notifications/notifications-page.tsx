@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
+import { useUiStore } from "../../store/ui-store";
 import {
+  useCleanupReadNotificationsMutation,
   useDeleteNotificationMutation,
   useMarkAllNotificationsReadMutation,
   useMarkNotificationReadMutation,
@@ -12,11 +14,13 @@ import {
 
 export function NotificationsPage() {
   const { t } = useI18n();
+  const pushToast = useUiStore((state) => state.pushToast);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const { data: notifications = [], isLoading } = useNotificationsQuery(unreadOnly);
   const markReadMutation = useMarkNotificationReadMutation();
   const markUnreadMutation = useMarkNotificationUnreadMutation();
   const markAllReadMutation = useMarkAllNotificationsReadMutation();
+  const cleanupReadMutation = useCleanupReadNotificationsMutation();
   const deleteMutation = useDeleteNotificationMutation();
 
   const items = useMemo(
@@ -48,6 +52,12 @@ export function NotificationsPage() {
     void deleteMutation.mutateAsync(id);
   };
 
+  const cleanupRead = () => {
+    void cleanupReadMutation.mutateAsync().then((result) => {
+      pushToast(`${t("notifications.cleanupReadDone")}: ${result.deletedCount}`);
+    });
+  };
+
   return (
     <SurfaceCard
       eyebrow="Notification Module"
@@ -58,7 +68,15 @@ export function NotificationsPage() {
         </button>
       }
     >
-      <div className="mb-3 flex items-center justify-end">
+      <div className="mb-3 flex items-center justify-end gap-2">
+        <button
+          className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink"
+          disabled={cleanupReadMutation.isPending}
+          onClick={cleanupRead}
+          type="button"
+        >
+          {cleanupReadMutation.isPending ? t("notifications.cleaning") : t("notifications.cleanupRead")}
+        </button>
         <button
           className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink"
           onClick={() => {
