@@ -42,6 +42,21 @@ export function createItineraryItem(
   });
 }
 
+export function patchItineraryItem(
+  tripId: string,
+  itemId: string,
+  version: number,
+  input: { title?: string; startAt?: string; endAt?: string; allDay?: boolean; note?: string; sortOrder?: number; placeId?: string; lat?: number; lng?: number }
+) {
+  return apiRequest<ItineraryItemApi>(`/api/v1/trips/${tripId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: {
+      "If-Match-Version": String(version)
+    },
+    body: JSON.stringify(input)
+  });
+}
+
 export function deleteItineraryItem(tripId: string, itemId: string) {
   return apiRequest<void>(`/api/v1/trips/${tripId}/items/${itemId}`, {
     method: "DELETE"

@@ -99,6 +99,47 @@ func TestReorderItems(t *testing.T) {
 	}
 }
 
+func TestPatchItemVersionConflict(t *testing.T) {
+	r := setupRouter()
+
+	seedReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-vc/days", nil)
+	seedW := httptest.NewRecorder()
+	r.ServeHTTP(seedW, seedReq)
+	if seedW.Code != http.StatusOK {
+		t.Fatalf("expected 200 seed list, got %d", seedW.Code)
+	}
+
+	patchBody := mustJSON(t, map[string]any{"title": "stale update"})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/t-vc/items/i-1", bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.Header.Set("If-Match-Version", "0")
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusConflict {
+		t.Fatalf("expected 409 patch conflict, got %d", patchW.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-vc/days", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list after conflict, got %d", listW.Code)
+	}
+
+	var listed struct {
+		Data []itineraryDay `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listed.Data) == 0 || len(listed.Data[0].Items) == 0 {
+		t.Fatalf("expected seeded itinerary items")
+	}
+	if listed.Data[0].Items[0].Title == "stale update" {
+		t.Fatalf("expected title unchanged after version conflict")
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 	data, err := json.Marshal(value)

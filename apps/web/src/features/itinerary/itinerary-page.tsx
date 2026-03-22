@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery, useReorderItineraryItemsMutation } from "../../lib/queries";
+import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery, usePatchItineraryItemMutation, useReorderItineraryItemsMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function ItineraryPage() {
@@ -10,7 +11,11 @@ export function ItineraryPage() {
   const { data: days = [], isLoading } = useItineraryDaysQuery(tripId);
   const createItem = useCreateItineraryItemMutation(tripId);
   const deleteItem = useDeleteItineraryItemMutation(tripId);
+  const patchItem = usePatchItineraryItemMutation(tripId);
   const reorderItems = useReorderItineraryItemsMutation(tripId);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingNote, setEditingNote] = useState("");
 
   const addItem = async () => {
     const targetDay = days[0]?.dayId ?? "day-1";
@@ -40,6 +45,36 @@ export function ItineraryPage() {
       ]
     });
     pushToast("Itinerary order updated");
+  };
+
+  const startEdit = (itemId: string, title: string, note?: string) => {
+    setEditingItemId(itemId);
+    setEditingTitle(title);
+    setEditingNote(note ?? "");
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setEditingTitle("");
+    setEditingNote("");
+  };
+
+  const saveEdit = async (itemId: string, version: number) => {
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) {
+      pushToast("Title is required");
+      return;
+    }
+    await patchItem.mutateAsync({
+      itemId,
+      version,
+      input: {
+        title: nextTitle,
+        note: editingNote.trim()
+      }
+    });
+    cancelEdit();
+    pushToast("Itinerary item updated");
   };
 
   return (
@@ -77,18 +112,71 @@ export function ItineraryPage() {
                 {day.items.map((item, itemIndex) => (
                   <div key={item.id} className="rounded-[24px] bg-white p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-ink">{item.title}</p>
-                        <p className="mt-1 text-sm text-ink/60">
-                          {item.itemType} . sort #{item.sortOrder}
-                        </p>
+                      <div className="min-w-[16rem] flex-1">
+                        {editingItemId === item.id ? (
+                          <div className="space-y-2">
+                            <input
+                              className="w-full rounded-xl border border-ink/15 bg-sand px-3 py-2 text-sm text-ink"
+                              onChange={(event) => {
+                                setEditingTitle(event.target.value);
+                              }}
+                              value={editingTitle}
+                            />
+                            <textarea
+                              className="min-h-20 w-full rounded-xl border border-ink/15 bg-sand px-3 py-2 text-sm text-ink"
+                              onChange={(event) => {
+                                setEditingNote(event.target.value);
+                              }}
+                              value={editingNote}
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-ink">{item.title}</p>
+                            <p className="mt-1 text-sm text-ink/60">
+                              {item.itemType} . sort #{item.sortOrder}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusPill tone="neutral">v{item.version}</StatusPill>
                         <StatusPill tone="accent">{item.allDay ? "all-day" : "timed"}</StatusPill>
+                        {editingItemId === item.id ? (
+                          <>
+                            <button
+                              className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
+                              disabled={patchItem.isPending}
+                              onClick={() => {
+                                void saveEdit(item.id, item.version);
+                              }}
+                              type="button"
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                              onClick={cancelEdit}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                            disabled={patchItem.isPending || deleteItem.isPending || reorderItems.isPending}
+                            onClick={() => {
+                              startEdit(item.id, item.title, item.note);
+                            }}
+                            type="button"
+                          >
+                            Edit
+                          </button>
+                        )}
                         <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
-                          disabled={reorderItems.isPending || itemIndex === 0}
+                          disabled={reorderItems.isPending || editingItemId === item.id || itemIndex === 0}
                           onClick={() => {
                             void moveItem(day.dayId, item.id, Math.max(item.sortOrder-1, 1));
                           }}
@@ -98,7 +186,7 @@ export function ItineraryPage() {
                         </button>
                         <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
-                          disabled={reorderItems.isPending || itemIndex === day.items.length - 1}
+                          disabled={reorderItems.isPending || editingItemId === item.id || itemIndex === day.items.length - 1}
                           onClick={() => {
                             void moveItem(day.dayId, item.id, item.sortOrder + 1);
                           }}
@@ -108,7 +196,7 @@ export function ItineraryPage() {
                         </button>
                         <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
-                          disabled={deleteItem.isPending || reorderItems.isPending}
+                          disabled={deleteItem.isPending || reorderItems.isPending || editingItemId === item.id}
                           onClick={() => {
                             void removeItem(item.id);
                           }}
@@ -118,7 +206,7 @@ export function ItineraryPage() {
                         </button>
                       </div>
                     </div>
-                    {item.note ? <p className="mt-3 text-sm text-ink/70">{item.note}</p> : null}
+                    {editingItemId === item.id ? null : item.note ? <p className="mt-3 text-sm text-ink/70">{item.note}</p> : null}
                   </div>
                 ))}
               </div>

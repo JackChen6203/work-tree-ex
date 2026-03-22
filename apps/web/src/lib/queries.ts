@@ -4,7 +4,7 @@ import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, deleteExpense, getBudgetProfile, listExpenses, patchExpense, upsertBudgetProfile } from "./budget-api";
 import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
-import { createItineraryItem, deleteItineraryItem, listItineraryDays, reorderItineraryItems } from "./itinerary-api";
+import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItineraryItem, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
 import { createMyLlmProvider, deleteMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
 import { getSyncBootstrap } from "./sync-api";
@@ -283,6 +283,25 @@ export function useDeleteItineraryItemMutation(tripId: string) {
 
   return useMutation({
     mutationFn: (itemId: string) => deleteItineraryItem(tripId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
+    }
+  });
+}
+
+export function usePatchItineraryItemMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      itemId,
+      version,
+      input
+    }: {
+      itemId: string;
+      version: number;
+      input: { title?: string; startAt?: string; endAt?: string; allDay?: boolean; note?: string; sortOrder?: number; placeId?: string; lat?: number; lng?: number };
+    }) => patchItineraryItem(tripId, itemId, version, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }
