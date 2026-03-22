@@ -191,3 +191,52 @@ func mustJSON(t *testing.T, value any) []byte {
 
 	return data
 }
+
+func TestAdoptPlanWarningRequiresConfirmation(t *testing.T) {
+	r := setupRouter()
+
+	body := mustJSON(t, map[string]any{
+		"providerConfigId": "cfg_warn",
+		"title":            "Balanced warning",
+		"constraints": map[string]any{
+			"totalBudget": 10000,
+			"currency":    "JPY",
+			"pace":        "balanced",
+		},
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/trip-warn/ai/plans", bytes.NewBuffer(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Idempotency-Key", "ai-create-warn")
+	createW := httptest.NewRecorder()
+	r.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 create, got %d", createW.Code)
+	}
+
+	var created struct {
+		Data struct {
+			JobID string `json:"jobId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	adoptReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/trip-warn/ai/plans/"+created.Data.JobID+"/adopt", nil)
+	adoptReq.Header.Set("Idempotency-Key", "adopt-warn-1")
+	adoptW := httptest.NewRecorder()
+	r.ServeHTTP(adoptW, adoptReq)
+	if adoptW.Code != http.StatusConflict {
+		t.Fatalf("expected 409 without warning confirmation, got %d body=%s", adoptW.Code, adoptW.Body.String())
+	}
+
+	confirmReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/trip-warn/ai/plans/"+created.Data.JobID+"/adopt", nil)
+	confirmReq.Header.Set("Idempotency-Key", "adopt-warn-2")
+	confirmReq.Header.Set("X-Confirm-Warnings", "true")
+	confirmW := httptest.NewRecorder()
+	r.ServeHTTP(confirmW, confirmReq)
+	if confirmW.Code != http.StatusOK {
+		t.Fatalf("expected 200 with warning confirmation, got %d body=%s", confirmW.Code, confirmW.Body.String())
+	}
+}

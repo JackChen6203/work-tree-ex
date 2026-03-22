@@ -163,6 +163,7 @@ func adoptPlan(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
 	planID := strings.TrimSpace(c.Param("planId"))
 	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	confirmWarnings := strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Confirm-Warnings")), "true")
 	if idempotencyKey == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "Idempotency-Key header is required", nil)
 		return
@@ -185,6 +186,11 @@ func adoptPlan(c *gin.Context) {
 	if item.Status == "invalid" {
 		plannerMu.Unlock()
 		response.Error(c, http.StatusConflict, perrors.CodeAIDraftInvalid, "ai draft is invalid and cannot be adopted", gin.H{"planId": planID})
+		return
+	}
+	if item.Status == "warning" && !confirmWarnings {
+		plannerMu.Unlock()
+		response.Error(c, http.StatusConflict, perrors.CodeAIDraftInvalid, "ai draft requires warning confirmation before adoption", gin.H{"planId": planID, "warnings": item.Warnings})
 		return
 	}
 
