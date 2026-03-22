@@ -199,6 +199,14 @@ func putMyNotificationPreferences(c *gin.Context) {
 	in.QuietHoursStart = strings.TrimSpace(in.QuietHoursStart)
 	in.QuietHoursEnd = strings.TrimSpace(in.QuietHoursEnd)
 	in.DigestFrequency = freq
+	if !isHHMM(in.QuietHoursStart) || !isHHMM(in.QuietHoursEnd) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "quietHoursStart and quietHoursEnd must use HH:MM format", nil)
+		return
+	}
+	if in.EmailEnabled && in.DigestFrequency == "instant" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "email notifications do not support instant digest frequency", nil)
+		return
+	}
 
 	usersMu.Lock()
 	in.Version = myNotificationPreference.Version + 1
@@ -277,4 +285,16 @@ func deleteMyProvider(c *gin.Context) {
 	}
 
 	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "provider not found", gin.H{"providerId": providerID})
+}
+
+func isHHMM(v string) bool {
+	if len(v) != 5 || v[2] != ":" {
+		return false
+	}
+	hour := v[:2]
+	minute := v[3:]
+	if hour[0] < '0' || hour[0] > '2' || hour[1] < '0' || hour[1] > '9' || minute[0] < '0' || minute[0] > '5' || minute[1] < '0' || minute[1] > '9' {
+		return false
+	}
+	return !(hour > "23")
 }

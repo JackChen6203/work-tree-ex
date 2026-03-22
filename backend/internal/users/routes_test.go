@@ -313,3 +313,49 @@ func TestListProvidersFilterByProvider(t *testing.T) {
 		t.Fatalf("expected only openai provider, got %+v", listed.Data)
 	}
 }
+
+func TestPutNotificationPreferencesRejectsInvalidQuietHours(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"pushEnabled":       true,
+		"emailEnabled":      false,
+		"digestFrequency":   "daily",
+		"quietHoursStart":   "7pm",
+		"quietHoursEnd":     "07:00",
+		"tripUpdates":       true,
+		"budgetAlerts":      true,
+		"aiPlanReadyAlerts": true,
+	}
+	b, _ := json.Marshal(payload)
+	putReq := httptest.NewRequest(http.MethodPut, "/users/me/notification-preferences", bytes.NewReader(b))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	r.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+}
+
+func TestPutNotificationPreferencesRejectsInstantEmailDigest(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"pushEnabled":       true,
+		"emailEnabled":      true,
+		"digestFrequency":   "instant",
+		"quietHoursStart":   "22:00",
+		"quietHoursEnd":     "07:00",
+		"tripUpdates":       true,
+		"budgetAlerts":      true,
+		"aiPlanReadyAlerts": true,
+	}
+	b, _ := json.Marshal(payload)
+	putReq := httptest.NewRequest(http.MethodPut, "/users/me/notification-preferences", bytes.NewReader(b))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	r.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+}
