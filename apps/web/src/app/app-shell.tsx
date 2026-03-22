@@ -5,7 +5,7 @@ import { ShellNav } from "../components/shell-nav";
 import { SyncStatusBar } from "../components/sync-status-bar";
 import { ToastRegion } from "../components/toast-region";
 import { OfflineBanner } from "../features/offline/offline-banner";
-import { trackEvent } from "../lib/analytics";
+import { analyticsEventNames, trackEvent } from "../lib/analytics";
 import { logout } from "../lib/auth-api";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../store/session-store";
@@ -21,7 +21,7 @@ export function AppShell() {
   const onLogout = async () => {
     await logout();
     clearUser();
-    trackEvent({ name: "auth.session.logged_out" });
+    trackEvent({ name: analyticsEventNames.authLoggedOut });
     pushToast(t("auth.loggedOut"));
     navigate("/welcome");
   };

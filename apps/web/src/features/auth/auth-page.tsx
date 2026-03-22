@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { LocaleSwitcher } from "../../components/locale-switcher";
-import { trackEvent } from "../../lib/analytics";
+import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { getSession, oauthStartUrl } from "../../lib/auth-api";
 import { oauthProviders } from "../../lib/oauth-providers";
@@ -25,13 +25,13 @@ export function AuthPage() {
   const [previewCode, setPreviewCode] = useState<string | null>(null);
 
   const onRequest = async () => {
-    trackEvent({ name: "auth.session.login_requested", context: { method: "email_magic_link" } });
+    trackEvent({ name: analyticsEventNames.authLoginRequested, context: { method: "email_magic_link" } });
     try {
       const response = await requestMagicLink.mutateAsync(email);
       setPreviewCode(response.previewCode ?? null);
       pushToast(t("auth.linkSent"));
     } catch {
-      trackEvent({ name: "auth.session.login_failed", context: { method: "email_magic_link", reason: "request_failed" } });
+      trackEvent({ name: analyticsEventNames.authLoginFailed, context: { method: "email_magic_link", reason: "request_failed" } });
     }
   };
 
@@ -40,10 +40,10 @@ export function AuthPage() {
       const response = await verifyMagicLink.mutateAsync({ email, code });
       setUser(response.user);
       pushToast(t("auth.loginSuccess"));
-      trackEvent({ name: "auth.session.login_succeeded", context: { method: "email_magic_link" } });
+      trackEvent({ name: analyticsEventNames.authLoginSucceeded, context: { method: "email_magic_link" } });
       navigate("/");
     } catch {
-      trackEvent({ name: "auth.session.login_failed", context: { method: "email_magic_link", reason: "verify_failed" } });
+      trackEvent({ name: analyticsEventNames.authLoginFailed, context: { method: "email_magic_link", reason: "verify_failed" } });
     }
   };
 
@@ -51,7 +51,7 @@ export function AuthPage() {
     if (searchParams.get("oauth") === "error") {
       pushToast(t("auth.oauthError"));
       trackEvent({
-        name: "auth.session.login_failed",
+        name: analyticsEventNames.authLoginFailed,
         context: {
           method: "oauth",
           reason: searchParams.get("reason") ?? "oauth_error",
@@ -72,7 +72,7 @@ export function AuthPage() {
           setUser(session.user);
           pushToast(t("auth.oauthSuccess"));
           trackEvent({
-            name: "auth.session.login_succeeded",
+            name: analyticsEventNames.authLoginSucceeded,
             context: {
               method: "oauth",
               provider: searchParams.get("provider") ?? "unknown"
@@ -81,7 +81,7 @@ export function AuthPage() {
           navigate("/");
         }
       } catch {
-        trackEvent({ name: "auth.session.login_failed", context: { method: "oauth", reason: "session_hydration_failed" } });
+        trackEvent({ name: analyticsEventNames.authLoginFailed, context: { method: "oauth", reason: "session_hydration_failed" } });
         // Keep the user on auth page for retry if callback hydration fails.
       }
     })();
@@ -164,7 +164,7 @@ export function AuthPage() {
                     key={provider.id}
                     href={oauthStartUrl(provider.id)}
                     onClick={() => {
-                      trackEvent({ name: "auth.session.login_requested", context: { method: "oauth", provider: provider.id } });
+                      trackEvent({ name: analyticsEventNames.authLoginRequested, context: { method: "oauth", provider: provider.id } });
                     }}
                     className="rounded-full border border-ink/15 bg-white px-4 py-2 text-center text-sm font-medium text-ink transition hover:bg-sand"
                   >

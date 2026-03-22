@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
 import { useCreateTripMutation, useTripsQuery } from "../../lib/queries";
-import { trackEvent } from "../../lib/analytics";
+import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
 
@@ -39,7 +39,7 @@ export function DashboardPage() {
 
   const onSubmit = form.handleSubmit(async (values) => {
     const trip = await createTrip.mutateAsync(values);
-    trackEvent({ name: "trip_created", context: { trip_id: trip.id } });
+    trackEvent({ name: analyticsEventNames.tripCreated, context: { trip_id: trip.id } });
     pushToast(`Trip created: ${trip.name}`);
     setShowForm(false);
     navigate(`/trips/${trip.id}`);
