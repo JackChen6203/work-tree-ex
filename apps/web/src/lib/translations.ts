@@ -67,6 +67,7 @@ export const dictionaries = {
     "dashboard.remainingItem.3": "AI planner：候選方案採用寫入後端交易",
     "dashboard.remainingItem.4": "Notification：已讀狀態與推播偏好設定",
     "notifications.markAllRead": "全部標記已讀",
+    "notifications.delete": "刪除",
     "notifications.unread": "未讀",
     "notifications.read": "已讀"
   },
@@ -136,6 +137,7 @@ export const dictionaries = {
     "dashboard.remainingItem.3": "AI planner: adopt candidate plans into backend transaction flow",
     "dashboard.remainingItem.4": "Notifications: read-state and push preference settings",
     "notifications.markAllRead": "Mark all as read",
+    "notifications.delete": "Delete",
     "notifications.unread": "Unread",
     "notifications.read": "Read"
   }

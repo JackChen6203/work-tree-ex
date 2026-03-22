@@ -70,3 +70,36 @@ func TestMarkAllNotificationsRead(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteNotification(t *testing.T) {
+	r := setupRouter()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/notifications/n-1", nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+
+	if deleteW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 delete, got %d", deleteW.Code)
+	}
+
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 notification left, got %d", len(items))
+	}
+	if items[0].ID != "n-2" {
+		t.Fatalf("expected n-2 remaining, got %s", items[0].ID)
+	}
+}
+
+func TestDeleteNotificationNotFound(t *testing.T) {
+	r := setupRouter()
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/notifications/nope", nil)
+	deleteW := httptest.NewRecorder()
+	r.ServeHTTP(deleteW, deleteReq)
+
+	if deleteW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 delete missing, got %d", deleteW.Code)
+	}
+}

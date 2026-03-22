@@ -2,13 +2,14 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
-import { useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
+import { useDeleteNotificationMutation, useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
 
 export function NotificationsPage() {
   const { t } = useI18n();
   const { data: notifications = [], isLoading } = useNotificationsQuery();
   const markReadMutation = useMarkNotificationReadMutation();
   const markAllReadMutation = useMarkAllNotificationsReadMutation();
+  const deleteMutation = useDeleteNotificationMutation();
 
   const items = useMemo(
     () =>
@@ -31,6 +32,10 @@ export function NotificationsPage() {
     void markReadMutation.mutateAsync(id);
   };
 
+  const removeItem = (id: string) => {
+    void deleteMutation.mutateAsync(id);
+  };
+
   return (
     <SurfaceCard
       eyebrow="Notification Module"
@@ -44,21 +49,28 @@ export function NotificationsPage() {
       {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading notifications...</div> : null}
       <div className="space-y-3">
         {items.map((item) => (
-          <Link
-            key={item.id}
-            to={item.href}
-            onClick={() => markRead(item.id)}
-            className={`block rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}
-          >
+          <div key={item.id} className={`rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="font-medium text-ink">{item.title}</p>
+                <Link className="font-medium text-ink underline-offset-4 hover:underline" onClick={() => markRead(item.id)} to={item.href}>
+                  {item.title}
+                </Link>
                 <p className="mt-2 text-sm text-ink/65">{item.detail}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">{item.unread ? t("notifications.unread") : t("notifications.read")}</p>
               </div>
-              <span className="text-xs uppercase tracking-[0.2em] text-ink/45">{item.time}</span>
+              <div className="flex flex-col items-end gap-3">
+                <span className="text-xs uppercase tracking-[0.2em] text-ink/45">{item.time}</span>
+                <button
+                  className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink transition hover:bg-white/70"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => removeItem(item.id)}
+                  type="button"
+                >
+                  {t("notifications.delete")}
+                </button>
+              </div>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </SurfaceCard>

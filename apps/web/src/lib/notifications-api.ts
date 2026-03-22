@@ -35,3 +35,14 @@ export async function markAllNotificationsRead() {
     throw new Error(`Mark all read failed with status ${response.status}`);
   }
 }
+
+export async function deleteNotification(notificationId: string) {
+  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/${notificationId}`, {
+    method: "DELETE",
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Delete notification failed with status ${response.status}`);
+  }
+}
