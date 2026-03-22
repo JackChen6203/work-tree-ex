@@ -210,8 +210,16 @@ func putMyNotificationPreferences(c *gin.Context) {
 }
 
 func listMyProviders(c *gin.Context) {
+	providerFilter := strings.TrimSpace(c.Query("provider"))
+
 	usersMu.RLock()
-	items := append([]llmProvider{}, providerList...)
+	items := make([]llmProvider, 0, len(providerList))
+	for _, item := range providerList {
+		if providerFilter != "" && item.Provider != providerFilter {
+			continue
+		}
+		items = append(items, item)
+	}
 	usersMu.RUnlock()
 	response.JSON(c, http.StatusOK, items)
 }

@@ -24,6 +24,7 @@ func newUsersRouter() *gin.Engine {
 		AiPlanReadyAlerts: true,
 		Version:           1,
 	}
+	providerList = []llmProvider{}
 	usersMu.Unlock()
 	r := gin.New()
 	g := r.Group("/users")
@@ -261,5 +262,54 @@ func TestPutNotificationPreferencesValidation(t *testing.T) {
 	r.ServeHTTP(putRec, putReq)
 	if putRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+}
+
+func TestListProvidersFilterByProvider(t *testing.T) {
+	r := newUsersRouter()
+
+	payloads := []map[string]any{
+		{
+			"provider":                "openai",
+			"label":                   "OpenAI Key",
+			"model":                   "gpt-4.1-mini",
+			"encryptedApiKeyEnvelope": "enc_openai_12345678",
+		},
+		{
+			"provider":                "anthropic",
+			"label":                   "Anthropic Key",
+			"model":                   "claude-3-5-sonnet",
+			"encryptedApiKeyEnvelope": "enc_anthropic_12345678",
+		},
+	}
+
+	for _, payload := range payloads {
+		b, _ := json.Marshal(payload)
+		req := httptest.NewRequest(http.MethodPost, "/users/me/llm-providers", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected 201, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/users/me/llm-providers?provider=openai", nil)
+	listRec := httptest.NewRecorder()
+		r.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+
+	var listed struct {
+		Data []struct {
+			Provider string `json:"provider"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(listed.Data) != 1 || listed.Data[0].Provider != "openai" {
+		t.Fatalf("expected only openai provider, got %+v", listed.Data)
 	}
 }

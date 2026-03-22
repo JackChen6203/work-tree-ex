@@ -105,8 +105,12 @@ export function putMyNotificationPreferences(input: UpsertUserNotificationPrefer
   });
 }
 
-export function listMyLlmProviders() {
-  return apiRequest<LlmProviderConfig[]>("/api/v1/users/me/llm-providers");
+export function listMyLlmProviders(provider?: string) {
+  const params = new URLSearchParams();
+  if (provider) {
+    params.set("provider", provider);
+  }
+  return apiRequest<LlmProviderConfig[]>(`/api/v1/users/me/llm-providers${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
 export function createMyLlmProvider(input: CreateLlmProviderInput) {
