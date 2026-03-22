@@ -43,9 +43,12 @@ export function getSyncBootstrap(tripId: string, sinceVersion = 0) {
   return apiRequest<SyncBootstrapResponse>(`/api/v1/sync/bootstrap?${params.toString()}`);
 }
 
-export function flushSyncMutations(tripId: string, mutations: SyncFlushMutationInput[]) {
+export function flushSyncMutations(tripId: string, mutations: SyncFlushMutationInput[], idempotencyKey = crypto.randomUUID()) {
   return apiRequest<SyncFlushResponse>("/api/v1/sync/mutations/flush", {
     method: "POST",
+    headers: {
+      "Idempotency-Key": idempotencyKey
+    },
     body: JSON.stringify({
       tripId,
       mutations

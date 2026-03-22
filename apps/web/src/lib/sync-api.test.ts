@@ -31,7 +31,7 @@ describe("sync api", () => {
     );
   });
 
-  it("posts sync mutations flush payload", async () => {
+  it("posts sync mutations flush payload with idempotency key", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -47,19 +47,24 @@ describe("sync api", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await flushSyncMutations("trip-1", [
-      {
-        id: "m-1",
-        entityType: "itinerary_item",
-        entityId: "i-1",
-        baseVersion: 0
-      }
-    ]);
+    await flushSyncMutations(
+      "trip-1",
+      [
+        {
+          id: "m-1",
+          entityType: "itinerary_item",
+          entityId: "i-1",
+          baseVersion: 0
+        }
+      ],
+      "11111111-1111-4111-8111-111111111111"
+    );
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8080/api/v1/sync/mutations/flush",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({ "Idempotency-Key": "11111111-1111-4111-8111-111111111111" }),
         body: JSON.stringify({
           tripId: "trip-1",
           mutations: [

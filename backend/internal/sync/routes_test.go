@@ -14,6 +14,7 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	syncMu.Lock()
 	entityVersions = map[string]int{}
+	flushIdempotencyStore = map[string]gin.H{}
 	latestSyncVersion = 0
 	syncMu.Unlock()
 	r := gin.New()
@@ -95,6 +96,7 @@ func TestFlushMutationsSuccessAndConflict(t *testing.T) {
 
 	successReq := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(`{"tripId":"trip-123","mutations":[{"id":"m-1","entityType":"itinerary_item","entityId":"i-1","baseVersion":0}]}`))
 	successReq.Header.Set("Content-Type", "application/json")
+	successReq.Header.Set("Idempotency-Key", "flush-1")
 	successW := httptest.NewRecorder()
 	r.ServeHTTP(successW, successReq)
 	if successW.Code != http.StatusOK {
@@ -117,6 +119,7 @@ func TestFlushMutationsSuccessAndConflict(t *testing.T) {
 
 	conflictReq := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(`{"tripId":"trip-123","mutations":[{"id":"m-2","entityType":"itinerary_item","entityId":"i-1","baseVersion":0}]}`))
 	conflictReq.Header.Set("Content-Type", "application/json")
+	conflictReq.Header.Set("Idempotency-Key", "flush-2")
 	conflictW := httptest.NewRecorder()
 	r.ServeHTTP(conflictW, conflictReq)
 	if conflictW.Code != http.StatusOK {
@@ -144,11 +147,74 @@ func TestFlushMutationsSuccessAndConflict(t *testing.T) {
 	}
 }
 
+func TestFlushMutationsIdempotencyReplay(t *testing.T) {
+	r := setupRouter()
+
+	body := `{"tripId":"trip-123","mutations":[{"id":"m-1","entityType":"itinerary_item","entityId":"i-1","baseVersion":0}]}`
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(body))
+	firstReq.Header.Set("Content-Type", "application/json")
+	firstReq.Header.Set("Idempotency-Key", "flush-replay")
+	firstW := httptest.NewRecorder()
+	r.ServeHTTP(firstW, firstReq)
+	if firstW.Code != http.StatusOK {
+		t.Fatalf("expected 200 first flush, got %d body=%s", firstW.Code, firstW.Body.String())
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(body))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondReq.Header.Set("Idempotency-Key", "flush-replay")
+	secondW := httptest.NewRecorder()
+	r.ServeHTTP(secondW, secondReq)
+	if secondW.Code != http.StatusOK {
+		t.Fatalf("expected 200 second flush replay, got %d body=%s", secondW.Code, secondW.Body.String())
+	}
+
+	var firstResp struct {
+		Data struct {
+			AcceptedCount int `json:"acceptedCount"`
+			ConflictCount int `json:"conflictCount"`
+			NextVersion   int `json:"nextVersion"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(firstW.Body.Bytes(), &firstResp); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+
+	var secondResp struct {
+		Data struct {
+			AcceptedCount int `json:"acceptedCount"`
+			ConflictCount int `json:"conflictCount"`
+			NextVersion   int `json:"nextVersion"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(secondW.Body.Bytes(), &secondResp); err != nil {
+		t.Fatalf("decode second response: %v", err)
+	}
+
+	if firstResp.Data != secondResp.Data {
+		t.Fatalf("expected idempotent replay to return same payload: first=%+v second=%+v", firstResp.Data, secondResp.Data)
+	}
+}
+
+func TestFlushMutationsRequiresIdempotencyKey(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(`{"tripId":"trip-123","mutations":[{"id":"m-1","entityType":"trip","entityId":"trip-123","baseVersion":0}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 missing idempotency key, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestFlushMutationsValidation(t *testing.T) {
 	r := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(`{"tripId":"","mutations":[]}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "flush-validation")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

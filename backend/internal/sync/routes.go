@@ -25,9 +25,10 @@ type mutationFlushItem struct {
 }
 
 var (
-	syncMu            sync.RWMutex
-	entityVersions    = map[string]int{}
-	latestSyncVersion int
+	syncMu                sync.RWMutex
+	entityVersions        = map[string]int{}
+	flushIdempotencyStore = map[string]gin.H{}
+	latestSyncVersion     int
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
@@ -77,6 +78,20 @@ func bootstrap(c *gin.Context) {
 }
 
 func flushMutations(c *gin.Context) {
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "Idempotency-Key header is required", nil)
+		return
+	}
+
+	syncMu.RLock()
+	if payload, ok := flushIdempotencyStore[idempotencyKey]; ok {
+		syncMu.RUnlock()
+		response.JSON(c, http.StatusOK, payload)
+		return
+	}
+	syncMu.RUnlock()
+
 	var in mutationFlushInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -127,14 +142,16 @@ func flushMutations(c *gin.Context) {
 		accepted++
 	}
 	nextVersion := latestSyncVersion
-	syncMu.Unlock()
-
-	response.JSON(c, http.StatusOK, gin.H{
+	payload := gin.H{
 		"tripId":        in.TripID,
 		"acceptedCount": accepted,
 		"conflictCount": len(conflicts),
 		"conflicts":     conflicts,
 		"nextVersion":   nextVersion,
 		"serverTime":    time.Now().UTC(),
-	})
+	}
+	flushIdempotencyStore[idempotencyKey] = payload
+	syncMu.Unlock()
+
+	response.JSON(c, http.StatusOK, payload)
 }
