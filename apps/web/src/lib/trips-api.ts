@@ -133,8 +133,15 @@ function mapTripMember(item: TripMemberApiModel): TripMember {
   };
 }
 
-export async function listTripMembers(tripId: string) {
-  const data = await apiRequest<TripMemberApiModel[]>(`/api/v1/trips/${tripId}/members`);
+export async function listTripMembers(tripId: string, role?: "owner" | "editor" | "commenter" | "viewer") {
+  const params = new URLSearchParams();
+  if (role) {
+    params.set("role", role);
+  }
+
+  const data = await apiRequest<TripMemberApiModel[]>(
+    `/api/v1/trips/${tripId}/members${params.toString() ? `?${params.toString()}` : ""}`
+  );
   return data.map(mapTripMember);
 }
 

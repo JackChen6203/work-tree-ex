@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
@@ -25,8 +26,9 @@ interface AddMemberValues {
 export function TripOverviewPage() {
   const { tripId } = useParams();
   const pushToast = useUiStore((state) => state.pushToast);
+  const [memberRoleFilter, setMemberRoleFilter] = useState<"all" | "owner" | "editor" | "commenter" | "viewer">("all");
   const { data: trip, isLoading, error } = useTripQuery(tripId ?? "");
-  const { data: members = [] } = useTripMembersQuery(tripId ?? "");
+  const { data: members = [] } = useTripMembersQuery(tripId ?? "", memberRoleFilter === "all" ? undefined : memberRoleFilter);
   const patchTrip = usePatchTripMutation(tripId ?? "");
   const addTripMember = useAddTripMemberMutation(tripId ?? "");
   const removeTripMember = useRemoveTripMemberMutation(tripId ?? "");
@@ -121,7 +123,22 @@ export function TripOverviewPage() {
             </div>
           </div>
           <div className="mt-6 rounded-2xl border border-white/25 bg-white/10 p-4">
-            <p className="text-xs uppercase tracking-[0.24em] text-white/70">Collaboration members</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.24em] text-white/70">Collaboration members</p>
+              <select
+                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white"
+                onChange={(event) => {
+                  setMemberRoleFilter(event.target.value as "all" | "owner" | "editor" | "commenter" | "viewer");
+                }}
+                value={memberRoleFilter}
+              >
+                <option value="all">all roles</option>
+                <option value="owner">owner</option>
+                <option value="editor">editor</option>
+                <option value="commenter">commenter</option>
+                <option value="viewer">viewer</option>
+              </select>
+            </div>
             {members.length === 0 ? <p className="mt-2 text-sm text-white/75">No members added yet.</p> : null}
             <div className="mt-3 grid gap-2">
               {members.map((member) => (

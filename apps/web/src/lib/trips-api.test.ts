@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createTrip, getTrip, listTrips, mapTrip, patchTrip } from "./trips-api";
+import { createTrip, getTrip, listTripMembers, listTrips, mapTrip, patchTrip } from "./trips-api";
 
 const apiTrip = {
   id: "trip-1",
@@ -82,5 +82,19 @@ describe("trips api mapping", () => {
       })
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, "http://localhost:8080/api/v1/trips/trip-1", expect.anything());
+  });
+
+  it("builds member list query with role filter", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listTripMembers("trip-1");
+    await listTripMembers("trip-1", "editor");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8080/api/v1/trips/trip-1/members", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8080/api/v1/trips/trip-1/members?role=editor", expect.anything());
   });
 });

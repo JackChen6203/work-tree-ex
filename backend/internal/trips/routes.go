@@ -214,6 +214,11 @@ func patchTrip(c *gin.Context) {
 
 func listTripMembers(c *gin.Context) {
 	tripID := c.Param("tripId")
+	roleFilter := strings.TrimSpace(c.Query("role"))
+	if roleFilter != "" && !isValidMemberRole(roleFilter) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "role must be owner/editor/commenter/viewer", nil)
+		return
+	}
 	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
 		if errors.Is(err, ErrTripNotFound) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
@@ -224,7 +229,13 @@ func listTripMembers(c *gin.Context) {
 	}
 
 	membersMu.RLock()
-	items := append([]tripMember{}, tripMembers[tripID]...)
+	items := make([]tripMember, 0, len(tripMembers[tripID]))
+	for _, item := range tripMembers[tripID] {
+		if roleFilter != "" && item.Role != roleFilter {
+			continue
+		}
+		items = append(items, item)
+	}
 	membersMu.RUnlock()
 
 	response.JSON(c, http.StatusOK, items)

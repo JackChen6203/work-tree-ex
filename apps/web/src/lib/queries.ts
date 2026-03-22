@@ -59,10 +59,10 @@ export function usePatchTripMutation(tripId: string) {
   });
 }
 
-export function useTripMembersQuery(tripId: string) {
+export function useTripMembersQuery(tripId: string, role?: "owner" | "editor" | "commenter" | "viewer") {
   return useQuery({
-    queryKey: ["trip-members", tripId],
-    queryFn: () => listTripMembers(tripId),
+    queryKey: ["trip-members", tripId, role ?? "all"],
+    queryFn: () => listTripMembers(tripId, role),
     enabled: Boolean(tripId)
   });
 }

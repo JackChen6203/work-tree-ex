@@ -267,6 +267,48 @@ func TestPatchTripMemberRoleValidation(t *testing.T) {
 	}
 }
 
+func TestListTripMembersRoleFilter(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-role-filter")
+	addMemberForTest(t, r, tripID, "viewer@example.com", "Viewer", "viewer", "member-add-role-1")
+	addMemberForTest(t, r, tripID, "editor@example.com", "Editor", "editor", "member-add-role-2")
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID+"/members?role=editor", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", listW.Code, listW.Body.String())
+	}
+
+	var listed struct {
+		Data []struct {
+			Email string `json:"email"`
+			Role  string `json:"role"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(listed.Data) != 1 {
+		t.Fatalf("expected 1 filtered member, got %d", len(listed.Data))
+	}
+	if listed.Data[0].Role != "editor" || listed.Data[0].Email != "editor@example.com" {
+		t.Fatalf("unexpected filtered member: role=%s email=%s", listed.Data[0].Role, listed.Data[0].Email)
+	}
+}
+
+func TestListTripMembersRoleFilterValidation(t *testing.T) {
+	r := setupRouter()
+	tripID := createTripForTest(t, r, "idem-members-role-filter-validation")
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/"+tripID+"/members?role=admin", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", listW.Code, listW.Body.String())
+	}
+}
+
 func TestAddTripMemberValidation(t *testing.T) {
 	r := setupRouter()
 	tripID := createTripForTest(t, r, "idem-members-validation")
