@@ -1,0 +1,729 @@
+openapi: 3.1.0
+info:
+  title: Travel Planner API
+  version: 0.1.0
+  description: >-
+    Contract snapshot for the current work-tree-ex implementation. This spec is
+    aligned to the APIs currently implemented in backend/internal/*.
+servers:
+  - url: /api/v1
+paths:
+  /auth/request-magic-link:
+    post:
+      tags: [Auth]
+      summary: Request an email magic link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        '200': { description: Magic link requested }
+  /auth/verify-magic-link:
+    post:
+      tags: [Auth]
+      summary: Verify magic link code and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string }
+                code: { type: string }
+      responses:
+        '200': { description: Session established }
+  /auth/session:
+    get:
+      tags: [Auth]
+      summary: Get current session
+      responses:
+        '200': { description: Session payload }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      responses:
+        '204': { description: Logged out }
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current profile
+      responses:
+        '200': { description: Profile }
+    patch:
+      tags: [Users]
+      summary: Update current profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfilePatch'
+      responses:
+        '200': { description: Updated profile }
+  /users/me/preferences:
+    get:
+      tags: [Users]
+      summary: Get user preferences
+      responses:
+        '200': { description: Preferences }
+    put:
+      tags: [Users]
+      summary: Replace user preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferences'
+      responses:
+        '200': { description: Updated preferences }
+  /users/me/notification-preferences:
+    get:
+      tags: [Users]
+      summary: Get notification preferences
+      responses:
+        '200': { description: Notification preferences }
+    put:
+      tags: [Users]
+      summary: Replace notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferences'
+      responses:
+        '200': { description: Updated notification preferences }
+  /users/me/llm-providers:
+    get:
+      tags: [Users]
+      summary: List configured LLM providers
+      responses:
+        '200': { description: Provider list }
+    post:
+      tags: [Users]
+      summary: Create LLM provider config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmProviderInput'
+      responses:
+        '201': { description: Provider created }
+  /users/me/llm-providers/{providerId}:
+    delete:
+      tags: [Users]
+      summary: Delete LLM provider config
+      parameters:
+        - in: path
+          name: providerId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Provider deleted }
+  /trips:
+    get:
+      tags: [Trips]
+      summary: List trips
+      responses:
+        '200': { description: Trip list }
+    post:
+      tags: [Trips]
+      summary: Create trip
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripCreate'
+      responses:
+        '201': { description: Trip created }
+  /trips/{tripId}:
+    get:
+      tags: [Trips]
+      summary: Get trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Trip detail }
+    patch:
+      tags: [Trips]
+      summary: Patch trip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: header
+          name: If-Match-Version
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripPatch'
+      responses:
+        '200': { description: Trip updated }
+  /trips/{tripId}/members:
+    get:
+      tags: [Trips]
+      summary: List trip members
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [owner, editor, commenter, viewer]
+      responses:
+        '200': { description: Member list }
+    post:
+      tags: [Trips]
+      summary: Add trip member
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TripMemberCreate'
+      responses:
+        '201': { description: Member added }
+  /trips/{tripId}/members/{memberId}:
+    patch:
+      tags: [Trips]
+      summary: Update member role
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [owner, editor, commenter, viewer]
+      responses:
+        '200': { description: Member updated }
+    delete:
+      tags: [Trips]
+      summary: Remove trip member
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Member removed }
+  /trips/{tripId}/days:
+    get:
+      tags: [Itinerary]
+      summary: List itinerary days
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Day list }
+  /trips/{tripId}/items:
+    post:
+      tags: [Itinerary]
+      summary: Create itinerary item
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItineraryItemCreate'
+      responses:
+        '201': { description: Item created }
+  /trips/{tripId}/items/{itemId}:
+    patch:
+      tags: [Itinerary]
+      summary: Patch itinerary item
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: If-Match-Version
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItineraryItemPatch'
+      responses:
+        '200': { description: Item updated }
+    delete:
+      tags: [Itinerary]
+      summary: Delete itinerary item
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Item deleted }
+  /trips/{tripId}/items/reorder:
+    post:
+      tags: [Itinerary]
+      summary: Reorder itinerary items
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operations]
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+                    required: [itemId, targetDayId, targetSortOrder]
+                    properties:
+                      itemId: { type: string }
+                      targetDayId: { type: string }
+                      targetSortOrder: { type: integer }
+      responses:
+        '200': { description: Reordered days }
+  /trips/{tripId}/budget:
+    get:
+      tags: [Budget]
+      summary: Get budget profile
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Budget profile }
+    put:
+      tags: [Budget]
+      summary: Upsert budget profile
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetProfileInput'
+      responses:
+        '200': { description: Budget upserted }
+  /trips/{tripId}/expenses:
+    get:
+      tags: [Budget]
+      summary: List expenses
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: Expense list }
+    post:
+      tags: [Budget]
+      summary: Create expense
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseInput'
+      responses:
+        '201': { description: Expense created }
+  /trips/{tripId}/expenses/{expenseId}:
+    patch:
+      tags: [Budget]
+      summary: Patch expense
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: expenseId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpensePatch'
+      responses:
+        '200': { description: Expense updated }
+    delete:
+      tags: [Budget]
+      summary: Delete expense
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: expenseId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Expense deleted }
+  /trips/{tripId}/ai/plans:
+    get:
+      tags: [AI Planner]
+      summary: List AI plans
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      responses:
+        '200': { description: AI plan list }
+    post:
+      tags: [AI Planner]
+      summary: Create AI planning job
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiPlanCreate'
+      responses:
+        '201': { description: AI plan created }
+  /trips/{tripId}/ai/plans/{planId}:
+    get:
+      tags: [AI Planner]
+      summary: Get AI plan detail
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: planId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: AI plan detail }
+  /trips/{tripId}/ai/plans/{planId}/adopt:
+    post:
+      tags: [AI Planner]
+      summary: Adopt AI plan draft
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - in: path
+          name: planId
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: Draft adopted }
+  /maps/search:
+    get:
+      tags: [Maps]
+      summary: Search places
+      parameters:
+        - in: query
+          name: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Place result list }
+  /maps/routes:
+    post:
+      tags: [Maps]
+      summary: Estimate route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [origin, destination]
+              properties:
+                origin: { type: string }
+                destination: { type: string }
+                mode: { type: string }
+      responses:
+        '200': { description: Route estimate }
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications
+      parameters:
+        - in: query
+          name: unreadOnly
+          schema: { type: boolean }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Notification list }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications read
+      responses:
+        '204': { description: Marked all read }
+  /notifications/cleanup-read:
+    post:
+      tags: [Notifications]
+      summary: Delete read notifications
+      responses:
+        '200': { description: Cleanup summary }
+  /notifications/{notificationId}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark notification read
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Marked read }
+  /notifications/{notificationId}/unread:
+    post:
+      tags: [Notifications]
+      summary: Mark notification unread
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Marked unread }
+  /notifications/{notificationId}:
+    delete:
+      tags: [Notifications]
+      summary: Delete notification
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+  /sync/bootstrap:
+    get:
+      tags: [Sync]
+      summary: Bootstrap sync state
+      parameters:
+        - in: query
+          name: tripId
+          schema: { type: string }
+        - in: query
+          name: sinceVersion
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: Sync bootstrap payload }
+  /sync/mutations/flush:
+    post:
+      tags: [Sync]
+      summary: Flush queued mutations
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tripId, mutations]
+              properties:
+                tripId: { type: string }
+                mutations:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, entityType, entityId, baseVersion]
+                    properties:
+                      id: { type: string }
+                      entityType: { type: string }
+                      entityId: { type: string }
+                      baseVersion: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: Flush summary }
+components:
+  parameters:
+    TripId:
+      in: path
+      name: tripId
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string }
+  schemas:
+    UserProfilePatch:
+      type: object
+      properties:
+        displayName: { type: string }
+        locale: { type: string }
+        timezone: { type: string }
+        homeCurrency: { type: string }
+    UserPreferences:
+      type: object
+      properties:
+        travelPace: { type: string }
+        seatPreference: { type: string }
+        foodPreferences:
+          type: array
+          items: { type: string }
+        accessibilityNeeds:
+          type: array
+          items: { type: string }
+    NotificationPreferences:
+      type: object
+      properties:
+        pushEnabled: { type: boolean }
+        emailEnabled: { type: boolean }
+        digestFrequency: { type: string }
+        quietHoursStart: { type: string }
+        quietHoursEnd: { type: string }
+        tripUpdates: { type: boolean }
+        budgetAlerts: { type: boolean }
+        aiPlanReadyAlerts: { type: boolean }
+    LlmProviderInput:
+      type: object
+      required: [provider, label]
+      properties:
+        provider: { type: string }
+        label: { type: string }
+        maskedApiKeyHint: { type: string }
+        baseUrl: { type: string }
+        model: { type: string }
+    TripCreate:
+      type: object
+      required: [name, startDate, endDate, timezone, currency, travelersCount]
+      properties:
+        name: { type: string }
+        destinationText: { type: string }
+        startDate: { type: string }
+        endDate: { type: string }
+        timezone: { type: string }
+        currency: { type: string }
+        travelersCount: { type: integer, minimum: 1 }
+    TripPatch:
+      type: object
+      properties:
+        name: { type: string }
+        destinationText: { type: string }
+        startDate: { type: string }
+        endDate: { type: string }
+        timezone: { type: string }
+        currency: { type: string }
+        travelersCount: { type: integer, minimum: 1 }
+        status:
+          type: string
+          enum: [draft, active, archived]
+    TripMemberCreate:
+      type: object
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        role:
+          type: string
+          enum: [owner, editor, commenter, viewer]
+    ItineraryItemCreate:
+      type: object
+      required: [dayId, title, itemType, allDay]
+      properties:
+        dayId: { type: string }
+        title: { type: string }
+        itemType: { type: string }
+        allDay: { type: boolean }
+        note: { type: string }
+    ItineraryItemPatch:
+      type: object
+      properties:
+        title: { type: string }
+        startAt: { type: string }
+        endAt: { type: string }
+        allDay: { type: boolean }
+        note: { type: string }
+        sortOrder: { type: integer }
+        placeId: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+    BudgetProfileInput:
+      type: object
+      required: [currency, categories]
+      properties:
+        totalBudget: { type: number }
+        perPersonBudget: { type: number }
+        perDayBudget: { type: number }
+        currency: { type: string }
+        categories:
+          type: array
+          items:
+            type: object
+            required: [category, plannedAmount]
+            properties:
+              category: { type: string }
+              plannedAmount: { type: number }
+    ExpenseInput:
+      type: object
+      required: [category, amount, currency]
+      properties:
+        category: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        expenseAt: { type: string }
+        note: { type: string }
+    ExpensePatch:
+      type: object
+      properties:
+        category: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        expenseAt: { type: string }
+        note: { type: string }
+    AiPlanCreate:
+      type: object
+      required: [providerConfigId, title, constraints]
+      properties:
+        providerConfigId: { type: string }
+        title: { type: string }
+        constraints:
+          type: object
+          properties:
+            totalBudget: { type: number }
+            currency: { type: string }
+            pace:
+              type: string
+              enum: [relaxed, balanced, packed]
+            transportPreference:
+              type: string
+              enum: [walk, transit, taxi, mixed]
+            mustVisit:
+              type: array
+              items: { type: string }
+            avoid:
+              type: array
+              items: { type: string }
