@@ -75,3 +75,20 @@ export function deleteExpense(tripId: string, expenseId: string) {
     method: "DELETE"
   });
 }
+
+export function patchExpense(
+  tripId: string,
+  expenseId: string,
+  input: {
+    category?: string;
+    amount?: number;
+    currency?: string;
+    expenseAt?: string;
+    note?: string;
+  }
+) {
+  return apiRequest<ExpenseItem>(`/api/v1/trips/${tripId}/expenses/${expenseId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}

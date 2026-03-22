@@ -168,6 +168,82 @@ func TestDeleteExpenseNotFound(t *testing.T) {
 	}
 }
 
+func TestPatchExpense(t *testing.T) {
+	r := setupRouter()
+
+	expenseBody := mustJSON(t, map[string]any{
+		"category": "food",
+		"amount":   1200,
+		"currency": "JPY",
+		"note":     "Lunch",
+	})
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-5/expenses", bytes.NewBuffer(expenseBody))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("Idempotency-Key", "e-patch-1")
+	postW := httptest.NewRecorder()
+	r.ServeHTTP(postW, postReq)
+	if postW.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", postW.Code)
+	}
+
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(postW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	patchBody := mustJSON(t, map[string]any{
+		"amount": 2600,
+		"note":   "Dinner",
+	})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/t-5/expenses/"+created.Data.ID, bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", patchW.Code, patchW.Body.String())
+	}
+
+	var patched struct {
+		Data struct {
+			Amount  float64 `json:"amount"`
+			Note    string  `json:"note"`
+			Version int     `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(patchW.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("decode patch response: %v", err)
+	}
+	if patched.Data.Amount != 2600 {
+		t.Fatalf("expected amount 2600, got %v", patched.Data.Amount)
+	}
+	if patched.Data.Note != "Dinner" {
+		t.Fatalf("expected note Dinner, got %s", patched.Data.Note)
+	}
+	if patched.Data.Version != 2 {
+		t.Fatalf("expected version 2, got %d", patched.Data.Version)
+	}
+}
+
+func TestPatchExpenseValidation(t *testing.T) {
+	r := setupRouter()
+
+	patchBody := mustJSON(t, map[string]any{
+		"amount": -1,
+	})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/t-6/expenses/not-found", bytes.NewBuffer(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchW := httptest.NewRecorder()
+	r.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", patchW.Code)
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 

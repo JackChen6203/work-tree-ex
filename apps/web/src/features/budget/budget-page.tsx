@@ -1,7 +1,8 @@
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useBudgetProfileQuery, useCreateExpenseMutation, useDeleteExpenseMutation, useExpensesQuery, useUpsertBudgetMutation } from "../../lib/queries";
+import { useState } from "react";
+import { useBudgetProfileQuery, useCreateExpenseMutation, useDeleteExpenseMutation, useExpensesQuery, usePatchExpenseMutation, useUpsertBudgetMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function BudgetPage() {
@@ -12,6 +13,11 @@ export function BudgetPage() {
   const upsertBudget = useUpsertBudgetMutation(tripId);
   const createExpense = useCreateExpenseMutation(tripId);
   const deleteExpense = useDeleteExpenseMutation(tripId);
+  const patchExpense = usePatchExpenseMutation(tripId);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingAmount, setEditingAmount] = useState<string>("");
+  const [editingNote, setEditingNote] = useState<string>("");
+  const [editingCategory, setEditingCategory] = useState<string>("");
 
   const estimated = profile?.totalBudget ?? 0;
   const actual = profile?.actualSpend ?? 0;
@@ -45,6 +51,37 @@ export function BudgetPage() {
   const removeExpense = async (expenseId: string) => {
     await deleteExpense.mutateAsync(expenseId);
     pushToast("Expense removed");
+  };
+
+  const beginEditExpense = (expenseId: string, category: string, amount: number, note?: string) => {
+    setEditingExpenseId(expenseId);
+    setEditingCategory(category);
+    setEditingAmount(String(amount));
+    setEditingNote(note ?? "");
+  };
+
+  const saveExpense = async () => {
+    if (!editingExpenseId) {
+      return;
+    }
+    const amountValue = Number(editingAmount);
+    if (!Number.isFinite(amountValue) || amountValue < 0) {
+      pushToast("Amount must be a non-negative number");
+      return;
+    }
+
+    await patchExpense.mutateAsync({
+      expenseId: editingExpenseId,
+      input: {
+        category: editingCategory,
+        amount: amountValue,
+        note: editingNote,
+        currency: profile?.currency ?? "JPY"
+      }
+    });
+
+    setEditingExpenseId(null);
+    pushToast("Expense updated");
   };
 
   return (
@@ -94,22 +131,74 @@ export function BudgetPage() {
         <div className="space-y-4">
           {expenses.map((expense) => (
             <div key={expense.id} className="rounded-[24px] border border-ink/10 bg-sand/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-ink">{expense.category}</p>
-                  <p className="text-sm text-ink/60">{expense.currency} {expense.amount.toLocaleString()} {expense.note ? `· ${expense.note}` : ""}</p>
+              {editingExpenseId === expense.id ? (
+                <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                  <input
+                    className="rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm text-ink"
+                    value={editingCategory}
+                    onChange={(event) => setEditingCategory(event.target.value)}
+                  />
+                  <input
+                    className="rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm text-ink"
+                    type="number"
+                    min={0}
+                    value={editingAmount}
+                    onChange={(event) => setEditingAmount(event.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                      disabled={patchExpense.isPending}
+                      onClick={() => {
+                        void saveExpense();
+                      }}
+                      type="button"
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                      onClick={() => setEditingExpenseId(null)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <input
+                    className="md:col-span-3 rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm text-ink"
+                    placeholder="Note"
+                    value={editingNote}
+                    onChange={(event) => setEditingNote(event.target.value)}
+                  />
                 </div>
-                <button
-                  className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
-                  disabled={deleteExpense.isPending}
-                  onClick={() => {
-                    void removeExpense(expense.id);
-                  }}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-ink">{expense.category}</p>
+                    <p className="text-sm text-ink/60">{expense.currency} {expense.amount.toLocaleString()} {expense.note ? `· ${expense.note}` : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                      disabled={deleteExpense.isPending}
+                      onClick={() => beginEditExpense(expense.id, expense.category, expense.amount, expense.note)}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
+                      disabled={deleteExpense.isPending}
+                      onClick={() => {
+                        void removeExpense(expense.id);
+                      }}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

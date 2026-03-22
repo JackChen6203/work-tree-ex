@@ -53,7 +53,16 @@ type expense struct {
 	Currency  string    `json:"currency"`
 	ExpenseAt *string   `json:"expenseAt,omitempty"`
 	Note      string    `json:"note,omitempty"`
+	Version   int       `json:"version"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+type expensePatchInput struct {
+	Category  *string  `json:"category"`
+	Amount    *float64 `json:"amount"`
+	Currency  *string  `json:"currency"`
+	ExpenseAt *string  `json:"expenseAt"`
+	Note      *string  `json:"note"`
 }
 
 var (
@@ -70,6 +79,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.PUT("/trips/:tripId/budget", upsertBudget)
 	v1.GET("/trips/:tripId/expenses", listExpenses)
 	v1.POST("/trips/:tripId/expenses", createExpense)
+	v1.PATCH("/trips/:tripId/expenses/:expenseId", patchExpense)
 	v1.DELETE("/trips/:tripId/expenses/:expenseId", deleteExpense)
 }
 
@@ -215,6 +225,7 @@ func createExpense(c *gin.Context) {
 		Currency:  strings.ToUpper(in.Currency),
 		ExpenseAt: in.ExpenseAt,
 		Note:      in.Note,
+		Version:   1,
 		CreatedAt: time.Now().UTC(),
 	}
 
@@ -224,6 +235,66 @@ func createExpense(c *gin.Context) {
 	budgetMu.Unlock()
 
 	response.JSON(c, http.StatusCreated, item)
+}
+
+func patchExpense(c *gin.Context) {
+	tripID := strings.TrimSpace(c.Param("tripId"))
+	expenseID := strings.TrimSpace(c.Param("expenseId"))
+	if expenseID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "expenseId is required", nil)
+		return
+	}
+
+	var in expensePatchInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if in.Amount != nil && *in.Amount < 0 {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "amount must be non-negative", nil)
+		return
+	}
+	if in.Currency != nil && len(strings.TrimSpace(*in.Currency)) != 3 {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBudgetCurrency, "currency must be ISO-4217 code", nil)
+		return
+	}
+
+	budgetMu.Lock()
+	defer budgetMu.Unlock()
+
+	item, ok := expenseByID[expenseID]
+	if !ok || item.TripID != tripID {
+		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "expense not found", gin.H{"expenseId": expenseID})
+		return
+	}
+
+	if in.Category != nil {
+		item.Category = strings.TrimSpace(*in.Category)
+	}
+	if in.Amount != nil {
+		item.Amount = *in.Amount
+	}
+	if in.Currency != nil {
+		item.Currency = strings.ToUpper(strings.TrimSpace(*in.Currency))
+	}
+	if in.ExpenseAt != nil {
+		item.ExpenseAt = in.ExpenseAt
+	}
+	if in.Note != nil {
+		item.Note = strings.TrimSpace(*in.Note)
+	}
+	item.Version++
+
+	expenseByID[expenseID] = item
+	for i := range expensesByTrip[tripID] {
+		if expensesByTrip[tripID][i].ID == expenseID {
+			expensesByTrip[tripID][i] = item
+			break
+		}
+	}
+
+	response.JSON(c, http.StatusOK, item)
 }
 
 func deleteExpense(c *gin.Context) {
