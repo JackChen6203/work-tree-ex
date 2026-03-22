@@ -30,8 +30,18 @@ export function AiPlannerPage() {
     pushToast("AI draft generated");
   };
 
-  const onAdopt = async (planId: string) => {
-    const result = await adoptPlan.mutateAsync(planId);
+  const onAdopt = async (planId: string, status: "valid" | "warning" | "invalid") => {
+    const confirmWarnings =
+      status === "warning"
+        ? window.confirm("This draft has warnings. Confirm to adopt it anyway?")
+        : false;
+
+    if (status === "warning" && !confirmWarnings) {
+      pushToast("Adoption cancelled. Review warnings before confirming.");
+      return;
+    }
+
+    const result = await adoptPlan.mutateAsync({ planId, confirmWarnings });
     pushToast(result.adopted ? "Draft adopted" : "Draft not adopted");
   };
 
@@ -100,7 +110,7 @@ export function AiPlannerPage() {
                 className="mt-5 rounded-full bg-pine px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-ink/35"
                 disabled={draft.status === "invalid" || adoptPlan.isPending}
                 onClick={() => {
-                  void onAdopt(draft.id);
+                  void onAdopt(draft.id, draft.status);
                 }}
                 type="button"
               >

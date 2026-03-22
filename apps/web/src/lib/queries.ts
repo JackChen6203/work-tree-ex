@@ -156,7 +156,8 @@ export function useAdoptAiPlanMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (planId: string) => trackQueuedMutation("ai-plans.adopt", () => adoptAiPlan(tripId, planId)),
+    mutationFn: ({ planId, confirmWarnings = false }: { planId: string; confirmWarnings?: boolean }) =>
+      trackQueuedMutation("ai-plans.adopt", () => adoptAiPlan(tripId, planId, { confirmWarnings })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
     }
