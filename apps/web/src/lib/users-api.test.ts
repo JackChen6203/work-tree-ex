@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getMyNotificationPreferences, patchMyProfile, putMyNotificationPreferences } from "./users-api";
+import { getMyNotificationPreferences, listMyLlmProviders, patchMyProfile, putMyNotificationPreferences } from "./users-api";
 
 describe("users api", () => {
   beforeEach(() => {
@@ -102,8 +102,6 @@ describe("users api", () => {
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ displayName: "Ariel" }) })
     );
   });
-});
-
 
   it("lists llm providers with optional provider filter", async () => {
     const fetchMock = vi
@@ -118,3 +116,4 @@ describe("users api", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8080/api/v1/users/me/llm-providers", expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8080/api/v1/users/me/llm-providers?provider=openai", expect.anything());
   });
+});

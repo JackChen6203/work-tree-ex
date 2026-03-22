@@ -141,6 +141,15 @@ export function SettingsPage() {
   });
 
   const onSaveNotificationPreferences = notificationPreferenceForm.handleSubmit(async (values) => {
+    if (!/^\d{2}:\d{2}$/.test(values.quietHoursStart) || !/^\d{2}:\d{2}$/.test(values.quietHoursEnd)) {
+      pushToast("Quiet hours must use HH:MM format");
+      return;
+    }
+    if (values.emailEnabled && values.digestFrequency === "instant") {
+      pushToast("Email notifications do not support instant digest frequency");
+      return;
+    }
+
     await putNotificationPreferences.mutateAsync(values);
     pushToast("Notification preferences saved");
   });
