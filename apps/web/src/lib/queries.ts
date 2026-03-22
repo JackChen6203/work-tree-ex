@@ -240,7 +240,7 @@ export function usePatchExpenseMutation(tripId: string) {
 export function useNotificationsQuery(unreadOnly = false) {
   return useQuery({
     queryKey: ["notifications", unreadOnly],
-    queryFn: () => listNotifications(unreadOnly)
+    queryFn: () => listNotifications({ unreadOnly })
   });
 }
 

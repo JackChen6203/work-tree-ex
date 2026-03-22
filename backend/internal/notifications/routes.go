@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,16 +41,46 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 
 func listNotifications(c *gin.Context) {
 	unreadOnly := strings.EqualFold(strings.TrimSpace(c.Query("unreadOnly")), "true")
+	cursor := strings.TrimSpace(c.Query("cursor"))
+	limit := 20
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 100 {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "limit must be an integer between 1 and 100", nil)
+			return
+		}
+		limit = parsed
+	}
 
 	notificationsMu.RLock()
-	copyItems := make([]notification, 0, len(items))
-	for _, item := range items {
+	defer notificationsMu.RUnlock()
+
+	start := 0
+	if cursor != "" {
+		start = -1
+		for i, item := range items {
+			if item.ID == cursor {
+				start = i + 1
+				break
+			}
+		}
+		if start == -1 {
+			response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "cursor not found", gin.H{"cursor": cursor})
+			return
+		}
+	}
+
+	copyItems := make([]notification, 0, limit)
+	for i := start; i < len(items); i++ {
+		item := items[i]
 		if unreadOnly && item.ReadAt != nil {
 			continue
 		}
 		copyItems = append(copyItems, item)
+		if len(copyItems) == limit {
+			break
+		}
 	}
-	notificationsMu.RUnlock()
 
 	response.JSON(c, http.StatusOK, copyItems)
 }

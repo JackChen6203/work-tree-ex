@@ -14,10 +14,22 @@ export interface CleanupReadNotificationsResponse {
   deletedCount: number;
 }
 
-export function listNotifications(unreadOnly = false) {
+export interface ListNotificationsOptions {
+  unreadOnly?: boolean;
+  cursor?: string;
+  limit?: number;
+}
+
+export function listNotifications(options: ListNotificationsOptions = {}) {
   const params = new URLSearchParams();
-  if (unreadOnly) {
+  if (options.unreadOnly) {
     params.set("unreadOnly", "true");
+  }
+  if (options.cursor) {
+    params.set("cursor", options.cursor);
+  }
+  if (typeof options.limit === "number") {
+    params.set("limit", String(options.limit));
   }
 
   return apiRequest<NotificationItemApi[]>(`/api/v1/notifications${params.toString() ? `?${params.toString()}` : ""}`);

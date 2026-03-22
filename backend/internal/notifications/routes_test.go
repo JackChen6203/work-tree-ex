@@ -107,6 +107,70 @@ func TestDeleteNotificationNotFound(t *testing.T) {
 	}
 }
 
+func TestListNotificationsPagination(t *testing.T) {
+	r := setupRouter()
+
+	notificationsMu.Lock()
+	items = []notification{
+		{ID: "n-1", Type: "ai_plan_ready", Title: "AI 1", Body: "Body 1", Link: "/dashboard"},
+		{ID: "n-2", Type: "member_joined", Title: "Join 2", Body: "Body 2", Link: "/trips"},
+		{ID: "n-3", Type: "budget_alert", Title: "Budget 3", Body: "Body 3", Link: "/trips/t-1/budget"},
+	}
+	notificationsMu.Unlock()
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?limit=1", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list limit, got %d body=%s", listW.Code, listW.Body.String())
+	}
+
+	var firstPage struct {
+		Data []notification `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &firstPage); err != nil {
+		t.Fatalf("decode first page: %v", err)
+	}
+	if len(firstPage.Data) != 1 || firstPage.Data[0].ID != "n-1" {
+		t.Fatalf("expected first page to contain only n-1, got %+v", firstPage.Data)
+	}
+
+	cursorReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor=n-1&limit=2", nil)
+	cursorW := httptest.NewRecorder()
+	r.ServeHTTP(cursorW, cursorReq)
+	if cursorW.Code != http.StatusOK {
+		t.Fatalf("expected 200 cursor list, got %d body=%s", cursorW.Code, cursorW.Body.String())
+	}
+
+	var secondPage struct {
+		Data []notification `json:"data"`
+	}
+	if err := json.Unmarshal(cursorW.Body.Bytes(), &secondPage); err != nil {
+		t.Fatalf("decode second page: %v", err)
+	}
+	if len(secondPage.Data) != 2 || secondPage.Data[0].ID != "n-2" || secondPage.Data[1].ID != "n-3" {
+		t.Fatalf("expected n-2 and n-3 after cursor, got %+v", secondPage.Data)
+	}
+}
+
+func TestListNotificationsInvalidPagination(t *testing.T) {
+	r := setupRouter()
+
+	invalidLimitReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?limit=0", nil)
+	invalidLimitW := httptest.NewRecorder()
+	r.ServeHTTP(invalidLimitW, invalidLimitReq)
+	if invalidLimitW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 invalid limit, got %d body=%s", invalidLimitW.Code, invalidLimitW.Body.String())
+	}
+
+	missingCursorReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor=missing", nil)
+	missingCursorW := httptest.NewRecorder()
+	r.ServeHTTP(missingCursorW, missingCursorReq)
+	if missingCursorW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 missing cursor, got %d body=%s", missingCursorW.Code, missingCursorW.Body.String())
+	}
+}
+
 func TestListNotificationsUnreadOnly(t *testing.T) {
 	r := setupRouter()
 

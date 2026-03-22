@@ -17,14 +17,21 @@ describe("notifications api", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    await listNotifications(false);
-    await listNotifications(true);
+    await listNotifications();
+    await listNotifications({ unreadOnly: true });
+    await listNotifications({ unreadOnly: true, cursor: "n-2", limit: 10 });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8080/api/v1/notifications", expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8080/api/v1/notifications?unreadOnly=true", expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8080/api/v1/notifications?unreadOnly=true&cursor=n-2&limit=10",
+      expect.anything()
+    );
   });
 
   it("posts and deletes notification actions", async () => {
