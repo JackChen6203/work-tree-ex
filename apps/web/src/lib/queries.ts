@@ -19,6 +19,7 @@ import {
 } from "./users-api";
 import { flushSyncMutations, getSyncBootstrap } from "./sync-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
+import { trackQueuedMutation } from "./mutation-queue";
 
 export function useTripsQuery() {
   return useQuery({
@@ -39,7 +40,7 @@ export function useCreateTripMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: CreateTripInput) => createTrip(input),
+    mutationFn: (input: CreateTripInput) => trackQueuedMutation("trips.create", () => createTrip(input)),
     onSuccess: (trip) => {
       queryClient.invalidateQueries({ queryKey: ["trips"] });
       queryClient.setQueryData(["trips", trip.id], trip);
@@ -51,7 +52,7 @@ export function usePatchTripMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ version, input }: { version: number; input: PatchTripInput }) => patchTrip(tripId, version, input),
+    mutationFn: ({ version, input }: { version: number; input: PatchTripInput }) => trackQueuedMutation("trips.patch", () => patchTrip(tripId, version, input)),
     onSuccess: (trip) => {
       queryClient.invalidateQueries({ queryKey: ["trips"] });
       queryClient.setQueryData(["trips", trip.id], trip);
@@ -71,7 +72,7 @@ export function useAddTripMemberMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: AddTripMemberInput) => addTripMember(tripId, input),
+    mutationFn: (input: AddTripMemberInput) => trackQueuedMutation("trip-members.add", () => addTripMember(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
     }
@@ -82,7 +83,7 @@ export function useRemoveTripMemberMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (memberId: string) => removeTripMember(tripId, memberId),
+    mutationFn: (memberId: string) => trackQueuedMutation("trip-members.remove", () => removeTripMember(tripId, memberId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
     }
@@ -94,7 +95,7 @@ export function useUpdateTripMemberRoleMutation(tripId: string) {
 
   return useMutation({
     mutationFn: ({ memberId, role }: { memberId: string; role: "owner" | "editor" | "commenter" | "viewer" }) =>
-      updateTripMemberRole(tripId, memberId, role),
+      trackQueuedMutation("trip-members.role", () => updateTripMemberRole(tripId, memberId, role)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
     }
@@ -144,7 +145,7 @@ export function useCreateAiPlanMutation(tripId: string) {
         mustVisit: string[];
         avoid: string[];
       };
-    }) => createAiPlan(tripId, input),
+    }) => trackQueuedMutation("ai-plans.create", () => createAiPlan(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
     }
@@ -155,7 +156,7 @@ export function useAdoptAiPlanMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (planId: string) => adoptAiPlan(tripId, planId),
+    mutationFn: (planId: string) => trackQueuedMutation("ai-plans.adopt", () => adoptAiPlan(tripId, planId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
     }
@@ -188,7 +189,7 @@ export function useUpsertBudgetMutation(tripId: string) {
       perDayBudget?: number;
       currency: string;
       categories: Array<{ category: string; plannedAmount: number }>;
-    }) => upsertBudgetProfile(tripId, input),
+    }) => trackQueuedMutation("budget.upsert", () => upsertBudgetProfile(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
     }
@@ -199,7 +200,7 @@ export function useCreateExpenseMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }) => createExpense(tripId, input),
+    mutationFn: (input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }) => trackQueuedMutation("expenses.create", () => createExpense(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
@@ -211,7 +212,7 @@ export function useDeleteExpenseMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (expenseId: string) => deleteExpense(tripId, expenseId),
+    mutationFn: (expenseId: string) => trackQueuedMutation("expenses.delete", () => deleteExpense(tripId, expenseId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
@@ -229,7 +230,7 @@ export function usePatchExpenseMutation(tripId: string) {
     }: {
       expenseId: string;
       input: { category?: string; amount?: number; currency?: string; expenseAt?: string; note?: string };
-    }) => patchExpense(tripId, expenseId, input),
+    }) => trackQueuedMutation("expenses.patch", () => patchExpense(tripId, expenseId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
@@ -248,7 +249,7 @@ export function useMarkNotificationReadMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (notificationId: string) => markNotificationRead(notificationId),
+    mutationFn: (notificationId: string) => trackQueuedMutation("notifications.read", () => markNotificationRead(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
@@ -259,7 +260,7 @@ export function useMarkNotificationUnreadMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (notificationId: string) => markNotificationUnread(notificationId),
+    mutationFn: (notificationId: string) => trackQueuedMutation("notifications.unread", () => markNotificationUnread(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
@@ -270,7 +271,7 @@ export function useMarkAllNotificationsReadMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: markAllNotificationsRead,
+    mutationFn: () => trackQueuedMutation("notifications.read-all", () => markAllNotificationsRead()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
@@ -281,7 +282,7 @@ export function useDeleteNotificationMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (notificationId: string) => deleteNotification(notificationId),
+    mutationFn: (notificationId: string) => trackQueuedMutation("notifications.delete", () => deleteNotification(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
@@ -292,7 +293,7 @@ export function useCleanupReadNotificationsMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: cleanupReadNotifications,
+    mutationFn: () => trackQueuedMutation("notifications.cleanup-read", () => cleanupReadNotifications()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
@@ -311,7 +312,7 @@ export function useCreateItineraryItemMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { dayId: string; title: string; itemType: string; allDay: boolean; note?: string }) => createItineraryItem(tripId, input),
+    mutationFn: (input: { dayId: string; title: string; itemType: string; allDay: boolean; note?: string }) => trackQueuedMutation("itinerary-items.create", () => createItineraryItem(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }
@@ -322,7 +323,7 @@ export function useDeleteItineraryItemMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (itemId: string) => deleteItineraryItem(tripId, itemId),
+    mutationFn: (itemId: string) => trackQueuedMutation("itinerary-items.delete", () => deleteItineraryItem(tripId, itemId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }
@@ -341,7 +342,7 @@ export function usePatchItineraryItemMutation(tripId: string) {
       itemId: string;
       version: number;
       input: { title?: string; startAt?: string; endAt?: string; allDay?: boolean; note?: string; sortOrder?: number; placeId?: string; lat?: number; lng?: number };
-    }) => patchItineraryItem(tripId, itemId, version, input),
+    }) => trackQueuedMutation("itinerary-items.patch", () => patchItineraryItem(tripId, itemId, version, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }
@@ -352,7 +353,7 @@ export function useReorderItineraryItemsMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { operations: Array<{ itemId: string; targetDayId: string; targetSortOrder: number }> }) => reorderItineraryItems(tripId, input),
+    mutationFn: (input: { operations: Array<{ itemId: string; targetDayId: string; targetSortOrder: number }> }) => trackQueuedMutation("itinerary-items.reorder", () => reorderItineraryItems(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }
