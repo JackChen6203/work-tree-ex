@@ -54,6 +54,10 @@ export function listAiPlans(tripId: string) {
   return apiRequest<AiPlanDraft[]>(`/api/v1/trips/${tripId}/ai/plans`);
 }
 
+export function getAiPlan(tripId: string, planId: string) {
+  return apiRequest<AiPlanDraft>(`/api/v1/trips/${tripId}/ai/plans/${planId}`);
+}
+
 export function adoptAiPlan(tripId: string, planId: string) {
   return apiRequest<AdoptAiPlanResponse>(`/api/v1/trips/${tripId}/ai/plans/${planId}/adopt`, {
     method: "POST",

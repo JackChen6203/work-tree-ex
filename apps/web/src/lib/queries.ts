@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip, removeTripMember, updateTripMemberRole } from "./trips-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
-import { adoptAiPlan, createAiPlan, listAiPlans } from "./ai-planner-api";
+import { adoptAiPlan, createAiPlan, getAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, deleteExpense, getBudgetProfile, listExpenses, patchExpense, upsertBudgetProfile } from "./budget-api";
 import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItineraryItem, reorderItineraryItems } from "./itinerary-api";
@@ -118,6 +118,14 @@ export function useAiPlansQuery(tripId: string) {
     queryKey: ["ai-plans", tripId],
     queryFn: () => listAiPlans(tripId),
     enabled: Boolean(tripId)
+  });
+}
+
+export function useAiPlanQuery(tripId: string, planId: string) {
+  return useQuery({
+    queryKey: ["ai-plan", tripId, planId],
+    queryFn: () => getAiPlan(tripId, planId),
+    enabled: Boolean(tripId) && Boolean(planId)
   });
 }
 

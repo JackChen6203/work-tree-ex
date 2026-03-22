@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateAiPlanMutation, useAdoptAiPlanMutation, useAiPlansQuery } from "../../lib/queries";
+import { useCreateAiPlanMutation, useAdoptAiPlanMutation, useAiPlanQuery, useAiPlansQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
 export function AiPlannerPage() {
   const { tripId = "" } = useParams();
   const pushToast = useUiStore((state) => state.pushToast);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
   const { data: drafts = [], isLoading } = useAiPlansQuery(tripId);
+  const { data: selectedPlan, isLoading: detailLoading } = useAiPlanQuery(tripId, selectedPlanId);
   const createPlan = useCreateAiPlanMutation(tripId);
   const adoptPlan = useAdoptAiPlanMutation(tripId);
 
@@ -103,9 +106,34 @@ export function AiPlannerPage() {
               >
                 {adoptPlan.isPending ? "Adopting..." : "Adopt via server transaction"}
               </button>
+              <button
+                className="mt-3 rounded-full border border-ink/20 px-4 py-2 text-sm font-medium text-ink"
+                onClick={() => {
+                  setSelectedPlanId(draft.id);
+                }}
+                type="button"
+              >
+                Inspect detail
+              </button>
             </div>
           ))}
         </div>
+        {selectedPlanId ? (
+          <div className="mt-6 rounded-[24px] border border-ink/10 bg-sand p-4">
+            <p className="text-xs uppercase tracking-[0.22em] text-ink/45">Draft detail</p>
+            {detailLoading ? <p className="mt-2 text-sm text-ink/65">Loading selected draft...</p> : null}
+            {selectedPlan ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-ink">{selectedPlan.title}</p>
+                <p className="mt-1 text-sm text-ink/65">Created at: {new Date(selectedPlan.createdAt).toLocaleString()}</p>
+                <p className="mt-1 text-sm text-ink/65">Summary: {selectedPlan.summary}</p>
+                <p className="mt-1 text-sm text-ink/65">
+                  Budget fit: {Math.round(selectedPlan.totalEstimated).toLocaleString()} / {Math.round(selectedPlan.budget).toLocaleString()} {selectedPlan.currency}
+                </p>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </SurfaceCard>
     </div>
   );

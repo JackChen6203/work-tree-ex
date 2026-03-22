@@ -135,6 +135,52 @@ func TestCreatePlanIdempotencyAndValidAdopt(t *testing.T) {
 	}
 }
 
+func TestGetPlanSuccessAndNotFound(t *testing.T) {
+	r := setupRouter()
+
+	body := mustJSON(t, map[string]any{
+		"providerConfigId": "cfg_3",
+		"title":            "Inspect test",
+		"constraints": map[string]any{
+			"totalBudget": 18000,
+			"currency":    "JPY",
+			"pace":        "balanced",
+		},
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/trip-3/ai/plans", bytes.NewBuffer(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Idempotency-Key", "ai-create-3")
+	createW := httptest.NewRecorder()
+	r.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 create, got %d", createW.Code)
+	}
+
+	var created struct {
+		Data struct {
+			JobID string `json:"jobId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/trip-3/ai/plans/"+created.Data.JobID, nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("expected 200 get, got %d", getW.Code)
+	}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/trip-3/ai/plans/not-found", nil)
+	missingW := httptest.NewRecorder()
+	r.ServeHTTP(missingW, missingReq)
+	if missingW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 get missing, got %d", missingW.Code)
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 
