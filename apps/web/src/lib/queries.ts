@@ -3,7 +3,7 @@ import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTr
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, getAiPlan, listAiPlans } from "./ai-planner-api";
 import { createExpense, deleteExpense, getBudgetProfile, listExpenses, patchExpense, upsertBudgetProfile } from "./budget-api";
-import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
+import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItineraryItem, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
 import {
@@ -249,6 +249,17 @@ export function useMarkNotificationReadMutation() {
 
   return useMutation({
     mutationFn: (notificationId: string) => markNotificationRead(notificationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+}
+
+export function useMarkNotificationUnreadMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (notificationId: string) => markNotificationUnread(notificationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }

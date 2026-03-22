@@ -2,13 +2,20 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
-import { useDeleteNotificationMutation, useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "../../lib/queries";
+import {
+  useDeleteNotificationMutation,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+  useMarkNotificationUnreadMutation,
+  useNotificationsQuery
+} from "../../lib/queries";
 
 export function NotificationsPage() {
   const { t } = useI18n();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const { data: notifications = [], isLoading } = useNotificationsQuery(unreadOnly);
   const markReadMutation = useMarkNotificationReadMutation();
+  const markUnreadMutation = useMarkNotificationUnreadMutation();
   const markAllReadMutation = useMarkAllNotificationsReadMutation();
   const deleteMutation = useDeleteNotificationMutation();
 
@@ -31,6 +38,10 @@ export function NotificationsPage() {
 
   const markRead = (id: string) => {
     void markReadMutation.mutateAsync(id);
+  };
+
+  const markUnread = (id: string) => {
+    void markUnreadMutation.mutateAsync(id);
   };
 
   const removeItem = (id: string) => {
@@ -73,6 +84,20 @@ export function NotificationsPage() {
               </div>
               <div className="flex flex-col items-end gap-3">
                 <span className="text-xs uppercase tracking-[0.2em] text-ink/45">{item.time}</span>
+                <button
+                  className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink transition hover:bg-white/70"
+                  disabled={markReadMutation.isPending || markUnreadMutation.isPending}
+                  onClick={() => {
+                    if (item.unread) {
+                      markRead(item.id);
+                      return;
+                    }
+                    markUnread(item.id);
+                  }}
+                  type="button"
+                >
+                  {item.unread ? t("notifications.markRead") : t("notifications.markUnread")}
+                </button>
                 <button
                   className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink transition hover:bg-white/70"
                   disabled={deleteMutation.isPending}

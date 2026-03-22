@@ -33,6 +33,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/notifications", listNotifications)
 	v1.POST("/notifications/read-all", markAllRead)
 	v1.POST("/notifications/:notificationId/read", markRead)
+	v1.POST("/notifications/:notificationId/unread", markUnread)
 	v1.DELETE("/notifications/:notificationId", deleteNotification)
 }
 
@@ -68,6 +69,28 @@ func markRead(c *gin.Context) {
 		}
 		now := time.Now().UTC()
 		items[i].ReadAt = &now
+		response.NoContent(c)
+		return
+	}
+
+	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "notification not found", gin.H{"notificationId": notificationID})
+}
+
+func markUnread(c *gin.Context) {
+	notificationID := strings.TrimSpace(c.Param("notificationId"))
+	if notificationID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "notificationId is required", nil)
+		return
+	}
+
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+
+	for i := range items {
+		if items[i].ID != notificationID {
+			continue
+		}
+		items[i].ReadAt = nil
 		response.NoContent(c)
 		return
 	}

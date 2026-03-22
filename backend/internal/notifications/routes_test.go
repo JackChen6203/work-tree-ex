@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -130,5 +131,43 @@ func TestListNotificationsUnreadOnly(t *testing.T) {
 
 	if body := listW.Body.String(); body == "" || !strings.Contains(body, "n-1") || strings.Contains(body, "n-2") {
 		t.Fatalf("expected only unread n-1 in payload, got %s", body)
+	}
+}
+
+func TestMarkNotificationUnread(t *testing.T) {
+	r := setupRouter()
+
+	readReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/n-1/read", nil)
+	readW := httptest.NewRecorder()
+	r.ServeHTTP(readW, readReq)
+	if readW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 read, got %d", readW.Code)
+	}
+
+	unreadReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/n-1/unread", nil)
+	unreadW := httptest.NewRecorder()
+	r.ServeHTTP(unreadW, unreadReq)
+	if unreadW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 unread, got %d", unreadW.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list, got %d", listW.Code)
+	}
+
+	var resp struct {
+		Data []notification `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(resp.Data) < 1 || resp.Data[0].ID != "n-1" {
+		t.Fatalf("expected n-1 in list")
+	}
+	if resp.Data[0].ReadAt != nil {
+		t.Fatalf("expected n-1 readAt to be nil after mark unread")
 	}
 }
