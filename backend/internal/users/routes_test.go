@@ -12,6 +12,19 @@ import (
 
 func newUsersRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	usersMu.Lock()
+	myNotificationPreference = notificationPreference{
+		PushEnabled:       true,
+		EmailEnabled:      false,
+		DigestFrequency:   "daily",
+		QuietHoursStart:   "22:00",
+		QuietHoursEnd:     "07:00",
+		TripUpdates:       true,
+		BudgetAlerts:      true,
+		AiPlanReadyAlerts: true,
+		Version:           1,
+	}
+	usersMu.Unlock()
 	r := gin.New()
 	g := r.Group("/users")
 	RegisterRoutes(g)
@@ -175,5 +188,78 @@ func TestDeleteProvider(t *testing.T) {
 	r.ServeHTTP(deleteRec, deleteReq)
 	if deleteRec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+}
+
+func TestGetAndPutNotificationPreferences(t *testing.T) {
+	r := newUsersRouter()
+
+	getReq := httptest.NewRequest(http.MethodGet, "/users/me/notification-preferences", nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getRec.Code)
+	}
+
+	payload := map[string]any{
+		"pushEnabled":       true,
+		"emailEnabled":      true,
+		"digestFrequency":   "weekly",
+		"quietHoursStart":   "23:30",
+		"quietHoursEnd":     "07:30",
+		"tripUpdates":       true,
+		"budgetAlerts":      false,
+		"aiPlanReadyAlerts": true,
+	}
+	b, _ := json.Marshal(payload)
+	putReq := httptest.NewRequest(http.MethodPut, "/users/me/notification-preferences", bytes.NewReader(b))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	r.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", putRec.Code, putRec.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			DigestFrequency string `json:"digestFrequency"`
+			EmailEnabled    bool   `json:"emailEnabled"`
+			Version         int    `json:"version"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(putRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Data.DigestFrequency != "weekly" {
+		t.Fatalf("unexpected digestFrequency: %s", resp.Data.DigestFrequency)
+	}
+	if !resp.Data.EmailEnabled {
+		t.Fatalf("expected emailEnabled true")
+	}
+	if resp.Data.Version < 2 {
+		t.Fatalf("expected version increment, got %d", resp.Data.Version)
+	}
+}
+
+func TestPutNotificationPreferencesValidation(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"pushEnabled":       true,
+		"emailEnabled":      false,
+		"digestFrequency":   "hourly",
+		"quietHoursStart":   "22:00",
+		"quietHoursEnd":     "07:00",
+		"tripUpdates":       true,
+		"budgetAlerts":      true,
+		"aiPlanReadyAlerts": true,
+	}
+	b, _ := json.Marshal(payload)
+	putReq := httptest.NewRequest(http.MethodPut, "/users/me/notification-preferences", bytes.NewReader(b))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	r.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", putRec.Code, putRec.Body.String())
 	}
 }

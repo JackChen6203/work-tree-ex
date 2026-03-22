@@ -4,8 +4,10 @@ import {
   useCreateMyLlmProviderMutation,
   useDeleteMyLlmProviderMutation,
   useMyLlmProvidersQuery,
+  useMyNotificationPreferencesQuery,
   useMyPreferencesQuery,
   useMyProfileQuery,
+  usePutMyNotificationPreferencesMutation,
   usePatchMyProfileMutation,
   usePutMyPreferencesMutation
 } from "../../lib/queries";
@@ -26,6 +28,17 @@ interface PreferenceFormValues {
   avoidTags: string;
 }
 
+interface NotificationPreferenceFormValues {
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  digestFrequency: "instant" | "daily" | "weekly";
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  tripUpdates: boolean;
+  budgetAlerts: boolean;
+  aiPlanReadyAlerts: boolean;
+}
+
 interface LlmProviderFormValues {
   provider: string;
   label: string;
@@ -38,10 +51,12 @@ export function SettingsPage() {
 
   const { data: profile, isLoading: profileLoading } = useMyProfileQuery();
   const { data: preferences, isLoading: preferencesLoading } = useMyPreferencesQuery();
+  const { data: notificationPreferences, isLoading: notificationPreferencesLoading } = useMyNotificationPreferencesQuery();
   const { data: providers = [], isLoading: providersLoading } = useMyLlmProvidersQuery();
 
   const patchProfile = usePatchMyProfileMutation();
   const putPreferences = usePutMyPreferencesMutation();
+  const putNotificationPreferences = usePutMyNotificationPreferencesMutation();
   const createProvider = useCreateMyLlmProviderMutation();
   const deleteProvider = useDeleteMyLlmProviderMutation();
 
@@ -77,6 +92,21 @@ export function SettingsPage() {
     }
   });
 
+  const notificationPreferenceForm = useForm<NotificationPreferenceFormValues>({
+    values: notificationPreferences
+      ? {
+          pushEnabled: notificationPreferences.pushEnabled,
+          emailEnabled: notificationPreferences.emailEnabled,
+          digestFrequency: notificationPreferences.digestFrequency,
+          quietHoursStart: notificationPreferences.quietHoursStart,
+          quietHoursEnd: notificationPreferences.quietHoursEnd,
+          tripUpdates: notificationPreferences.tripUpdates,
+          budgetAlerts: notificationPreferences.budgetAlerts,
+          aiPlanReadyAlerts: notificationPreferences.aiPlanReadyAlerts
+        }
+      : undefined
+  });
+
   const onSaveProfile = profileForm.handleSubmit(async (values) => {
     await patchProfile.mutateAsync(values);
     pushToast("Profile updated");
@@ -110,12 +140,17 @@ export function SettingsPage() {
     pushToast("LLM provider added");
   });
 
+  const onSaveNotificationPreferences = notificationPreferenceForm.handleSubmit(async (values) => {
+    await putNotificationPreferences.mutateAsync(values);
+    pushToast("Notification preferences saved");
+  });
+
   const onDeleteProvider = async (providerId: string) => {
     await deleteProvider.mutateAsync(providerId);
     pushToast("LLM provider removed");
   };
 
-  if (profileLoading || preferencesLoading || providersLoading) {
+  if (profileLoading || preferencesLoading || notificationPreferencesLoading || providersLoading) {
     return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">Loading user settings...</div>;
   }
 
@@ -185,6 +220,55 @@ export function SettingsPage() {
           </label>
           <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={putPreferences.isPending} type="submit">
             {putPreferences.isPending ? "Saving..." : "Save preferences"}
+          </button>
+        </form>
+
+        <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onSaveNotificationPreferences}>
+          <p className="text-sm font-semibold text-ink">Notification preferences</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" {...notificationPreferenceForm.register("pushEnabled")} />
+              Push notifications
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" {...notificationPreferenceForm.register("emailEnabled")} />
+              Email notifications
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-ink">Digest frequency</span>
+            <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("digestFrequency")}>
+              <option value="instant">instant</option>
+              <option value="daily">daily</option>
+              <option value="weekly">weekly</option>
+            </select>
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Quiet hours start</span>
+              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("quietHoursStart")} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Quiet hours end</span>
+              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("quietHoursEnd")} />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" {...notificationPreferenceForm.register("tripUpdates")} />
+              Trip updates
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" {...notificationPreferenceForm.register("budgetAlerts")} />
+              Budget alerts
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" {...notificationPreferenceForm.register("aiPlanReadyAlerts")} />
+              AI plan ready alerts
+            </label>
+          </div>
+          <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={putNotificationPreferences.isPending} type="submit">
+            {putNotificationPreferences.isPending ? "Saving..." : "Save notification preferences"}
           </button>
         </form>
       </SurfaceCard>

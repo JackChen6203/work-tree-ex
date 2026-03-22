@@ -6,7 +6,17 @@ import { createExpense, deleteExpense, getBudgetProfile, listExpenses, patchExpe
 import { deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItineraryItem, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
-import { createMyLlmProvider, deleteMyLlmProvider, getMyPreferences, getMyProfile, listMyLlmProviders, patchMyProfile, putMyPreferences } from "./users-api";
+import {
+  createMyLlmProvider,
+  deleteMyLlmProvider,
+  getMyNotificationPreferences,
+  getMyPreferences,
+  getMyProfile,
+  listMyLlmProviders,
+  patchMyProfile,
+  putMyNotificationPreferences,
+  putMyPreferences
+} from "./users-api";
 import { getSyncBootstrap } from "./sync-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 
@@ -375,6 +385,24 @@ export function usePutMyPreferencesMutation() {
     mutationFn: putMyPreferences,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", "preferences"] });
+    }
+  });
+}
+
+export function useMyNotificationPreferencesQuery() {
+  return useQuery({
+    queryKey: ["users", "notification-preferences"],
+    queryFn: getMyNotificationPreferences
+  });
+}
+
+export function usePutMyNotificationPreferencesMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: putMyNotificationPreferences,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", "notification-preferences"] });
     }
   });
 }

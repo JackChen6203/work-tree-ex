@@ -33,6 +33,29 @@ export interface UpsertUserPreferencesInput {
   avoidTags: string[];
 }
 
+export interface UserNotificationPreferences {
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  digestFrequency: "instant" | "daily" | "weekly";
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  tripUpdates: boolean;
+  budgetAlerts: boolean;
+  aiPlanReadyAlerts: boolean;
+  version: number;
+}
+
+export interface UpsertUserNotificationPreferencesInput {
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  digestFrequency: "instant" | "daily" | "weekly";
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  tripUpdates: boolean;
+  budgetAlerts: boolean;
+  aiPlanReadyAlerts: boolean;
+}
+
 export interface LlmProviderConfig {
   id: string;
   provider: string;
@@ -66,6 +89,17 @@ export function getMyPreferences() {
 
 export function putMyPreferences(input: UpsertUserPreferencesInput) {
   return apiRequest<UserPreferences>("/api/v1/users/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify(input)
+  });
+}
+
+export function getMyNotificationPreferences() {
+  return apiRequest<UserNotificationPreferences>("/api/v1/users/me/notification-preferences");
+}
+
+export function putMyNotificationPreferences(input: UpsertUserNotificationPreferencesInput) {
+  return apiRequest<UserNotificationPreferences>("/api/v1/users/me/notification-preferences", {
     method: "PUT",
     body: JSON.stringify(input)
   });

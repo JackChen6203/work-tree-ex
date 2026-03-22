@@ -37,6 +37,18 @@ type preference struct {
 	Version             int      `json:"version"`
 }
 
+type notificationPreference struct {
+	PushEnabled       bool   `json:"pushEnabled"`
+	EmailEnabled      bool   `json:"emailEnabled"`
+	DigestFrequency   string `json:"digestFrequency"`
+	QuietHoursStart   string `json:"quietHoursStart"`
+	QuietHoursEnd     string `json:"quietHoursEnd"`
+	TripUpdates       bool   `json:"tripUpdates"`
+	BudgetAlerts      bool   `json:"budgetAlerts"`
+	AiPlanReadyAlerts bool   `json:"aiPlanReadyAlerts"`
+	Version           int    `json:"version"`
+}
+
 type llmProvider struct {
 	ID        string    `json:"id"`
 	Provider  string    `json:"provider"`
@@ -71,6 +83,17 @@ var (
 		AvoidTags:           []string{"too-many-transfers"},
 		Version:             1,
 	}
+	myNotificationPreference = notificationPreference{
+		PushEnabled:       true,
+		EmailEnabled:      false,
+		DigestFrequency:   "daily",
+		QuietHoursStart:   "22:00",
+		QuietHoursEnd:     "07:00",
+		TripUpdates:       true,
+		BudgetAlerts:      true,
+		AiPlanReadyAlerts: true,
+		Version:           1,
+	}
 	providerList = []llmProvider{}
 )
 
@@ -79,6 +102,8 @@ func RegisterRoutes(group *gin.RouterGroup) {
 	group.PATCH("/me", patchMe)
 	group.GET("/me/preferences", getMyPreferences)
 	group.PUT("/me/preferences", putMyPreferences)
+	group.GET("/me/notification-preferences", getMyNotificationPreferences)
+	group.PUT("/me/notification-preferences", putMyNotificationPreferences)
 	group.GET("/me/llm-providers", listMyProviders)
 	group.POST("/me/llm-providers", createMyProvider)
 	group.DELETE("/me/llm-providers/:providerId", deleteMyProvider)
@@ -146,6 +171,39 @@ func putMyPreferences(c *gin.Context) {
 	in.Version = myPreference.Version + 1
 	myPreference = in
 	updated := myPreference
+	usersMu.Unlock()
+
+	response.JSON(c, http.StatusOK, updated)
+}
+
+func getMyNotificationPreferences(c *gin.Context) {
+	usersMu.RLock()
+	item := myNotificationPreference
+	usersMu.RUnlock()
+	response.JSON(c, http.StatusOK, item)
+}
+
+func putMyNotificationPreferences(c *gin.Context) {
+	var in notificationPreference
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	freq := strings.TrimSpace(in.DigestFrequency)
+	if freq != "instant" && freq != "daily" && freq != "weekly" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "digestFrequency must be instant, daily, or weekly", nil)
+		return
+	}
+
+	in.QuietHoursStart = strings.TrimSpace(in.QuietHoursStart)
+	in.QuietHoursEnd = strings.TrimSpace(in.QuietHoursEnd)
+	in.DigestFrequency = freq
+
+	usersMu.Lock()
+	in.Version = myNotificationPreference.Version + 1
+	myNotificationPreference = in
+	updated := myNotificationPreference
 	usersMu.Unlock()
 
 	response.JSON(c, http.StatusOK, updated)
