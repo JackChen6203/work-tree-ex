@@ -237,10 +237,10 @@ export function usePatchExpenseMutation(tripId: string) {
   });
 }
 
-export function useNotificationsQuery() {
+export function useNotificationsQuery(unreadOnly = false) {
   return useQuery({
-    queryKey: ["notifications"],
-    queryFn: listNotifications
+    queryKey: ["notifications", unreadOnly],
+    queryFn: () => listNotifications(unreadOnly)
   });
 }
 

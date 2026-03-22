@@ -68,6 +68,8 @@ export const dictionaries = {
     "dashboard.remainingItem.4": "Notification：已讀狀態與推播偏好設定",
     "notifications.markAllRead": "全部標記已讀",
     "notifications.delete": "刪除",
+    "notifications.showUnread": "僅看未讀",
+    "notifications.showAll": "顯示全部",
     "notifications.unread": "未讀",
     "notifications.read": "已讀"
   },
@@ -138,6 +140,8 @@ export const dictionaries = {
     "dashboard.remainingItem.4": "Notifications: read-state and push preference settings",
     "notifications.markAllRead": "Mark all as read",
     "notifications.delete": "Delete",
+    "notifications.showUnread": "Show unread only",
+    "notifications.showAll": "Show all",
     "notifications.unread": "Unread",
     "notifications.read": "Read"
   }

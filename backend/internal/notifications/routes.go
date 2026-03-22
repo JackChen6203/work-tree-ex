@@ -37,9 +37,16 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 }
 
 func listNotifications(c *gin.Context) {
+	unreadOnly := strings.EqualFold(strings.TrimSpace(c.Query("unreadOnly")), "true")
+
 	notificationsMu.RLock()
-	copyItems := make([]notification, len(items))
-	copy(copyItems, items)
+	copyItems := make([]notification, 0, len(items))
+	for _, item := range items {
+		if unreadOnly && item.ReadAt != nil {
+			continue
+		}
+		copyItems = append(copyItems, item)
+	}
 	notificationsMu.RUnlock()
 
 	response.JSON(c, http.StatusOK, copyItems)

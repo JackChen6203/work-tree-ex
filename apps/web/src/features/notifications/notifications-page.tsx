@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
@@ -6,7 +6,8 @@ import { useDeleteNotificationMutation, useMarkAllNotificationsReadMutation, use
 
 export function NotificationsPage() {
   const { t } = useI18n();
-  const { data: notifications = [], isLoading } = useNotificationsQuery();
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const { data: notifications = [], isLoading } = useNotificationsQuery(unreadOnly);
   const markReadMutation = useMarkNotificationReadMutation();
   const markAllReadMutation = useMarkAllNotificationsReadMutation();
   const deleteMutation = useDeleteNotificationMutation();
@@ -46,7 +47,19 @@ export function NotificationsPage() {
         </button>
       }
     >
+      <div className="mb-3 flex items-center justify-end">
+        <button
+          className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink"
+          onClick={() => {
+            setUnreadOnly((prev) => !prev);
+          }}
+          type="button"
+        >
+          {unreadOnly ? t("notifications.showAll") : t("notifications.showUnread")}
+        </button>
+      </div>
       {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading notifications...</div> : null}
+      {!isLoading && items.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No notifications found.</div> : null}
       <div className="space-y-3">
         {items.map((item) => (
           <div key={item.id} className={`rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}>

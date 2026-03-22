@@ -3,7 +3,9 @@ package notifications
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -101,5 +103,32 @@ func TestDeleteNotificationNotFound(t *testing.T) {
 
 	if deleteW.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 delete missing, got %d", deleteW.Code)
+	}
+}
+
+func TestListNotificationsUnreadOnly(t *testing.T) {
+	r := setupRouter()
+
+	now := time.Now().UTC()
+	notificationsMu.Lock()
+	items[1].ReadAt = &now
+	notificationsMu.Unlock()
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?unreadOnly=true", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list unread-only, got %d", listW.Code)
+	}
+
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+	if len(items) != 2 {
+		t.Fatalf("setup should keep 2 items, got %d", len(items))
+	}
+
+	if body := listW.Body.String(); body == "" || !strings.Contains(body, "n-1") || strings.Contains(body, "n-2") {
+		t.Fatalf("expected only unread n-1 in payload, got %s", body)
 	}
 }

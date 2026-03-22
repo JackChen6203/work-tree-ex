@@ -10,8 +10,13 @@ export interface NotificationItemApi {
   createdAt?: string;
 }
 
-export function listNotifications() {
-  return apiRequest<NotificationItemApi[]>("/api/v1/notifications");
+export function listNotifications(unreadOnly = false) {
+  const params = new URLSearchParams();
+  if (unreadOnly) {
+    params.set("unreadOnly", "true");
+  }
+
+  return apiRequest<NotificationItemApi[]>(`/api/v1/notifications${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
 export async function markNotificationRead(notificationId: string) {
