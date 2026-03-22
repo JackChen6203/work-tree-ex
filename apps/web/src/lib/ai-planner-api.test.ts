@@ -50,6 +50,10 @@ describe("ai planner api", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { tripId: "trip-1", planId: "plan-1", adopted: true, status: "valid", warnings: [] } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { tripId: "trip-1", planId: "plan-1", adopted: true, status: "warning", warnings: ["budget warning"] } })
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -67,6 +71,7 @@ describe("ai planner api", () => {
     });
 
     await adoptAiPlan("trip-1", "plan-1");
+    await adoptAiPlan("trip-1", "plan-1", { confirmWarnings: true });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -82,6 +87,17 @@ describe("ai planner api", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ "Idempotency-Key": "33333333-3333-3333-3333-333333333333" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8080/api/v1/trips/trip-1/ai/plans/plan-1/adopt",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Idempotency-Key": "33333333-3333-3333-3333-333333333333",
+          "X-Confirm-Warnings": "true"
+        })
       })
     );
   });

@@ -58,11 +58,12 @@ export function getAiPlan(tripId: string, planId: string) {
   return apiRequest<AiPlanDraft>(`/api/v1/trips/${tripId}/ai/plans/${planId}`);
 }
 
-export function adoptAiPlan(tripId: string, planId: string) {
+export function adoptAiPlan(tripId: string, planId: string, options?: { confirmWarnings?: boolean }) {
   return apiRequest<AdoptAiPlanResponse>(`/api/v1/trips/${tripId}/ai/plans/${planId}/adopt`, {
     method: "POST",
     headers: {
-      "Idempotency-Key": crypto.randomUUID()
+      "Idempotency-Key": crypto.randomUUID(),
+      ...(options?.confirmWarnings ? { "X-Confirm-Warnings": "true" } : {})
     }
   });
 }
