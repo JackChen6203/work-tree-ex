@@ -19,9 +19,19 @@ export interface RouteEstimate {
   snapshotToken: string;
 }
 
-export function searchPlaces(query: string) {
-  const q = encodeURIComponent(query);
-  return apiRequest<PlaceSearchItem[]>(`/api/v1/maps/search?q=${q}`);
+export function searchPlaces(query: string, options?: { lat?: number; lng?: number; limit?: number }) {
+  const params = new URLSearchParams();
+  params.set("q", query);
+  if (typeof options?.lat === "number") {
+    params.set("lat", String(options.lat));
+  }
+  if (typeof options?.lng === "number") {
+    params.set("lng", String(options.lng));
+  }
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  return apiRequest<PlaceSearchItem[]>(`/api/v1/maps/search?${params.toString()}`);
 }
 
 export function estimateRoute(input: {

@@ -36,6 +36,16 @@ func searchPlaces(c *gin.Context) {
 		return
 	}
 
+	limit := 5
+	if rawLimit := strings.TrimSpace(c.Query("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 20 {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "limit must be an integer between 1 and 20", nil)
+			return
+		}
+		limit = parsed
+	}
+
 	lat := parseFloatWithDefault(c.Query("lat"), 35.0116)
 	lng := parseFloatWithDefault(c.Query("lng"), 135.7681)
 
@@ -72,6 +82,9 @@ func searchPlaces(c *gin.Context) {
 		name := strings.ToLower(item["name"].(string))
 		if strings.Contains(name, queryLower) || strings.Contains(queryLower, "kyoto") {
 			filtered = append(filtered, item)
+			if len(filtered) == limit {
+				break
+			}
 		}
 	}
 

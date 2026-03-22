@@ -40,3 +40,30 @@ func TestEstimateRoute(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+func TestSearchPlacesLimitValidation(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/search?q=kyoto&limit=0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSearchPlacesLimitApplied(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/search?q=kyoto&limit=1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !(len(body) > 0) || !(bytes.Count([]byte(body), []byte("providerPlaceId")) == 1) {
+		t.Fatalf("expected exactly one place in payload, got %s", body)
+	}
+}
