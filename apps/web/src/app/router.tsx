@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./app-shell";
 import { PublicOnlyGate } from "./public-only-gate";
 import { SessionGate } from "./session-gate";
+import { OAuthBridgePage } from "./oauth-bridge-page";
 import { AuthPage } from "../features/auth/auth-page";
 import { WelcomePage } from "../features/auth/welcome-page";
 import { DashboardPage } from "../features/dashboard/dashboard-page";
@@ -14,6 +15,14 @@ import { NotificationsPage } from "../features/notifications/notifications-page"
 import { SettingsPage } from "../features/settings/settings-page";
 
 export const router = createBrowserRouter([
+  {
+    path: "/api/v1/auth/oauth/:provider/start",
+    element: <OAuthBridgePage />
+  },
+  {
+    path: "/api/v1/auth/oauth/:provider/callback",
+    element: <OAuthBridgePage />
+  },
   {
     path: "/welcome",
     element: (

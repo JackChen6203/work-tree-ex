@@ -181,6 +181,10 @@ func startOAuth(c *gin.Context) {
 	query.Set("prompt", "consent")
 
 	redirectURL := config.AuthorizeURL + "?" + query.Encode()
+	if wantsJSONRedirect(c) {
+		response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+		return
+	}
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
@@ -194,6 +198,10 @@ func callbackOAuth(c *gin.Context) {
 	if reason := strings.TrimSpace(c.Query("error")); reason != "" {
 		frontendURL := buildFrontendBaseURL(c)
 		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=" + url.QueryEscape(reason)
+		if wantsJSONRedirect(c) {
+			response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+			return
+		}
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
@@ -203,6 +211,10 @@ func callbackOAuth(c *gin.Context) {
 	if state == "" || code == "" {
 		frontendURL := buildFrontendBaseURL(c)
 		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=missing_code_or_state"
+		if wantsJSONRedirect(c) {
+			response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+			return
+		}
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
@@ -214,6 +226,10 @@ func callbackOAuth(c *gin.Context) {
 		authStateMu.Unlock()
 		frontendURL := buildFrontendBaseURL(c)
 		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=invalid_state"
+		if wantsJSONRedirect(c) {
+			response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+			return
+		}
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
@@ -222,6 +238,10 @@ func callbackOAuth(c *gin.Context) {
 		authStateMu.Unlock()
 		frontendURL := buildFrontendBaseURL(c)
 		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=provider_mismatch"
+		if wantsJSONRedirect(c) {
+			response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+			return
+		}
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
@@ -232,6 +252,10 @@ func callbackOAuth(c *gin.Context) {
 		authStateMu.Unlock()
 		frontendURL := buildFrontendBaseURL(c)
 		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=" + url.QueryEscape("oauth_exchange_failed")
+		if wantsJSONRedirect(c) {
+			response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+			return
+		}
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
@@ -244,6 +268,10 @@ func callbackOAuth(c *gin.Context) {
 
 	frontendURL := buildFrontendBaseURL(c)
 	redirectURL := frontendURL + "/login?oauth=success&provider=" + url.QueryEscape(provider)
+	if wantsJSONRedirect(c) {
+		response.JSON(c, http.StatusOK, gin.H{"redirectTo": redirectURL})
+		return
+	}
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
@@ -519,6 +547,10 @@ func magicLinkAuthEnabled() bool {
 		return false
 	}
 	return magicLinkPreviewEnabled()
+}
+
+func wantsJSONRedirect(c *gin.Context) bool {
+	return strings.EqualFold(strings.TrimSpace(c.Query("transport")), "json")
 }
 
 type googleTokenResponse struct {
