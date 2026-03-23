@@ -483,4 +483,3 @@ func detectTimeOverlapsLocked(tripID, dayID string) []string {
 
 	return warnings
 }
-

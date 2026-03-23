@@ -37,11 +37,11 @@ const (
 
 // AiDraftPayload is the structured output from the AI planner.
 type AiDraftPayload struct {
-	Title          string             `json:"title"`
-	Summary        string             `json:"summary"`
-	Days           []AiDraftDay       `json:"days"`
-	BudgetSummary  AiBudgetSummary    `json:"budgetSummary"`
-	GlobalWarnings []string           `json:"globalWarnings"`
+	Title          string          `json:"title"`
+	Summary        string          `json:"summary"`
+	Days           []AiDraftDay    `json:"days"`
+	BudgetSummary  AiBudgetSummary `json:"budgetSummary"`
+	GlobalWarnings []string        `json:"globalWarnings"`
 }
 
 // AiDraftDay represents one day in an AI draft.
@@ -159,8 +159,8 @@ func validateSchema(draft AiDraftPayload) []ValidationIssue {
 			if !validItemTypes[item.ItemType] {
 				issues = append(issues, ValidationIssue{
 					Severity: "error", RuleCode: RuleSchemaInvalid,
-					Message:  "invalid itemType",
-					Details:  map[string]any{"dayIndex": di, "itemIndex": ii, "itemType": item.ItemType},
+					Message: "invalid itemType",
+					Details: map[string]any{"dayIndex": di, "itemIndex": ii, "itemType": item.ItemType},
 				})
 			}
 			if item.StartAt != nil && item.EndAt != nil {
@@ -196,8 +196,8 @@ func validateBusiness(draft AiDraftPayload, ctx TripContext) []ValidationIssue {
 		if d.Before(tripStart) || d.After(tripEnd) {
 			issues = append(issues, ValidationIssue{
 				Severity: "error", RuleCode: RuleItemOutOfRange,
-				Message:  "day date is outside trip date range",
-				Details:  map[string]any{"dayIndex": di, "date": day.Date},
+				Message: "day date is outside trip date range",
+				Details: map[string]any{"dayIndex": di, "date": day.Date},
 			})
 		}
 	}
@@ -209,14 +209,14 @@ func validateBusiness(draft AiDraftPayload, ctx TripContext) []ValidationIssue {
 		if ratio > 1.2 {
 			issues = append(issues, ValidationIssue{
 				Severity: "error", RuleCode: RuleBudgetInvalid,
-				Message:  "estimated budget exceeds total budget by more than 20%",
-				Details:  map[string]any{"estimated": totalEstimated, "budget": ctx.TotalBudget, "ratio": math.Round(ratio*100) / 100},
+				Message: "estimated budget exceeds total budget by more than 20%",
+				Details: map[string]any{"estimated": totalEstimated, "budget": ctx.TotalBudget, "ratio": math.Round(ratio*100) / 100},
 			})
 		} else if ratio > 1.1 {
 			issues = append(issues, ValidationIssue{
 				Severity: "warning", RuleCode: RuleBudgetWarning,
-				Message:  "estimated budget exceeds total budget by more than 10%",
-				Details:  map[string]any{"estimated": totalEstimated, "budget": ctx.TotalBudget, "ratio": math.Round(ratio*100) / 100},
+				Message: "estimated budget exceeds total budget by more than 10%",
+				Details: map[string]any{"estimated": totalEstimated, "budget": ctx.TotalBudget, "ratio": math.Round(ratio*100) / 100},
 			})
 		}
 	}
@@ -229,8 +229,8 @@ func validateBusiness(draft AiDraftPayload, ctx TripContext) []ValidationIssue {
 				if prevDay, exists := seen[item.Place.ProviderPlaceID]; exists {
 					issues = append(issues, ValidationIssue{
 						Severity: "warning", RuleCode: RuleDuplicatePOI,
-						Message:  "duplicate place across days",
-						Details:  map[string]any{"dayIndex": di, "itemIndex": ii, "firstSeenDay": prevDay, "placeId": item.Place.ProviderPlaceID},
+						Message: "duplicate place across days",
+						Details: map[string]any{"dayIndex": di, "itemIndex": ii, "firstSeenDay": prevDay, "placeId": item.Place.ProviderPlaceID},
 					})
 				} else {
 					seen[item.Place.ProviderPlaceID] = di
@@ -259,8 +259,8 @@ func validateBusiness(draft AiDraftPayload, ctx TripContext) []ValidationIssue {
 				if a.start < b.end && b.start < a.end {
 					issues = append(issues, ValidationIssue{
 						Severity: "warning", RuleCode: RuleTimeOverlap,
-						Message:  "time overlap detected",
-						Details:  map[string]any{"dayIndex": di, "itemA": a.idx, "itemB": b.idx, "titleA": a.title, "titleB": b.title},
+						Message: "time overlap detected",
+						Details: map[string]any{"dayIndex": di, "itemA": a.idx, "itemB": b.idx, "titleA": a.title, "titleB": b.title},
 					})
 				}
 			}
@@ -288,8 +288,8 @@ func validateGeographic(draft AiDraftPayload) []ValidationIssue {
 			if p.Lat < -90 || p.Lat > 90 || p.Lng < -180 || p.Lng > 180 {
 				issues = append(issues, ValidationIssue{
 					Severity: "error", RuleCode: RuleSchemaInvalid,
-					Message:  "invalid coordinates",
-					Details:  map[string]any{"dayIndex": di, "itemIndex": ii, "lat": p.Lat, "lng": p.Lng},
+					Message: "invalid coordinates",
+					Details: map[string]any{"dayIndex": di, "itemIndex": ii, "lat": p.Lat, "lng": p.Lng},
 				})
 				continue
 			}
@@ -300,8 +300,8 @@ func validateGeographic(draft AiDraftPayload) []ValidationIssue {
 				if dist > 500 {
 					issues = append(issues, ValidationIssue{
 						Severity: "warning", RuleCode: RuleGeoImpossibleTravel,
-						Message:  "large distance between consecutive items",
-						Details:  map[string]any{"dayIndex": di, "fromItem": prevIdx, "toItem": ii, "distanceKm": math.Round(dist)},
+						Message: "large distance between consecutive items",
+						Details: map[string]any{"dayIndex": di, "fromItem": prevIdx, "toItem": ii, "distanceKm": math.Round(dist)},
 					})
 				}
 			}
@@ -338,15 +338,15 @@ func validateTrust(draft AiDraftPayload) []ValidationIssue {
 			if item.Place.ProviderPlaceID == "" {
 				issues = append(issues, ValidationIssue{
 					Severity: "warning", RuleCode: RuleUnverifiedPlace,
-					Message:  "place has no provider ID, cannot verify",
-					Details:  map[string]any{"dayIndex": di, "itemIndex": ii, "placeName": item.Place.Name},
+					Message: "place has no provider ID, cannot verify",
+					Details: map[string]any{"dayIndex": di, "itemIndex": ii, "placeName": item.Place.Name},
 				})
 			}
 			if item.Place.OpeningHours == nil {
 				issues = append(issues, ValidationIssue{
 					Severity: "info", RuleCode: RuleMissingOpeningHours,
-					Message:  "opening hours not available",
-					Details:  map[string]any{"dayIndex": di, "itemIndex": ii, "placeName": item.Place.Name},
+					Message: "opening hours not available",
+					Details: map[string]any{"dayIndex": di, "itemIndex": ii, "placeName": item.Place.Name},
 				})
 			}
 		}
@@ -380,16 +380,16 @@ func validateSafety(draft AiDraftPayload) []ValidationIssue {
 		if scriptPattern.MatchString(text) {
 			issues = append(issues, ValidationIssue{
 				Severity: "error", RuleCode: RuleSafetyPromptInjection,
-				Message:  "potential script injection detected",
-				Details:  map[string]any{"snippet": truncate(text, 100)},
+				Message: "potential script injection detected",
+				Details: map[string]any{"snippet": truncate(text, 100)},
 			})
 			break // one is enough
 		}
 		if secretPattern.MatchString(text) {
 			issues = append(issues, ValidationIssue{
 				Severity: "error", RuleCode: RuleSafetyPromptInjection,
-				Message:  "potential secret/key leak detected in output",
-				Details:  map[string]any{"snippet": truncate(text, 100)},
+				Message: "potential secret/key leak detected in output",
+				Details: map[string]any{"snippet": truncate(text, 100)},
 			})
 			break
 		}

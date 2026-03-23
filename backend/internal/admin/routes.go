@@ -14,15 +14,15 @@ import (
 
 // Job represents an AI planning job in the admin view.
 type Job struct {
-	ID           string     `json:"id"`
-	TripID       string     `json:"tripId"`
-	Status       string     `json:"status"`
-	Provider     string     `json:"provider"`
-	FailureCode  *string    `json:"failureCode,omitempty"`
-	QueuedAt     time.Time  `json:"queuedAt"`
-	StartedAt    *time.Time `json:"startedAt,omitempty"`
-	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
-	RetryCount   int        `json:"retryCount"`
+	ID          string     `json:"id"`
+	TripID      string     `json:"tripId"`
+	Status      string     `json:"status"`
+	Provider    string     `json:"provider"`
+	FailureCode *string    `json:"failureCode,omitempty"`
+	QueuedAt    time.Time  `json:"queuedAt"`
+	StartedAt   *time.Time `json:"startedAt,omitempty"`
+	FinishedAt  *time.Time `json:"finishedAt,omitempty"`
+	RetryCount  int        `json:"retryCount"`
 }
 
 // AuditLog represents an admin audit log entry.

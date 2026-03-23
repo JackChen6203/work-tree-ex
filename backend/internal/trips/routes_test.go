@@ -46,7 +46,7 @@ func TestCreateAndGetTrip(t *testing.T) {
 
 	var created struct {
 		Data struct {
-			Trip map[string]any `json:"trip"`
+			Trip map[string]any   `json:"trip"`
 			Days []map[string]any `json:"days"`
 		} `json:"data"`
 	}

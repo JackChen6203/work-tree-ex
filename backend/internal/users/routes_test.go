@@ -296,7 +296,7 @@ func TestListProvidersFilterByProvider(t *testing.T) {
 
 	listReq := httptest.NewRequest(http.MethodGet, "/users/me/llm-providers?provider=openai", nil)
 	listRec := httptest.NewRecorder()
-		r.ServeHTTP(listRec, listReq)
+	r.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", listRec.Code, listRec.Body.String())
 	}

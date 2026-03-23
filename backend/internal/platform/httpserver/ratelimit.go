@@ -60,7 +60,7 @@ func (rl *rateLimiter) allow(key string) (bool, int) {
 	}
 
 	elapsed := time.Since(v.lastSeen)
-	refill := int(elapsed / rl.interval) * rl.rate
+	refill := int(elapsed/rl.interval) * rl.rate
 	if refill > 0 {
 		v.tokens += refill
 		if v.tokens > rl.burst {
