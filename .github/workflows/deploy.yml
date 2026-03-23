@@ -34,10 +34,38 @@ jobs:
         working-directory: apps/web
         run: npm run build
 
+  migrate-production:
+    name: Run Production Migrations
+    runs-on: ubuntu-latest
+    needs: verify-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install golang-migrate
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Run migrations against Supabase
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+        run: |
+          test -n "$MIGRATE_DATABASE_URL"
+          set +e
+          output=$(migrate -path backend/migrations -database "$MIGRATE_DATABASE_URL" up 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ] && [[ "$output" != *"no change"* ]]; then
+            exit "$status"
+          fi
+
   deploy:
     name: Deploy To Oracle VPS
     runs-on: ubuntu-latest
-    needs: verify-frontend
+    needs:
+      - verify-frontend
+      - migrate-production
     permissions:
       contents: read
 
@@ -77,4 +105,4 @@ jobs:
 
       - name: Deploy with Docker Compose
         run: |
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && docker compose pull || true && docker compose --profile tools run --rm migrate && docker compose up -d --build"
+          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && docker compose pull || true && docker compose up -d --build redis api worker web"
