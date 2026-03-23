@@ -45,6 +45,18 @@ describe("trips api mapping", () => {
     expect(trips[0].name).toBe("Kyoto");
   });
 
+  it("treats null trip payloads as an empty list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: null })
+      })
+    );
+
+    await expect(listTrips()).resolves.toEqual([]);
+  });
+
   it("sends idempotency and version headers on write operations", async () => {
     vi.stubGlobal("crypto", { randomUUID: () => "11111111-1111-1111-1111-111111111111" } as unknown as Crypto);
     const fetchMock = vi.fn().mockResolvedValue({

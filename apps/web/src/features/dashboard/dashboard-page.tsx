@@ -104,7 +104,7 @@ export function DashboardPage() {
         ) : null}
         {error ? (
           <div className="mb-6 rounded-[24px] bg-coral/10 p-4 text-sm text-coral">
-            Unable to load trips from API. Start the backend at `http://localhost:8080` or set `VITE_API_BASE_URL`.
+            Unable to load trips right now. Please refresh or try again shortly.
           </div>
         ) : null}
         {isLoading ? <div className="rounded-[24px] bg-sand/70 p-5 text-sm text-ink/60">Loading trips from API...</div> : null}

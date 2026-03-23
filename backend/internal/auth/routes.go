@@ -1,8 +1,13 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -33,8 +38,9 @@ type sessionUser struct {
 }
 
 type codeEntry struct {
-	Code      string
-	ExpiresAt time.Time
+	CodeHash       [32]byte
+	ExpiresAt      time.Time
+	FailedAttempts int
 }
 
 const sessionCookieName = "tt_session"
@@ -48,6 +54,7 @@ type oauthProviderConfig struct {
 	AuthorizeURL string
 	Scope        string
 	ClientIDEnv  string
+	ClientSecret string
 }
 
 var oauthProviders = map[string]oauthProviderConfig{
@@ -55,6 +62,7 @@ var oauthProviders = map[string]oauthProviderConfig{
 		AuthorizeURL: "https://accounts.google.com/o/oauth2/v2/auth",
 		Scope:        "openid email profile",
 		ClientIDEnv:  "OAUTH_GOOGLE_CLIENT_ID",
+		ClientSecret: "OAUTH_GOOGLE_CLIENT_SECRET",
 	},
 	"apple": {
 		AuthorizeURL: "https://appleid.apple.com/auth/authorize",
@@ -110,6 +118,13 @@ var (
 	sessions     = map[string]*sessionUser{}
 )
 
+const maxMagicLinkFailedAttempts = 5
+
+var (
+	googleTokenEndpoint    = "https://oauth2.googleapis.com/token"
+	googleUserInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
+)
+
 func RegisterRoutes(group *gin.RouterGroup) {
 	group.POST("/request-magic-link", requestMagicLink)
 	group.POST("/verify-magic-link", verifyMagicLink)
@@ -140,8 +155,20 @@ func startOAuth(c *gin.Context) {
 	callbackURL := buildOAuthCallbackURL(c, provider)
 	clientID := strings.TrimSpace(os.Getenv(config.ClientIDEnv))
 	if clientID == "" {
+		if isProductionAuthMode() {
+			response.Error(c, http.StatusServiceUnavailable, perrors.CodeNotImplemented, "oauth provider is not configured", gin.H{"provider": provider})
+			return
+		}
 		devRedirect := callbackURL + "?code=dev-oauth-code&state=" + url.QueryEscape(state)
 		c.Redirect(http.StatusFound, devRedirect)
+		return
+	}
+	if provider == "google" && strings.TrimSpace(os.Getenv(config.ClientSecret)) == "" && isProductionAuthMode() {
+		response.Error(c, http.StatusServiceUnavailable, perrors.CodeNotImplemented, "google oauth is not fully configured", nil)
+		return
+	}
+	if provider != "google" && isProductionAuthMode() {
+		response.Error(c, http.StatusServiceUnavailable, perrors.CodeNotImplemented, "oauth provider is not enabled in production", gin.H{"provider": provider})
 		return
 	}
 
@@ -200,13 +227,13 @@ func callbackOAuth(c *gin.Context) {
 	}
 	delete(oauthStates, state)
 
-	timestamp := time.Now().UnixNano()
-	email := fmt.Sprintf("%s_user_%d@oauth.local", provider, timestamp)
-	user := &sessionUser{
-		ID:     fmt.Sprintf("oauth_%s_%d", provider, timestamp),
-		Name:   strings.ToUpper(provider[:1]) + provider[1:] + " User",
-		Email:  email,
-		Avatar: strings.ToUpper(provider[:1]) + "U",
+	user, err := resolveOAuthUser(c, provider, code)
+	if err != nil {
+		authStateMu.Unlock()
+		frontendURL := buildFrontendBaseURL(c)
+		redirectURL := frontendURL + "/login?oauth=error&provider=" + url.QueryEscape(provider) + "&reason=" + url.QueryEscape("oauth_exchange_failed")
+		c.Redirect(http.StatusFound, redirectURL)
+		return
 	}
 	if err := upsertSessionLocked(c, user); err != nil {
 		authStateMu.Unlock()
@@ -221,6 +248,11 @@ func callbackOAuth(c *gin.Context) {
 }
 
 func requestMagicLink(c *gin.Context) {
+	if !magicLinkAuthEnabled() {
+		response.Error(c, http.StatusServiceUnavailable, perrors.CodeNotImplemented, "magic-link auth is disabled", nil)
+		return
+	}
+
 	var in magicLinkRequestInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -240,17 +272,26 @@ func requestMagicLink(c *gin.Context) {
 	}
 
 	authStateMu.Lock()
-	pendingCodes[email] = codeEntry{Code: code, ExpiresAt: time.Now().Add(10 * time.Minute)}
+	pendingCodes[email] = codeEntry{CodeHash: sha256.Sum256([]byte(code)), ExpiresAt: time.Now().Add(10 * time.Minute)}
 	authStateMu.Unlock()
 
-	response.JSON(c, http.StatusOK, gin.H{
-		"sent":        true,
-		"expiresIn":   600,
-		"previewCode": code,
-	})
+	payload := gin.H{
+		"sent":      true,
+		"expiresIn": 600,
+	}
+	if magicLinkPreviewEnabled() {
+		payload["previewCode"] = code
+	}
+
+	response.JSON(c, http.StatusOK, payload)
 }
 
 func verifyMagicLink(c *gin.Context) {
+	if !magicLinkAuthEnabled() {
+		response.Error(c, http.StatusServiceUnavailable, perrors.CodeNotImplemented, "magic-link auth is disabled", nil)
+		return
+	}
+
 	var in magicLinkVerifyInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -276,7 +317,14 @@ func verifyMagicLink(c *gin.Context) {
 		return
 	}
 
-	if entry.Code != strings.TrimSpace(in.Code) {
+	codeHash := sha256.Sum256([]byte(strings.TrimSpace(in.Code)))
+	if subtle.ConstantTimeCompare(entry.CodeHash[:], codeHash[:]) != 1 {
+		entry.FailedAttempts++
+		if entry.FailedAttempts >= maxMagicLinkFailedAttempts {
+			delete(pendingCodes, email)
+		} else {
+			pendingCodes[email] = entry
+		}
 		authStateMu.Unlock()
 		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "magic-link code is invalid or expired", nil)
 		return
@@ -456,6 +504,123 @@ func displayNameFromEmail(email string) string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+func isProductionAuthMode() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "prod")
+}
+
+func magicLinkPreviewEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW")), "true")
+}
+
+func magicLinkAuthEnabled() bool {
+	if isProductionAuthMode() {
+		return false
+	}
+	return magicLinkPreviewEnabled()
+}
+
+type googleTokenResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+type googleUserInfoResponse struct {
+	Subject       string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+}
+
+func resolveOAuthUser(c *gin.Context, provider, code string) (*sessionUser, error) {
+	if provider == "google" && strings.TrimSpace(os.Getenv("OAUTH_GOOGLE_CLIENT_ID")) != "" && strings.TrimSpace(os.Getenv("OAUTH_GOOGLE_CLIENT_SECRET")) != "" {
+		return exchangeGoogleOAuthCode(c, code)
+	}
+
+	if isProductionAuthMode() {
+		return nil, fmt.Errorf("oauth provider %s is not available in production", provider)
+	}
+
+	timestamp := time.Now().UnixNano()
+	email := fmt.Sprintf("%s_user_%d@oauth.local", provider, timestamp)
+	return &sessionUser{
+		ID:     fmt.Sprintf("oauth_%s_%d", provider, timestamp),
+		Name:   strings.ToUpper(provider[:1]) + provider[1:] + " User",
+		Email:  email,
+		Avatar: strings.ToUpper(provider[:1]) + "U",
+	}, nil
+}
+
+func exchangeGoogleOAuthCode(c *gin.Context, code string) (*sessionUser, error) {
+	form := url.Values{}
+	form.Set("client_id", strings.TrimSpace(os.Getenv("OAUTH_GOOGLE_CLIENT_ID")))
+	form.Set("client_secret", strings.TrimSpace(os.Getenv("OAUTH_GOOGLE_CLIENT_SECRET")))
+	form.Set("code", code)
+	form.Set("grant_type", "authorization_code")
+	form.Set("redirect_uri", buildOAuthCallbackURL(c, "google"))
+
+	req, err := http.NewRequest(http.MethodPost, googleTokenEndpoint, bytes.NewBufferString(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	tokenResp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer tokenResp.Body.Close()
+
+	if tokenResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(tokenResp.Body, 1024))
+		return nil, fmt.Errorf("google token exchange failed: %s", strings.TrimSpace(string(body)))
+	}
+
+	var tokenPayload googleTokenResponse
+	if err := json.NewDecoder(tokenResp.Body).Decode(&tokenPayload); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(tokenPayload.AccessToken) == "" {
+		return nil, fmt.Errorf("google token exchange returned empty access token")
+	}
+
+	userReq, err := http.NewRequest(http.MethodGet, googleUserInfoEndpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	userReq.Header.Set("Authorization", "Bearer "+tokenPayload.AccessToken)
+
+	userResp, err := client.Do(userReq)
+	if err != nil {
+		return nil, err
+	}
+	defer userResp.Body.Close()
+
+	if userResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(userResp.Body, 1024))
+		return nil, fmt.Errorf("google userinfo request failed: %s", strings.TrimSpace(string(body)))
+	}
+
+	var userPayload googleUserInfoResponse
+	if err := json.NewDecoder(userResp.Body).Decode(&userPayload); err != nil {
+		return nil, err
+	}
+	if !userPayload.EmailVerified || strings.TrimSpace(userPayload.Email) == "" || strings.TrimSpace(userPayload.Subject) == "" {
+		return nil, fmt.Errorf("google user info is incomplete")
+	}
+
+	name := strings.TrimSpace(userPayload.Name)
+	if name == "" {
+		name = displayNameFromEmail(userPayload.Email)
+	}
+
+	return &sessionUser{
+		ID:     "google_" + userPayload.Subject,
+		Name:   name,
+		Email:  userPayload.Email,
+		Avatar: avatarFromEmail(userPayload.Email),
+	}, nil
 }
 
 func avatarFromEmail(email string) string {

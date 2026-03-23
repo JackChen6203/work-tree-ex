@@ -90,7 +90,7 @@ export function mapTrip(apiTrip: TripApiModel, index = 0): TripSummary {
 }
 
 export async function listTrips() {
-  const data = await apiRequest<TripApiModel[]>("/api/v1/trips");
+  const data = (await apiRequest<TripApiModel[] | null>("/api/v1/trips")) ?? [];
   return data.map((trip, index) => mapTrip(trip, index));
 }
 

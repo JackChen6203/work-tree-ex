@@ -27,7 +27,7 @@ export function WelcomePage() {
               </Link>
             </div>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
-              {oauthProviders.slice(0, 6).map((provider) => (
+              {oauthProviders.map((provider) => (
                 <a
                   key={provider.id}
                   href={oauthStartUrl(provider.id)}

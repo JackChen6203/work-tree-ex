@@ -5,21 +5,27 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
-func setupAuthRouter() *gin.Engine {
+func setupAuthRouter(t *testing.T) *gin.Engine {
+	t.Helper()
+
 	gin.SetMode(gin.TestMode)
 	authStateMu.Lock()
 	pendingCodes = map[string]codeEntry{}
 	oauthStates = map[string]oauthStateEntry{}
 	sessions = map[string]*sessionUser{}
 	authStateMu.Unlock()
-	_ = os.Setenv("FRONTEND_BASE_URL", "http://localhost:5173")
+	t.Setenv("FRONTEND_BASE_URL", "http://localhost:5173")
+	t.Setenv("APP_ENV", "dev")
+	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "false")
+	t.Setenv("OAUTH_GOOGLE_CLIENT_ID", "")
+	t.Setenv("OAUTH_GOOGLE_CLIENT_SECRET", "")
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
@@ -28,7 +34,8 @@ func setupAuthRouter() *gin.Engine {
 }
 
 func TestMagicLinkRequestVerifyAndSession(t *testing.T) {
-	r := setupAuthRouter()
+	r := setupAuthRouter(t)
+	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "true")
 
 	requestBody := mustMarshalAuth(t, map[string]string{"email": "demo@example.com"})
 	requestReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-magic-link", bytes.NewBuffer(requestBody))
@@ -93,7 +100,8 @@ func TestMagicLinkRequestVerifyAndSession(t *testing.T) {
 }
 
 func TestVerifyMagicLinkRejectsInvalidCode(t *testing.T) {
-	r := setupAuthRouter()
+	r := setupAuthRouter(t)
+	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "true")
 
 	requestBody := mustMarshalAuth(t, map[string]string{"email": "demo@example.com"})
 	requestReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-magic-link", bytes.NewBuffer(requestBody))
@@ -120,7 +128,7 @@ func TestVerifyMagicLinkRejectsInvalidCode(t *testing.T) {
 }
 
 func TestOAuthStartRedirectsAndCallbackSetsSession(t *testing.T) {
-	r := setupAuthRouter()
+	r := setupAuthRouter(t)
 
 	startReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/google/start", nil)
 	startW := httptest.NewRecorder()
@@ -175,6 +183,95 @@ func TestOAuthStartRedirectsAndCallbackSetsSession(t *testing.T) {
 	}
 	if sessionResp.Data.User == nil || !strings.Contains(sessionResp.Data.User.Email, "@oauth.local") {
 		t.Fatalf("expected oauth session user")
+	}
+}
+
+func TestMagicLinkPreviewDisabledInProd(t *testing.T) {
+	r := setupAuthRouter(t)
+	t.Setenv("APP_ENV", "prod")
+	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "true")
+
+	requestBody := mustMarshalAuth(t, map[string]string{"email": "demo@example.com"})
+	requestReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-magic-link", bytes.NewBuffer(requestBody))
+	requestReq.Header.Set("Content-Type", "application/json")
+	requestW := httptest.NewRecorder()
+	r.ServeHTTP(requestW, requestReq)
+
+	if requestW.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected request status 503, got %d", requestW.Code)
+	}
+}
+
+func TestGoogleOAuthCodeExchangeInProd(t *testing.T) {
+	r := setupAuthRouter(t)
+	t.Setenv("APP_ENV", "prod")
+	t.Setenv("OAUTH_GOOGLE_CLIENT_ID", "google-client-id")
+	t.Setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-client-secret")
+
+	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/token":
+			if err := req.ParseForm(); err != nil {
+				t.Fatalf("parse token form: %v", err)
+			}
+			if req.Form.Get("client_id") != "google-client-id" || req.Form.Get("client_secret") != "google-client-secret" {
+				t.Fatalf("unexpected google credentials")
+			}
+			if req.Form.Get("grant_type") != "authorization_code" {
+				t.Fatalf("unexpected grant type %s", req.Form.Get("grant_type"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"token-123"}`))
+		case "/userinfo":
+			if req.Header.Get("Authorization") != "Bearer token-123" {
+				t.Fatalf("unexpected authorization header %s", req.Header.Get("Authorization"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"google-sub","email":"demo@gmail.com","email_verified":true,"name":"Demo User"}`))
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer oauthServer.Close()
+
+	googleTokenEndpoint = oauthServer.URL + "/token"
+	googleUserInfoEndpoint = oauthServer.URL + "/userinfo"
+	defer func() {
+		googleTokenEndpoint = "https://oauth2.googleapis.com/token"
+		googleUserInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo"
+	}()
+
+	startReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/google/start", nil)
+	startReq.Host = "aitravel.dpdns.org"
+	startReq.Header.Set("X-Forwarded-Proto", "https")
+	startW := httptest.NewRecorder()
+	r.ServeHTTP(startW, startReq)
+
+	if startW.Code != http.StatusFound {
+		t.Fatalf("expected oauth start status 302, got %d", startW.Code)
+	}
+
+	location := startW.Header().Get("Location")
+	parsedLocation, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parse redirect location: %v", err)
+	}
+	state := parsedLocation.Query().Get("state")
+	if state == "" {
+		t.Fatalf("expected state in redirect location")
+	}
+
+	callbackReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/google/callback?state="+url.QueryEscape(state)+"&code=real-google-code", nil)
+	callbackReq.Host = "aitravel.dpdns.org"
+	callbackReq.Header.Set("X-Forwarded-Proto", "https")
+	callbackW := httptest.NewRecorder()
+	r.ServeHTTP(callbackW, callbackReq)
+
+	if callbackW.Code != http.StatusFound {
+		t.Fatalf("expected oauth callback status 302, got %d", callbackW.Code)
+	}
+	if !strings.Contains(callbackW.Header().Get("Location"), "oauth=success") {
+		t.Fatalf("expected success redirect, got %s", callbackW.Header().Get("Location"))
 	}
 }
 

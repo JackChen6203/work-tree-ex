@@ -81,7 +81,9 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `JWT_SECRET` | Yes | API | Must be random in non-dev environments |
 | `JWT_ACCESS_TTL_MIN` | No | API | Default `60` |
 | `JWT_REFRESH_TTL_HOURS` | No | API | Default `168` |
+| `AUTH_ALLOW_MAGIC_LINK_PREVIEW` | Dev only | API auth routes | Set `true` only for local preview-code login during development |
 | `OAUTH_GOOGLE_CLIENT_ID` | Optional | API auth routes | Provider client ID |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | Required for real Google OAuth | API auth routes | Needed for server-side Google authorization-code exchange |
 | `OAUTH_APPLE_CLIENT_ID` | Optional | API auth routes | Provider client ID |
 | `OAUTH_FACEBOOK_CLIENT_ID` | Optional | API auth routes | Provider client ID |
 | `OAUTH_X_CLIENT_ID` | Optional | API auth routes | Provider client ID |
@@ -99,6 +101,8 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | Variable | Required | Used by | Notes |
 | --- | --- | --- | --- |
 | `VITE_API_BASE_URL` | Optional | `apps/web` | Needed when Vite dev server should call a backend origin directly, for example `http://localhost:8080` |
+| `VITE_ENABLE_MAGIC_LINK_AUTH` | Dev only | `apps/web` | Defaults to enabled in `npm run dev`, should stay `false` in production builds |
+| `VITE_OAUTH_PROVIDERS` | Recommended | `apps/web` | Comma-separated provider ids to show in the frontend, for example `google` |
 
 ### GitHub Actions secrets
 
@@ -193,7 +197,7 @@ Recommended:
 
 ### OAuth client IDs
 
-Only configure providers you actually plan to expose in the UI. All `OAUTH_*_CLIENT_ID` values are optional in the current backend. If a provider client ID is left blank, the backend falls back to a development shortcut flow.
+Only configure providers you actually plan to expose in the UI. In production, this backend only permits real Google OAuth when both `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET` are set. Other providers remain development-only placeholders unless you implement their token exchange.
 
 General process for every provider:
 
@@ -201,6 +205,7 @@ General process for every provider:
 2. Create an OAuth app.
 3. Add an authorized redirect URI.
 4. Copy the provider's client ID into the matching `OAUTH_*_CLIENT_ID` variable.
+5. For Google, also copy the client secret into `OAUTH_GOOGLE_CLIENT_SECRET`.
 
 Redirect URI pattern:
 
@@ -210,13 +215,9 @@ Redirect URI pattern:
 
 Examples:
 
-- `OAUTH_GOOGLE_CLIENT_ID` for Google sign-in
-- `OAUTH_GITHUB_CLIENT_ID` for GitHub sign-in
-- `OAUTH_LINE_CLIENT_ID` for LINE sign-in
-
-Important:
-
-- The current backend reads only client IDs, not client secrets.
+- `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET` for Google sign-in
+- `OAUTH_GITHUB_CLIENT_ID` for future GitHub sign-in work
+- `OAUTH_LINE_CLIENT_ID` for future LINE sign-in work
 - You still need the redirect URI registered exactly as your browser-facing API URL.
 - Set `FRONTEND_BASE_URL` to the frontend origin you want the OAuth callback to redirect back to after login.
 

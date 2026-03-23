@@ -34,10 +34,12 @@ The API starts at `http://0.0.0.0:8080` by default.
 - `HTTP_WRITE_TIMEOUT_SEC` (default: `15`)
 - `HTTP_SHUTDOWN_TIMEOUT_SEC` (default: `10`)
 - `FRONTEND_BASE_URL` (default: `http://localhost:5173`)
+- `AUTH_ALLOW_MAGIC_LINK_PREVIEW` (development only)
 
 OAuth provider client IDs (optional, used when available):
 
 - `OAUTH_GOOGLE_CLIENT_ID`
+- `OAUTH_GOOGLE_CLIENT_SECRET` (required for real Google OAuth code exchange)
 - `OAUTH_APPLE_CLIENT_ID`
 - `OAUTH_FACEBOOK_CLIENT_ID`
 - `OAUTH_X_CLIENT_ID`
@@ -48,7 +50,7 @@ OAuth provider client IDs (optional, used when available):
 - `OAUTH_TRIPADVISOR_CLIENT_ID`
 - `OAUTH_BOOKING_CLIENT_ID`
 
-When a provider client ID is not configured, `/api/v1/auth/oauth/:provider/start` runs in development shortcut mode and redirects directly to callback with a generated code so you can test the login flow end-to-end.
+When a provider client ID is not configured, `/api/v1/auth/oauth/:provider/start` runs in development shortcut mode only. In production, Google OAuth requires both `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET`, and the preview-code magic link flow is disabled.
 
 Auth session notes:
 

@@ -32,7 +32,7 @@ func (r *postgresRepository) List(ctx context.Context) ([]trip, error) {
 	}
 	defer rows.Close()
 
-	var items []trip
+	items := make([]trip, 0)
 	for rows.Next() {
 		t, err := scanTrip(rows)
 		if err != nil {

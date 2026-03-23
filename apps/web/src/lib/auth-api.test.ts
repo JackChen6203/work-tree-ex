@@ -9,7 +9,7 @@ describe("auth api", () => {
   it("posts magic link request and verification payloads", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { sent: true, expiresIn: 600, previewCode: "123456" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { sent: true, expiresIn: 600 } }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { user: { id: "u1", name: "Demo", email: "demo@example.com", avatar: "DM" }, roles: ["owner"] } }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { user: { id: "u1", name: "Demo", email: "demo@example.com", avatar: "DM" }, roles: ["owner"] } }) })
       .mockResolvedValueOnce({ ok: true });
