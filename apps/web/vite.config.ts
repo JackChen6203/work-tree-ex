@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//, /^\/healthz$/]
+      },
       manifest: {
         name: "TimeTree Travel Planner",
         short_name: "TravelPlanner",
