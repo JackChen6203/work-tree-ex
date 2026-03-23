@@ -1,17 +1,17 @@
-import { useEffect } from "react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useSessionStore } from "../store/session-store";
 import { SessionHydrationScreen } from "./session-hydration-screen";
 
-interface SessionGateProps {
+interface PublicOnlyGateProps {
   children: ReactNode;
 }
 
-export function SessionGate({ children }: SessionGateProps) {
+export function PublicOnlyGate({ children }: PublicOnlyGateProps) {
   const hydrated = useSessionStore((state) => state.hydrated);
   const user = useSessionStore((state) => state.user);
   const hydrate = useSessionStore((state) => state.hydrate);
+
   useEffect(() => {
     if (!hydrated) {
       void hydrate();
@@ -22,8 +22,8 @@ export function SessionGate({ children }: SessionGateProps) {
     return <SessionHydrationScreen />;
   }
 
-  if (!user) {
-    return <Navigate to="/welcome" replace />;
+  if (user) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

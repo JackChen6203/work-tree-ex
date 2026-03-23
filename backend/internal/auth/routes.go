@@ -123,7 +123,7 @@ func startOAuth(c *gin.Context) {
 	provider := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	config, ok := oauthProviders[provider]
 	if !ok {
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "oauth provider is not supported", gin.H{"provider": provider})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "oauth provider is not supported", gin.H{"provider": provider})
 		return
 	}
 
@@ -160,7 +160,7 @@ func startOAuth(c *gin.Context) {
 func callbackOAuth(c *gin.Context) {
 	provider := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	if _, ok := oauthProviders[provider]; !ok {
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "oauth provider is not supported", gin.H{"provider": provider})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "oauth provider is not supported", gin.H{"provider": provider})
 		return
 	}
 

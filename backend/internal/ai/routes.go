@@ -21,7 +21,9 @@ type planCreateInput struct {
 		Currency            string   `json:"currency"`
 		TravelersCount      int      `json:"travelersCount"`
 		Pace                string   `json:"pace"`
+		WakePattern         string   `json:"wakePattern"`
 		TransportPreference string   `json:"transportPreference"`
+		PoiDensity          string   `json:"poiDensity"`
 		MustVisit           []string `json:"mustVisit"`
 		Avoid               []string `json:"avoid"`
 	} `json:"constraints"`
@@ -152,7 +154,7 @@ func getPlan(c *gin.Context) {
 	item, ok := planByID[planID]
 	plannerMu.RUnlock()
 	if !ok || item.TripID != tripID {
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
 		return
 	}
 
@@ -179,7 +181,7 @@ func adoptPlan(c *gin.Context) {
 	item, ok := planByID[planID]
 	if !ok || item.TripID != tripID {
 		plannerMu.Unlock()
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
 		return
 	}
 

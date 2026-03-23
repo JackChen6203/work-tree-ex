@@ -38,23 +38,25 @@ type budgetProfile struct {
 }
 
 type expenseInput struct {
-	Category  string  `json:"category"`
-	Amount    float64 `json:"amount"`
-	Currency  string  `json:"currency"`
-	ExpenseAt *string `json:"expenseAt"`
-	Note      string  `json:"note"`
+	Category     string  `json:"category"`
+	Amount       float64 `json:"amount"`
+	Currency     string  `json:"currency"`
+	ExpenseAt    *string `json:"expenseAt"`
+	Note         string  `json:"note"`
+	LinkedItemID *string `json:"linkedItemId"`
 }
 
 type expense struct {
-	ID        string    `json:"id"`
-	TripID    string    `json:"tripId"`
-	Category  string    `json:"category"`
-	Amount    float64   `json:"amount"`
-	Currency  string    `json:"currency"`
-	ExpenseAt *string   `json:"expenseAt,omitempty"`
-	Note      string    `json:"note,omitempty"`
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	TripID       string    `json:"tripId"`
+	Category     string    `json:"category"`
+	Amount       float64   `json:"amount"`
+	Currency     string    `json:"currency"`
+	ExpenseAt    *string   `json:"expenseAt,omitempty"`
+	Note         string    `json:"note,omitempty"`
+	LinkedItemID *string   `json:"linkedItemId,omitempty"`
+	Version      int       `json:"version"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type expensePatchInput struct {
@@ -200,6 +202,10 @@ func createExpense(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "category is required", nil)
 		return
 	}
+	if !isValidExpenseCategory(in.Category) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "category must be lodging/transit/food/attraction/shopping/misc", nil)
+		return
+	}
 	if in.Amount < 0 {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "amount must be non-negative", nil)
 		return
@@ -218,15 +224,16 @@ func createExpense(c *gin.Context) {
 	}
 
 	item := expense{
-		ID:        uuid.NewString(),
-		TripID:    tripID,
-		Category:  in.Category,
-		Amount:    in.Amount,
-		Currency:  strings.ToUpper(in.Currency),
-		ExpenseAt: in.ExpenseAt,
-		Note:      in.Note,
-		Version:   1,
-		CreatedAt: time.Now().UTC(),
+		ID:           uuid.NewString(),
+		TripID:       tripID,
+		Category:     in.Category,
+		Amount:       in.Amount,
+		Currency:     strings.ToUpper(in.Currency),
+		ExpenseAt:    in.ExpenseAt,
+		Note:         in.Note,
+		LinkedItemID: in.LinkedItemID,
+		Version:      1,
+		CreatedAt:    time.Now().UTC(),
 	}
 
 	expensesByTrip[tripID] = append(expensesByTrip[tripID], item)
@@ -265,7 +272,7 @@ func patchExpense(c *gin.Context) {
 
 	item, ok := expenseByID[expenseID]
 	if !ok || item.TripID != tripID {
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "expense not found", gin.H{"expenseId": expenseID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "expense not found", gin.H{"expenseId": expenseID})
 		return
 	}
 
@@ -310,7 +317,7 @@ func deleteExpense(c *gin.Context) {
 
 	item, ok := expenseByID[expenseID]
 	if !ok || item.TripID != tripID {
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "expense not found", gin.H{"expenseId": expenseID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "expense not found", gin.H{"expenseId": expenseID})
 		return
 	}
 
@@ -325,4 +332,13 @@ func deleteExpense(c *gin.Context) {
 	delete(expenseByID, expenseID)
 
 	response.NoContent(c)
+}
+
+func isValidExpenseCategory(category string) bool {
+	switch strings.TrimSpace(category) {
+	case "lodging", "transit", "food", "attraction", "shopping", "misc":
+		return true
+	default:
+		return false
+	}
 }

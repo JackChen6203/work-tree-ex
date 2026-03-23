@@ -23,41 +23,69 @@ interface SessionState {
   clearPendingMutations: () => void;
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
+const defaultSessionState = {
   hydrated: false,
   user: null,
   isOnline: true,
   pendingMutations: 0,
-  pendingMutationRecords: [],
-  hydrate: async () => {
-    await new Promise((resolve) => window.setTimeout(resolve, 400));
-    try {
-      const session = await getSession();
-      set({ hydrated: true, user: session.user });
-    } catch {
-      set({ hydrated: true, user: null });
-    }
-  },
-  setUser: (user) => set({ user }),
-  clearUser: () => set({ user: null }),
-  setOnline: (isOnline) => set({ isOnline }),
-  enqueuePendingMutation: (scope, id = crypto.randomUUID()) => {
-    set((state) => {
-      const pendingMutationRecords = [...state.pendingMutationRecords, { id, scope, createdAt: Date.now() }];
-      return {
-        pendingMutationRecords,
-        pendingMutations: pendingMutationRecords.length
-      };
-    });
-    return id;
-  },
-  resolvePendingMutation: (id) =>
-    set((state) => {
-      const pendingMutationRecords = state.pendingMutationRecords.filter((item) => item.id !== id);
-      return {
-        pendingMutationRecords,
-        pendingMutations: pendingMutationRecords.length
-      };
-    }),
-  clearPendingMutations: () => set({ pendingMutationRecords: [], pendingMutations: 0 })
-}));
+  pendingMutationRecords: []
+} satisfies Pick<SessionState, "hydrated" | "user" | "isOnline" | "pendingMutations" | "pendingMutationRecords">;
+
+export const useSessionStore = create<SessionState>((set, get) => {
+  let inflightHydration: Promise<void> | null = null;
+
+  return {
+    ...defaultSessionState,
+    hydrate: async () => {
+      if (get().hydrated) {
+        return;
+      }
+
+      if (inflightHydration) {
+        return inflightHydration;
+      }
+
+      inflightHydration = getSession()
+        .then((session) => {
+          set({ hydrated: true, user: session.user });
+        })
+        .catch(() => {
+          set({ hydrated: true, user: null });
+        })
+        .finally(() => {
+          inflightHydration = null;
+        });
+
+      return inflightHydration;
+    },
+    setUser: (user) => set({ user }),
+    clearUser: () => set({ user: null }),
+    setOnline: (isOnline) => set({ isOnline }),
+    enqueuePendingMutation: (scope, id = crypto.randomUUID()) => {
+      set((state) => {
+        const pendingMutationRecords = [...state.pendingMutationRecords, { id, scope, createdAt: Date.now() }];
+        return {
+          pendingMutationRecords,
+          pendingMutations: pendingMutationRecords.length
+        };
+      });
+      return id;
+    },
+    resolvePendingMutation: (id) =>
+      set((state) => {
+        const pendingMutationRecords = state.pendingMutationRecords.filter((item) => item.id !== id);
+        return {
+          pendingMutationRecords,
+          pendingMutations: pendingMutationRecords.length
+        };
+      }),
+    clearPendingMutations: () => set({ pendingMutationRecords: [], pendingMutations: 0 })
+  };
+});
+
+export function resetSessionStore() {
+  useSessionStore.setState((state) => ({
+    ...state,
+    ...defaultSessionState
+  }));
+}

@@ -5,6 +5,7 @@ const (
 	CodeConflict           = "CONFLICT"
 	CodeUnauthorized       = "AUTH_UNAUTHORIZED"
 	CodeForbidden          = "AUTH_FORBIDDEN"
+	CodeNotFound           = "NOT_FOUND"
 	CodeTripNotFound       = "TRIP_NOT_FOUND"
 	CodeVersionConflict    = "TRIP_VERSION_CONFLICT"
 	CodeTimeConflict       = "ITINERARY_TIME_CONFLICT"

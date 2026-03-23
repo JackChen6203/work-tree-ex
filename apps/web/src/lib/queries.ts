@@ -454,7 +454,7 @@ export function usePutMyNotificationPreferencesMutation() {
 export function useMyLlmProvidersQuery() {
   return useQuery({
     queryKey: ["users", "llm-providers"],
-    queryFn: listMyLlmProviders
+    queryFn: () => listMyLlmProviders()
   });
 }
 

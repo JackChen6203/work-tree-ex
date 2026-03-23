@@ -65,7 +65,7 @@ func listNotifications(c *gin.Context) {
 			}
 		}
 		if start == -1 {
-			response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "cursor not found", gin.H{"cursor": cursor})
+			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "cursor not found", gin.H{"cursor": cursor})
 			return
 		}
 	}
@@ -105,7 +105,7 @@ func markRead(c *gin.Context) {
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "notification not found", gin.H{"notificationId": notificationID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 }
 
 func markUnread(c *gin.Context) {
@@ -127,7 +127,7 @@ func markUnread(c *gin.Context) {
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "notification not found", gin.H{"notificationId": notificationID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 }
 
 func markAllRead(c *gin.Context) {
@@ -179,5 +179,5 @@ func deleteNotification(c *gin.Context) {
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "notification not found", gin.H{"notificationId": notificationID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 }

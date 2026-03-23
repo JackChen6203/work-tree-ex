@@ -8,7 +8,7 @@ CREATE TABLE trips (
     end_date        DATE NOT NULL,
     timezone        TEXT NOT NULL,
     currency        CHAR(3) NOT NULL,
-    travelers_count INT NOT NULL CHECK (travelers_count > 0),
+    travelers_count INT NOT NULL CHECK (travelers_count > 0 AND travelers_count <= 50),
     status          TEXT NOT NULL DEFAULT 'draft',
     version         INT NOT NULL DEFAULT 1,
     tags            JSONB NOT NULL DEFAULT '[]',

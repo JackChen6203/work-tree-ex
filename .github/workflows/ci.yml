@@ -10,7 +10,35 @@ env:
   GO_VERSION: "1.24"
   NODE_VERSION: "24"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  frontend:
+    name: Frontend Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Run frontend unit tests
+        working-directory: apps/web
+        run: npm test
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+
   # ── Lint & Build ──────────────────────────────────────────
   lint:
     name: Lint
@@ -30,21 +58,6 @@ jobs:
       - name: Run go vet
         working-directory: backend
         run: go vet ./...
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: apps/web
-        run: npm ci
-
-      - name: Frontend build
-        working-directory: apps/web
-        run: npm run build
-
   # ── Unit & Integration Tests ──────────────────────────────
   test:
     name: Test
@@ -144,10 +157,8 @@ jobs:
           migrate -path backend/migrations \
             -database "postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable" \
             up
-
-  # ── Build Check ───────────────────────────────────────────
   build:
-    name: Build
+    name: Backend Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -156,22 +167,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
       - name: Build all binaries
         working-directory: backend
         run: |
           go build -o /dev/null ./cmd/api
           go build -o /dev/null ./cmd/worker
-
-      - name: Install frontend dependencies
-        working-directory: apps/web
-        run: npm ci
-
-      - name: Run frontend tests
-        working-directory: apps/web
-        run: npm test

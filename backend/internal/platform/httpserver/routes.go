@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/admin"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/ai"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/auth"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/budget"
@@ -30,4 +31,5 @@ func registerRoutes(engine *gin.Engine) {
 	ai.RegisterRoutes(v1)
 	notifications.RegisterRoutes(v1)
 	sync.RegisterRoutes(v1)
+	admin.RegisterRoutes(v1)
 }

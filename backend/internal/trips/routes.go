@@ -87,6 +87,8 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.POST("/trips/:tripId/members", addTripMember)
 	v1.PATCH("/trips/:tripId/members/:memberId", patchTripMember)
 	v1.DELETE("/trips/:tripId/members/:memberId", removeTripMember)
+	registerInvitationRoutes(v1)
+	registerShareLinkRoutes(v1)
 }
 
 func resetMemberStoreForTests() {
@@ -94,6 +96,8 @@ func resetMemberStoreForTests() {
 	defer membersMu.Unlock()
 	tripMembers = map[string][]tripMember{}
 	idempotentAdds = map[string]tripMember{}
+	resetInvitationStoreForTests()
+	resetShareLinkStoreForTests()
 }
 
 func listTrips(c *gin.Context) {
@@ -130,7 +134,12 @@ func createTrip(c *gin.Context) {
 		return
 	}
 
-	response.JSON(c, http.StatusCreated, t)
+	days := GenerateDaySkeletons(t.ID, in.StartDate, in.EndDate)
+
+	response.JSON(c, http.StatusCreated, gin.H{
+		"trip": t,
+		"days": days,
+	})
 }
 
 func getTrip(c *gin.Context) {
@@ -183,6 +192,24 @@ func patchTrip(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
 		return
 	}
+
+	if preview.Status == "archived" {
+		response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "archived trip cannot be edited", nil)
+		return
+	}
+
+	if in.Name != nil && len(*in.Name) > 200 {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "name must not exceed 200 characters", nil)
+		return
+	}
+
+	if in.Status != nil {
+		if !isValidStatusTransition(preview.Status, *in.Status) {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid status transition", gin.H{"current": preview.Status, "requested": *in.Status})
+			return
+		}
+	}
+
 	if in.StartDate != nil {
 		preview.StartDate = *in.StartDate
 	}
@@ -339,12 +366,16 @@ func removeTripMember(c *gin.Context) {
 		if current[i].ID != memberID {
 			continue
 		}
+		if current[i].Role == "owner" && countOwnersLocked(tripID) <= 1 {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "cannot remove the last owner", nil)
+			return
+		}
 		tripMembers[tripID] = append(current[:i], current[i+1:]...)
 		response.NoContent(c)
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "member not found", gin.H{"memberId": memberID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
 }
 
 func patchTripMember(c *gin.Context) {
@@ -382,12 +413,18 @@ func patchTripMember(c *gin.Context) {
 		if tripMembers[tripID][i].ID != memberID {
 			continue
 		}
-		tripMembers[tripID][i].Role = strings.TrimSpace(in.Role)
+		oldRole := tripMembers[tripID][i].Role
+		newRole := strings.TrimSpace(in.Role)
+		if oldRole == "owner" && newRole != "owner" && countOwnersLocked(tripID) <= 1 {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "cannot demote the last owner", nil)
+			return
+		}
+		tripMembers[tripID][i].Role = newRole
 		response.JSON(c, http.StatusOK, tripMembers[tripID][i])
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "member not found", gin.H{"memberId": memberID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
 }
 
 func isValidMemberRole(role string) bool {
@@ -403,16 +440,40 @@ func validateCreateInput(in tripCreateInput) error {
 	if in.Name == "" {
 		return errText("name is required")
 	}
+	if len(in.Name) > 200 {
+		return errText("name must not exceed 200 characters")
+	}
 	if in.Timezone == "" {
 		return errText("timezone is required")
 	}
 	if in.Currency == "" || len(in.Currency) != 3 {
 		return errText("currency must be ISO-4217 code")
 	}
-	if in.Travelers < 1 {
-		return errText("travelersCount must be at least 1")
+	if in.Travelers < 1 || in.Travelers > 50 {
+		return errText("travelersCount must be between 1 and 50")
 	}
 	return validateDates(in.StartDate, in.EndDate)
+}
+
+func isValidStatusTransition(current, next string) bool {
+	switch current {
+	case "draft":
+		return next == "active"
+	case "active":
+		return next == "archived"
+	default:
+		return false
+	}
+}
+
+func countOwnersLocked(tripID string) int {
+	count := 0
+	for _, m := range tripMembers[tripID] {
+		if m.Role == "owner" {
+			count++
+		}
+	}
+	return count
 }
 
 func validateDates(startDate, endDate string) error {

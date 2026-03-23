@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./app-shell";
+import { PublicOnlyGate } from "./public-only-gate";
 import { SessionGate } from "./session-gate";
 import { AuthPage } from "../features/auth/auth-page";
 import { WelcomePage } from "../features/auth/welcome-page";
@@ -15,11 +16,19 @@ import { SettingsPage } from "../features/settings/settings-page";
 export const router = createBrowserRouter([
   {
     path: "/welcome",
-    element: <WelcomePage />
+    element: (
+      <PublicOnlyGate>
+        <WelcomePage />
+      </PublicOnlyGate>
+    )
   },
   {
     path: "/login",
-    element: <AuthPage />
+    element: (
+      <PublicOnlyGate>
+        <AuthPage />
+      </PublicOnlyGate>
+    )
   },
   {
     path: "/",

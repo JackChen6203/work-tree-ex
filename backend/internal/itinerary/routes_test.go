@@ -53,8 +53,10 @@ func TestListCreatePatchDeleteItem(t *testing.T) {
 
 	var created struct {
 		Data struct {
-			ID      string `json:"id"`
-			Version int    `json:"version"`
+			Item struct {
+				ID      string `json:"id"`
+				Version int    `json:"version"`
+			} `json:"item"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
@@ -62,7 +64,7 @@ func TestListCreatePatchDeleteItem(t *testing.T) {
 	}
 
 	patchBody := mustJSON(t, map[string]any{"title": "更新行程"})
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/t-it/items/"+created.Data.ID, bytes.NewBuffer(patchBody))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/trips/t-it/items/"+created.Data.Item.ID, bytes.NewBuffer(patchBody))
 	patchReq.Header.Set("Content-Type", "application/json")
 	patchReq.Header.Set("If-Match-Version", "1")
 	patchW := httptest.NewRecorder()
@@ -71,7 +73,7 @@ func TestListCreatePatchDeleteItem(t *testing.T) {
 		t.Fatalf("expected 200 patch, got %d", patchW.Code)
 	}
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/t-it/items/"+created.Data.ID, nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/trips/t-it/items/"+created.Data.Item.ID, nil)
 	deleteW := httptest.NewRecorder()
 	r.ServeHTTP(deleteW, deleteReq)
 	if deleteW.Code != http.StatusNoContent {

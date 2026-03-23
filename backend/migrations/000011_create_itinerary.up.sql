@@ -32,7 +32,7 @@ CREATE TABLE place_snapshots (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_place_snapshots_provider ON place_snapshots(provider, provider_place_id);
+CREATE UNIQUE INDEX idx_place_snapshots_provider ON place_snapshots(provider, provider_place_id);
 
 -- ────────────────────────────────────────────────────────
 
@@ -40,10 +40,10 @@ CREATE TABLE route_snapshots (
     id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     provider                 TEXT NOT NULL,
     mode                     TEXT NOT NULL,
-    distance_meters          INT,
-    duration_seconds         INT,
+    distance_meters          INT NOT NULL,
+    duration_seconds         INT NOT NULL,
     estimated_cost_amount    NUMERIC(14,2),
-    estimated_cost_currency  TEXT,
+    estimated_cost_currency  CHAR(3),
     raw_normalized_payload   JSONB,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );

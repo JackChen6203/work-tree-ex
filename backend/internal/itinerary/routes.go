@@ -52,6 +52,7 @@ type itemCreateInput struct {
 }
 
 type itemPatchInput struct {
+	DayID     *string  `json:"dayId"`
 	Title     *string  `json:"title"`
 	StartAt   *string  `json:"startAt"`
 	EndAt     *string  `json:"endAt"`
@@ -115,6 +116,18 @@ func createItem(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "dayId, title, and itemType are required", nil)
 		return
 	}
+	if !isValidItemType(in.ItemType) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "itemType must be place_visit/meal/transit/hotel/free_time/custom", nil)
+		return
+	}
+	if len(in.Title) > 200 {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "title must not exceed 200 characters", nil)
+		return
+	}
+	if in.Note != nil && len(*in.Note) > 5000 {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "note must not exceed 5000 characters", nil)
+		return
+	}
 
 	itineraryMu.Lock()
 	if existingID, ok := itemCreateIdempotency[idempotencyKey]; ok {
@@ -152,7 +165,15 @@ func createItem(c *gin.Context) {
 	itemCreateIdempotency[idempotencyKey] = item.ID
 	itineraryMu.Unlock()
 
-	response.JSON(c, http.StatusCreated, item)
+	// Detect time overlaps in the same day
+	warnings := detectTimeOverlapsLocked(tripID, item.DayID)
+
+	result := gin.H{"item": item}
+	if len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+
+	response.JSON(c, http.StatusCreated, result)
 }
 
 func patchItem(c *gin.Context) {
@@ -181,7 +202,7 @@ func patchItem(c *gin.Context) {
 	item, ok := itemByID[itemID]
 	if !ok || itemTripByID[itemID] != tripID {
 		itineraryMu.Unlock()
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "itinerary item not found", gin.H{"itemId": itemID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": itemID})
 		return
 	}
 	if item.Version != expectedVersion {
@@ -217,10 +238,32 @@ func patchItem(c *gin.Context) {
 	if in.Lng != nil {
 		item.Lng = in.Lng
 	}
-	item.Version++
 
+	// Cross-day move: remove from source day, attach to target day
+	if in.DayID != nil && *in.DayID != item.DayID {
+		oldDayID := item.DayID
+		newDayID := *in.DayID
+
+		// Remove from source day
+		removeItemFromDayLocked(tripID, oldDayID, item.ID)
+
+		// Attach to target day
+		item.DayID = newDayID
+		item.SortOrder = nextSortLocked(tripID, newDayID)
+		if !attachItemLocked(tripID, item) {
+			// Rollback: re-attach to old day
+			item.DayID = oldDayID
+			attachItemLocked(tripID, item)
+			itineraryMu.Unlock()
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "target dayId not found", gin.H{"dayId": newDayID})
+			return
+		}
+	} else {
+		replaceItemLocked(tripID, item)
+	}
+
+	item.Version++
 	itemByID[item.ID] = item
-	replaceItemLocked(tripID, item)
 	itineraryMu.Unlock()
 
 	response.JSON(c, http.StatusOK, item)
@@ -234,7 +277,7 @@ func deleteItem(c *gin.Context) {
 	item, ok := itemByID[itemID]
 	if !ok || itemTripByID[itemID] != tripID {
 		itineraryMu.Unlock()
-		response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "itinerary item not found", gin.H{"itemId": itemID})
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": itemID})
 		return
 	}
 
@@ -273,7 +316,7 @@ func reorderItems(c *gin.Context) {
 		item, ok := itemByID[op.ItemID]
 		if !ok || itemTripByID[op.ItemID] != tripID {
 			itineraryMu.Unlock()
-			response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "itinerary item not found", gin.H{"itemId": op.ItemID})
+			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": op.ItemID})
 			return
 		}
 		detachItemLocked(tripID, item.DayID, item.ID)
@@ -349,6 +392,21 @@ func detachItemLocked(tripID, dayID, itemID string) {
 	}
 }
 
+func removeItemFromDayLocked(tripID, dayID, itemID string) {
+	for i := range daysByTrip[tripID] {
+		if daysByTrip[tripID][i].DayID != dayID {
+			continue
+		}
+		items := daysByTrip[tripID][i].Items
+		for j := range items {
+			if items[j].ID == itemID {
+				daysByTrip[tripID][i].Items = append(items[:j], items[j+1:]...)
+				return
+			}
+		}
+	}
+}
+
 func replaceItemLocked(tripID string, item itineraryItem) {
 	for i := range daysByTrip[tripID] {
 		for j := range daysByTrip[tripID][i].Items {
@@ -387,3 +445,42 @@ func cloneDays(days []itineraryDay) []itineraryDay {
 	}
 	return result
 }
+
+func isValidItemType(itemType string) bool {
+	switch strings.TrimSpace(itemType) {
+	case "place_visit", "meal", "transit", "hotel", "free_time", "custom":
+		return true
+	default:
+		return false
+	}
+}
+
+func detectTimeOverlapsLocked(tripID, dayID string) []string {
+	var warnings []string
+	var timedItems []itineraryItem
+
+	for _, day := range daysByTrip[tripID] {
+		if day.DayID != dayID {
+			continue
+		}
+		for _, item := range day.Items {
+			if item.StartAt != nil && item.EndAt != nil {
+				timedItems = append(timedItems, item)
+			}
+		}
+	}
+
+	for i := 0; i < len(timedItems); i++ {
+		for j := i + 1; j < len(timedItems); j++ {
+			a := timedItems[i]
+			b := timedItems[j]
+			// simple string comparison works for ISO timestamps
+			if *a.StartAt < *b.EndAt && *b.StartAt < *a.EndAt {
+				warnings = append(warnings, "time overlap between '"+a.Title+"' and '"+b.Title+"'")
+			}
+		}
+	}
+
+	return warnings
+}
+

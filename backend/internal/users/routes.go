@@ -2,6 +2,7 @@ package users
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -156,6 +157,8 @@ func getMyPreferences(c *gin.Context) {
 }
 
 func putMyPreferences(c *gin.Context) {
+	ifMatch := strings.TrimSpace(c.GetHeader("If-Match-Version"))
+
 	var in preference
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -168,6 +171,19 @@ func putMyPreferences(c *gin.Context) {
 	}
 
 	usersMu.Lock()
+	if ifMatch != "" {
+		expected, err := strconv.Atoi(ifMatch)
+		if err != nil {
+			usersMu.Unlock()
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "If-Match-Version must be an integer", nil)
+			return
+		}
+		if expected != myPreference.Version {
+			usersMu.Unlock()
+			response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "preference version conflict", gin.H{"currentVersion": myPreference.Version})
+			return
+		}
+	}
 	in.Version = myPreference.Version + 1
 	myPreference = in
 	updated := myPreference
@@ -184,6 +200,8 @@ func getMyNotificationPreferences(c *gin.Context) {
 }
 
 func putMyNotificationPreferences(c *gin.Context) {
+	ifMatch := strings.TrimSpace(c.GetHeader("If-Match-Version"))
+
 	var in notificationPreference
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -209,6 +227,19 @@ func putMyNotificationPreferences(c *gin.Context) {
 	}
 
 	usersMu.Lock()
+	if ifMatch != "" {
+		expected, err := strconv.Atoi(ifMatch)
+		if err != nil {
+			usersMu.Unlock()
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "If-Match-Version must be an integer", nil)
+			return
+		}
+		if expected != myNotificationPreference.Version {
+			usersMu.Unlock()
+			response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "notification preference version conflict", gin.H{"currentVersion": myNotificationPreference.Version})
+			return
+		}
+	}
 	in.Version = myNotificationPreference.Version + 1
 	myNotificationPreference = in
 	updated := myNotificationPreference
@@ -284,11 +315,11 @@ func deleteMyProvider(c *gin.Context) {
 		return
 	}
 
-	response.Error(c, http.StatusNotFound, perrors.CodeBadRequest, "provider not found", gin.H{"providerId": providerID})
+	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider not found", gin.H{"providerId": providerID})
 }
 
 func isHHMM(v string) bool {
-	if len(v) != 5 || v[2] != ":" {
+	if len(v) != 5 || v[2] != ':' {
 		return false
 	}
 	hour := v[:2]

@@ -8,6 +8,7 @@ CREATE TABLE notifications (
     title       TEXT NOT NULL,
     body        TEXT NOT NULL DEFAULT '',
     payload     JSONB NOT NULL DEFAULT '{}',
+    link        TEXT,
     read_at     TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -21,12 +22,12 @@ CREATE TABLE share_links (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     trip_id       UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
     token_hash    TEXT NOT NULL UNIQUE,
-    access_scope  TEXT NOT NULL DEFAULT 'read',
-    expires_at    TIMESTAMPTZ NOT NULL,
+    access_scope  TEXT NOT NULL DEFAULT 'read_only',
+    expires_at    TIMESTAMPTZ,
     revoked_at    TIMESTAMPTZ,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT chk_share_scope CHECK (access_scope IN ('read'))
+    CONSTRAINT chk_share_scope CHECK (access_scope IN ('read_only'))
 );
 
 CREATE INDEX idx_share_links_trip_id ON share_links(trip_id);
@@ -41,6 +42,7 @@ CREATE TABLE outbox_events (
     aggregate_id    TEXT NOT NULL,
     event_type      TEXT NOT NULL,
     payload         JSONB NOT NULL,
+    dedupe_key      TEXT UNIQUE,
     status          TEXT NOT NULL DEFAULT 'pending',
     retry_count     INT NOT NULL DEFAULT 0,
     available_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

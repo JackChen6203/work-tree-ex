@@ -45,13 +45,16 @@ func TestCreateAndGetTrip(t *testing.T) {
 	}
 
 	var created struct {
-		Data map[string]any `json:"data"`
+		Data struct {
+			Trip map[string]any `json:"trip"`
+			Days []map[string]any `json:"days"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
 
-	tripID, ok := created.Data["id"].(string)
+	tripID, ok := created.Data.Trip["id"].(string)
 	if !ok {
 		t.Fatalf("expected trip id to be a string")
 	}
@@ -111,12 +114,14 @@ func TestPatchTripVersionConflict(t *testing.T) {
 	r.ServeHTTP(createW, createReq)
 
 	var created struct {
-		Data map[string]any `json:"data"`
+		Data struct {
+			Trip map[string]any `json:"trip"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
-	tripID, ok := created.Data["id"].(string)
+	tripID, ok := created.Data.Trip["id"].(string)
 	if !ok {
 		t.Fatalf("expected trip id to be a string")
 	}
@@ -366,13 +371,15 @@ func createTripForTest(t *testing.T, r *gin.Engine, idempotencyKey string) strin
 	}
 
 	var created struct {
-		Data map[string]any `json:"data"`
+		Data struct {
+			Trip map[string]any `json:"trip"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
 
-	tripID, ok := created.Data["id"].(string)
+	tripID, ok := created.Data.Trip["id"].(string)
 	if !ok || tripID == "" {
 		t.Fatalf("expected created trip id")
 	}

@@ -27,6 +27,7 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	engine := gin.New()
 	engine.Use(corsMiddleware(cfg.CORS.AllowedOrigins))
 	engine.Use(requestIDMiddleware())
+	engine.Use(rateLimitMiddleware(50, 100))
 	engine.Use(accessLogMiddleware(logger))
 	engine.Use(recoveryMiddleware(logger))
 
