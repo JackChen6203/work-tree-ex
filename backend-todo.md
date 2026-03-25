@@ -281,7 +281,7 @@
 - [x] Notifications：in-memory → PostgreSQL `notifications` table
 - [ ] AI plan requests/drafts/validations：in-memory → PostgreSQL 三表
 - [ ] Users/preferences：in-memory → PostgreSQL `users` + `user_preferences`
-- [ ] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
+- [x] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
 - [ ] Sessions：in-memory → PostgreSQL `sessions` table
 - [x] Outbox events：in-memory → PostgreSQL `outbox_events`
 - [ ] Audit logs：in-memory → PostgreSQL `audit_logs`
