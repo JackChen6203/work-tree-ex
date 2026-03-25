@@ -101,18 +101,17 @@ export function AuthPage() {
         }
       } catch {
         trackEvent({ name: analyticsEventNames.authLoginFailed, context: { method: "oauth", reason: "session_hydration_failed" } });
-        // Keep the user on auth page for retry if callback hydration fails.
       }
     })();
   }, [navigate, pushToast, searchParams, setUser, t]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="w-full max-w-xl">
-        <div className="mb-4 flex justify-end">
-          <LocaleSwitcher />
-        </div>
-        <SurfaceCard className="w-full" eyebrow={t("auth.module")} title={t("auth.title")}>
+    <div className="relative min-h-screen overflow-hidden px-4 py-10">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_15%_20%,rgba(218,106,78,0.24),transparent_24%),radial-gradient(circle_at_78%_12%,rgba(45,90,74,0.22),transparent_22%),linear-gradient(180deg,#f9f4ea_0%,#efe5d5_100%)]" />
+      <div className="mx-auto flex w-full max-w-5xl justify-end pb-4">
+        <LocaleSwitcher />
+      </div>
+      <SurfaceCard className="mx-auto w-full max-w-5xl" eyebrow={t("auth.module")} title={t("auth.title")}>
           <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr]">
             <div>
               <p className="text-sm leading-7 text-ink/70">{t("auth.description")}</p>
@@ -253,7 +252,6 @@ export function AuthPage() {
             </div>
           </div>
         </SurfaceCard>
-      </div>
     </div>
   );
 }

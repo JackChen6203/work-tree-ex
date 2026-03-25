@@ -4,6 +4,7 @@ import { BottomSheetHost } from "../components/bottom-sheet-host";
 import { GlobalModalHost } from "../components/global-modal-host";
 import { LoadingOverlay } from "../components/loading-overlay";
 import { LocaleSwitcher } from "../components/locale-switcher";
+import { NotificationBell } from "../components/notification-bell";
 import { ShellNav } from "../components/shell-nav";
 import { SyncStatusBar } from "../components/sync-status-bar";
 import { ToastRegion } from "../components/toast-region";
@@ -69,6 +70,7 @@ export function AppShell() {
               <span>{t("shell.language")}</span>
               <LocaleSwitcher />
             </div>
+            <NotificationBell />
             <div className="flex items-center gap-3 rounded-full bg-ink px-4 py-2 text-sand">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sand text-sm font-bold text-ink">
                 {user?.avatar ?? "TT"}

@@ -259,3 +259,136 @@
 - [x] Feature flag toggle
 - [x] Emergency provider disable
 - [x] Admin endpoint 權限保護（分離 route + 雙因子）
+
+---
+
+# Phase 2：In-memory → 持久化 + 真實整合
+
+> Phase 1 所有模組都以 `sync.RWMutex` in-memory store 實作，Supabase 表已建立但為空。
+> Phase 2 目標：將所有模組切換至 PostgreSQL 持久化，並整合真實外部服務。
+
+---
+
+## BE-P2-01｜PostgreSQL 持久化遷移
+
+- [ ] 建立 `database/postgres.go` 連線池（pgx + connection pool config）
+- [ ] Trips 模組：`repository_memory.go` → `repository_postgres.go`（CRUD + version bump）
+- [ ] Trip membership：in-memory map → PostgreSQL `trip_memberships` table
+- [ ] Invitations：in-memory map → PostgreSQL `trip_invitations` table
+- [ ] Share links：in-memory map → PostgreSQL `share_links` table
+- [ ] Itinerary days/items：in-memory → PostgreSQL `itinerary_days` + `itinerary_items`
+- [ ] Budget profiles/expenses：in-memory → PostgreSQL `budget_profiles` + `expenses`
+- [ ] Notifications：in-memory → PostgreSQL `notifications` table
+- [ ] AI plan requests/drafts/validations：in-memory → PostgreSQL 三表
+- [ ] Users/preferences：in-memory → PostgreSQL `users` + `user_preferences`
+- [ ] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
+- [ ] Sessions：in-memory → PostgreSQL `sessions` table
+- [ ] Outbox events：in-memory → PostgreSQL `outbox_events`
+- [ ] Audit logs：in-memory → PostgreSQL `audit_logs`
+- [ ] FCM tokens：in-memory → PostgreSQL `fcm_tokens`
+- [ ] Idempotency keys：in-memory → PostgreSQL `trip_idempotency_keys`
+
+### 邊界個案
+- [ ] 連線池耗盡 → graceful error + 503
+- [ ] Migration 版本不符 → 啟動時自動跑 migrate
+- [ ] Transaction deadlock → retry 機制
+
+---
+
+## BE-P2-02｜Supabase Row-Level Security (RLS)
+
+- [ ] 為所有 table 啟用 RLS
+- [ ] 定義 policy：trips 只能 owner/member 存取
+- [ ] 定義 policy：expenses 只能 trip member 存取
+- [ ] 定義 policy：notifications 只能本人存取
+- [ ] Service role key 用於 backend API → bypass RLS
+- [ ] 前端 Supabase client 使用 anon key → 受 RLS 限制
+
+---
+
+## BE-P2-03｜Redis 快取層
+
+- [ ] 建立 Redis client + connection pool
+- [ ] Session 快取（避免每次查 DB）
+- [ ] Rate limit 從 in-memory → Redis（分布式）
+- [ ] AI planning distributed lock → Redis
+- [ ] Budget 匯率快取 → Redis（TTL 1h）
+- [ ] Idempotency key 快取 → Redis（TTL 24h）
+
+---
+
+## BE-P2-04｜真實 LLM Provider 整合
+
+- [ ] OpenAI API 真實呼叫（gpt-4.1-mini / gpt-4.1）
+- [ ] Anthropic API 真實呼叫（claude-sonnet-4-20250514）
+- [ ] Google Gemini API 真實呼叫
+- [ ] API key 從 `llm_provider_configs` 解密後使用
+- [ ] Token 用量計算寫入 `ai_plan_requests.token_usage`
+- [ ] Cost 估算寫入 `ai_plan_requests.estimated_cost`
+- [ ] Provider error mapping → 統一 error code
+- [ ] 超時保護（30s context deadline）
+
+---
+
+## BE-P2-05｜真實 Map Provider 整合
+
+- [ ] Google Maps / Mapbox API 真實呼叫
+- [ ] Geocode API 真實呼叫
+- [ ] Place search 真實呼叫
+- [ ] Route estimation 真實呼叫
+- [ ] API key 管理（環境變數注入）
+- [ ] Quota 保護（每日用量限制）
+- [ ] Provider fallback（主 provider 失敗 → 備援）
+
+---
+
+## BE-P2-06｜真實 FCM Push 推播
+
+- [ ] Firebase Admin SDK 初始化
+- [ ] FCM token 儲存真實寫入 PostgreSQL
+- [ ] Push notification 真實透過 FCM 發送
+- [ ] Token refresh 流程（client 上傳新 token）
+- [ ] Push 失敗的 retry + DLQ 處理
+
+---
+
+## BE-P2-07｜真實 Email 發送
+
+- [ ] Email provider 整合（SendGrid / SES / Resend）
+- [ ] Magic link email 真實發送
+- [ ] Invite email 真實發送
+- [ ] Trip update digest email
+- [ ] Email template 管理
+
+---
+
+## BE-P2-08｜Outbox Worker 真實消費
+
+- [ ] Worker 從 PostgreSQL outbox_events 輪詢
+- [ ] 消費後寫入 notification
+- [ ] 消費後同步 Firebase shadow
+- [ ] 消費後發送 analytics event
+- [ ] DLQ → 手動重試 API
+- [ ] Worker graceful shutdown
+
+---
+
+## BE-P2-09｜Docker Compose 本地開發
+
+- [ ] docker-compose.yml（Go API + PostgreSQL + Redis）
+- [ ] 配合 Supabase local dev（supabase start）
+- [ ] Hot reload（air 或 CompileDaemon）
+- [ ] .env.local 範例檔
+- [ ] Seed data 腳本
+
+---
+
+## BE-P2-10｜CI/CD Production Pipeline
+
+- [ ] GitHub Actions：lint + test + build
+- [ ] Docker image build + push to registry
+- [ ] Database migration 自動化
+- [ ] Staging 環境部署
+- [ ] Production 環境部署（Blue-green / Canary）
+- [ ] Rollback playbook
+

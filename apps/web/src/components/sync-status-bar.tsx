@@ -45,53 +45,35 @@ export function SyncStatusBar() {
   };
 
   return (
-    <div className="rounded-[28px] border border-ink/10 bg-white/75 px-4 py-4 text-sm text-ink/70">
+    <div className="rounded-[28px] border border-ink/10 bg-white/75 px-4 py-3 text-sm text-ink/70">
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill tone={isOnline ? "success" : "danger"}>{isOnline ? t("sync.online") : t("sync.offline")}</StatusPill>
-        <span>
-          {t("sync.queue")}: {pendingMutations}
-        </span>
+        {pendingMutations > 0 ? (
+          <span>
+            {t("sync.queue")}: {pendingMutations}
+          </span>
+        ) : null}
         <span>{syncLoading ? t("sync.syncing") : `${t("sync.serverChanges")}: ${syncSnapshot.changedTotal}`}</span>
         {syncData?.serverTime ? <span>{t("sync.lastSync")}: {new Date(syncData.serverTime).toLocaleTimeString()}</span> : null}
-        <button
-          className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink disabled:opacity-50"
-          disabled={!isOnline || !primaryTripId || flushMutation.isPending}
-          onClick={() => {
-            void flushNow();
-          }}
-          type="button"
-        >
-          {flushMutation.isPending ? t("sync.flushing") : t("sync.flushNow")}
-        </button>
-        <span>{t("sync.authoritative")}</span>
+        {pendingMutations > 0 ? (
+          <button
+            className="rounded-full border border-ink/20 px-3 py-1 text-xs font-medium text-ink disabled:opacity-50"
+            disabled={!isOnline || !primaryTripId || flushMutation.isPending}
+            onClick={() => {
+              void flushNow();
+            }}
+            type="button"
+          >
+            {flushMutation.isPending ? t("sync.flushing") : t("sync.flushNow")}
+          </button>
+        ) : null}
       </div>
-
-      {syncSnapshot.queueScopes.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink/60">
-          <span>{t("sync.queueScopes")}:</span>
-          {syncSnapshot.queueScopes.map((scope) => (
-            <span key={scope} className="rounded-full bg-sand px-3 py-1 font-medium text-ink/75">
-              {scope}
-            </span>
-          ))}
-        </div>
-      ) : null}
 
       {flushMutation.data ? (
         <div className={`mt-3 rounded-2xl px-4 py-3 ${syncSnapshot.hasConflicts ? "bg-coral/10 text-coral" : "bg-sand text-ink/70"}`}>
           <div>
             {t("sync.flushResult")}: {syncSnapshot.acceptedCount} {t("sync.accepted")} / {syncSnapshot.conflictCount} {t("sync.conflicts")}
           </div>
-          {syncSnapshot.hasConflicts ? (
-            <ul className="mt-2 list-disc pl-5 text-xs">
-              {syncSnapshot.conflicts.map((conflict) => (
-                <li key={conflict.id || conflict.entityId}>
-                  {conflict.entityId}: {conflict.reason}
-                  {typeof conflict.expectedVersion === "number" ? ` (expected ${conflict.expectedVersion})` : ""}
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
       ) : null}
     </div>

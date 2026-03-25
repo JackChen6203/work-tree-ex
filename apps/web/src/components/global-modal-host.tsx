@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useUiStore } from "../store/ui-store";
+import { useI18n } from "../lib/i18n";
 
 export function GlobalModalHost() {
   const activeModal = useUiStore((state) => state.activeModal);
   const closeModal = useUiStore((state) => state.closeModal);
   const pushToast = useUiStore((state) => state.pushToast);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useI18n();
 
   if (!activeModal) {
     return null;
@@ -25,7 +27,7 @@ export function GlobalModalHost() {
     } catch (error) {
       pushToast({
         type: "error",
-        message: error instanceof Error ? error.message : "Action failed"
+        message: error instanceof Error ? error.message : t("common.actionFailed")
       });
     } finally {
       setIsSubmitting(false);
@@ -40,7 +42,7 @@ export function GlobalModalHost() {
         className="w-full max-w-lg rounded-[32px] border border-white/70 bg-white/95 p-6 shadow-card"
         role="dialog"
       >
-        <p className={`text-xs uppercase tracking-[0.24em] ${payload.tone === "danger" ? "text-coral" : "text-pine"}`}>Confirmation</p>
+        <p className={`text-xs uppercase tracking-[0.24em] ${payload.tone === "danger" ? "text-coral" : "text-pine"}`}>{t("common.confirm")}</p>
         <h2 className="mt-3 font-display text-3xl font-bold text-ink">{payload.title}</h2>
         <p className="mt-3 text-sm leading-7 text-ink/70" id="global-confirm-description">
           {payload.description}

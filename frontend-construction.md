@@ -584,3 +584,91 @@ interface AnalyticsEvent {
 }
 ---
 
+# Phase 2：真實整合 + UX 打磨
+
+## FE-P2-01｜真實拖拉排序
+
+**模式**：`@dnd-kit/core` + `@dnd-kit/sortable` 實作行程拖拉
+
+### 細部功能
+- `DndContext` 包裹 itinerary list
+- `SortableItem` 包裹每個 itinerary card
+- 跨 day container 拖拉移動
+- 拖拉結束 → call `reorderItineraryItems` API
+- Optimistic sort → 失敗時 revert
+
+### 資料結構
+```typescript
+interface DragEndPayload {
+  itemId: string;
+  sourceDayId: string;
+  targetDayId: string;
+  targetSortOrder: number;
+}
+```
+
+---
+
+## FE-P2-02｜真實地圖 SDK
+
+**模式**：Mapbox GL JS wrapper 實作 `MapProviderAdapter`
+
+### 細部功能
+- `MapboxAdapter implements MapProviderAdapter`
+- `renderMap()` → 真實 mapboxgl.Map instance
+- `addMarker()` → mapboxgl.Marker
+- `fitBounds()` → map.fitBounds()
+- Marker clustering → mapboxgl source + layer
+
+---
+
+## FE-P2-03｜Zod 表單驗證
+
+**模式**：`@hookform/resolvers/zod` 整合所有表單
+
+### 資料結構
+```typescript
+const createTripSchema = z.object({
+  name: z.string().min(1).max(200),
+  destinationText: z.string().min(1),
+  startDate: z.string().date(),
+  endDate: z.string().date(),
+  timezone: z.string().min(1),
+  currency: z.string().length(3),
+  travelersCount: z.number().int().min(1).max(50)
+}).refine(d => d.endDate >= d.startDate, {
+  message: "End date must be on or after start date"
+});
+```
+
+---
+
+## FE-P2-04｜IndexedDB 離線持久化
+
+**模式**：`idb` 套件封裝 mutation queue + trip cache
+
+### 資料結構
+```typescript
+interface OfflineDB {
+  mutations: {
+    key: string;
+    value: MutationQueueItem;
+  };
+  tripCache: {
+    key: string;
+    value: { trip: Trip; cachedAt: number };
+  };
+}
+```
+
+---
+
+## FE-P2-06｜Budget 圖表
+
+**模式**：純 CSS + SVG 實作，不引入圖表庫
+
+### 細部功能
+- 橫向 bar chart：category → planned vs actual
+- Gauge chart：total spend / total budget %
+- 數字 summary card：每人/每日平均
+

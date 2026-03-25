@@ -857,3 +857,59 @@ Step 3: 旅行風格偏好（可跳過）
 | Drag & drop 不支援 | 提供排序按鈕（↑↓）作為 fallback |
 
 ---
+
+# Phase 2：持久化 + 真實整合
+
+## BE-P2-01｜PostgreSQL 持久化遷移
+
+**模式**：將所有 `sync.RWMutex` in-memory store 替換為 PostgreSQL repository
+
+### 細部功能
+- 建立 pgx connection pool（max_conns, idle_timeout, health check）
+- 每個模組提供 `RepositoryPostgres` 實作替換 `RepositoryMemory`
+- 啟動時自動執行 `golang-migrate` 到最新版本
+- 所有 CRUD 走 `BEGIN/COMMIT` transaction
+- 樂觀鎖用 `version` column + `WHERE version = $1`
+
+### 邊界個案
+- 連線池耗盡 → 503 + Retry-After
+- Migration 失敗 → 啟動中止，rollback 到上一版
+- Deadlock → 自動 retry（最多 3 次）
+
+---
+
+## BE-P2-04｜真實 LLM Provider 整合
+
+**模式**：替換 mock adapter 為真實 HTTP client
+
+### 細部功能
+- 從 `llm_provider_configs.encrypted_key` 解密取得真實 API key
+- 組裝 system/context/user 三層 prompt 發送到真實 API
+- 解析 structured JSON output
+- Token 用量與 cost 寫入 `ai_plan_requests`
+- 30s timeout + context cancellation
+
+---
+
+## BE-P2-05｜真實 Map Provider 整合
+
+**模式**：替換 mock map adapter 為 Google Maps / Mapbox
+
+### 細部功能
+- Place Search → 真實 API 呼叫，response normalize 為 `PlaceSnapshot`
+- Route Estimation → 真實 API 呼叫，response normalize 為 `RouteSnapshot`
+- Geocode / Reverse Geocode → 真實 API
+- Quota 監控 + 每日用量上限
+
+---
+
+## BE-P2-06｜真實 FCM / Email
+
+**模式**：替換 mock notification delivery 為 Firebase + Email provider
+
+### 細部功能
+- Firebase Admin SDK 初始化
+- `messaging.Send()` 真實推播
+- SendGrid / Resend API 真實發信
+- Email template rendering（Go `html/template`）
+

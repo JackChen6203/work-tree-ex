@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SurfaceCard } from "../../components/surface-card";
 import { useEstimateRouteMutation, useMapPlacesQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
+import { useI18n } from "../../lib/i18n";
 
 interface EstimatedRouteCard {
   id: string;
@@ -15,6 +16,7 @@ interface EstimatedRouteCard {
 }
 
 export function MapPage() {
+  const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
   const [searchInput, setSearchInput] = useState("kyoto");
   const [searchKeyword, setSearchKeyword] = useState("kyoto");
@@ -56,7 +58,6 @@ export function MapPage() {
 
   const runEstimate = async () => {
     if (!originPoint || !destinationPoint || originPoint.id === destinationPoint.id) {
-      pushToast("Select different origin and destination places first.");
       return;
     }
 
@@ -79,14 +80,14 @@ export function MapPage() {
       },
       ...prev
     ]);
-    pushToast(`Route ${Math.round(result.distanceMeters / 1000)}km / ${Math.round(result.durationSeconds / 60)}min`);
+    pushToast(`${t("map.distance")} ${Math.round(result.distanceMeters / 1000)}km / ${t("map.duration")} ${Math.round(result.durationSeconds / 60)}min`);
   };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <SurfaceCard
-        eyebrow="Map Module"
-        title="Provider-agnostic route preview"
+        eyebrow={t("nav.map")}
+        title={t("map.title")}
         action={
           <button
             className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
@@ -96,7 +97,7 @@ export function MapPage() {
             }}
             type="button"
           >
-            {estimateRoute.isPending ? "Estimating..." : "Estimate route"}
+            {estimateRoute.isPending ? t("map.estimating") : t("map.routeEstimate")}
           </button>
         }
       >
@@ -108,30 +109,30 @@ export function MapPage() {
           }}
         >
           <label className="md:col-span-2">
-            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">Place search</span>
+            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">{t("map.search")}</span>
             <input
               className="w-full rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/60"
-              placeholder="Search city or POI"
+              placeholder={t("map.searchPlaceholder")}
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
             />
           </label>
           <div>
-            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">Mode</span>
+            <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-white/70">{t("ai.transport")}</span>
             <select
               className="w-full rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-sm text-white"
               value={travelMode}
               onChange={(event) => setTravelMode(event.target.value as "walk" | "transit" | "drive" | "taxi")}
             >
-              <option value="transit">transit</option>
-              <option value="walk">walk</option>
-              <option value="drive">drive</option>
-              <option value="taxi">taxi</option>
+              <option value="transit">{t("map.transit")}</option>
+              <option value="walk">{t("map.walk")}</option>
+              <option value="drive">{t("map.drive")}</option>
+              <option value="taxi">{t("map.taxi")}</option>
             </select>
           </div>
           <div className="flex items-end">
             <button className="w-full rounded-xl bg-white/20 px-3 py-2 text-sm font-medium text-white hover:bg-white/30" type="submit">
-              Search
+              {t("map.search")}
             </button>
           </div>
         </form>
@@ -151,16 +152,16 @@ export function MapPage() {
             </div>
           ))}
           <div className="absolute bottom-5 left-5 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white backdrop-blur">
-            SDK adapter layer connected to search/route endpoints. UI model remains detached from provider response shape.
+            {t("map.sdkFailed")} — {t("map.fallbackList")}
           </div>
         </div>
       </SurfaceCard>
-      <SurfaceCard eyebrow="Places" title="Daily linked POIs">
-        {isLoading ? <div className="mb-3 rounded-[20px] bg-sand p-3 text-sm text-ink/65">Loading places...</div> : null}
+      <SurfaceCard eyebrow={t("map.linkedPois")} title={t("map.dailyPois")}>
+        {isLoading ? <div className="mb-3 rounded-[20px] bg-sand p-3 text-sm text-ink/65">{t("map.searching")}</div> : null}
         {points.length >= 2 ? (
           <div className="mb-4 grid gap-3 rounded-[20px] border border-ink/10 bg-white p-3 md:grid-cols-2">
             <label>
-              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">Origin</span>
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">{t("trip.startDate")}</span>
               <select
                 className="w-full rounded-xl border border-ink/10 bg-sand px-3 py-2 text-sm text-ink"
                 value={originId}
@@ -174,7 +175,7 @@ export function MapPage() {
               </select>
             </label>
             <label>
-              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">Destination</span>
+              <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-ink/55">{t("trip.endDate")}</span>
               <select
                 className="w-full rounded-xl border border-ink/10 bg-sand px-3 py-2 text-sm text-ink"
                 value={destinationId}
@@ -197,12 +198,12 @@ export function MapPage() {
               <p className="mt-2 text-sm text-pine">{item.transit}</p>
             </div>
           ))}
-          {!isLoading && points.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No places returned from provider.</div> : null}
+          {!isLoading && points.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("map.noResults")}</div> : null}
         </div>
 
         <div className="mt-6 border-t border-ink/10 pt-5">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-ink">Estimated route snapshots</p>
+            <p className="text-sm font-semibold text-ink">{t("map.routeEstimate")}</p>
             <button
               className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
               disabled={estimatedRoutes.length === 0}
@@ -211,16 +212,16 @@ export function MapPage() {
               }}
               type="button"
             >
-              Clear
+              {t("common.delete")}
             </button>
           </div>
-          {estimatedRoutes.length === 0 ? <p className="text-sm text-ink/60">No route estimates yet.</p> : null}
+          {estimatedRoutes.length === 0 ? <p className="text-sm text-ink/60">{t("common.noData")}</p> : null}
           <div className="space-y-3">
             {estimatedRoutes.map((route) => (
               <div className="rounded-[20px] border border-ink/10 bg-white p-3" key={route.id}>
-                <p className="text-sm font-medium text-ink">{route.originTitle}{" -> "}{route.destinationTitle}</p>
-                <p className="mt-1 text-xs text-ink/65">{route.distanceKm} km / {route.durationMin} min / provider: {route.provider}</p>
-                {route.estimatedCostAmount ? <p className="mt-1 text-xs text-ink/65">Cost: {route.estimatedCostCurrency} {route.estimatedCostAmount.toLocaleString()}</p> : null}
+                <p className="text-sm font-medium text-ink">{route.originTitle}{" → "}{route.destinationTitle}</p>
+                <p className="mt-1 text-xs text-ink/65">{route.distanceKm} km / {route.durationMin} min</p>
+                {route.estimatedCostAmount ? <p className="mt-1 text-xs text-ink/65">{route.estimatedCostCurrency} {route.estimatedCostAmount.toLocaleString()}</p> : null}
               </div>
             ))}
           </div>

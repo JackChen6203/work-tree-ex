@@ -6,6 +6,7 @@ import { StatusPill } from "../../components/status-pill";
 import { useTripPermission } from "../auth/use-trip-permission";
 import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery, useUpdateTripMemberRoleMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
+import { useI18n } from "../../lib/i18n";
 
 interface TripPatchValues {
   name: string;
@@ -26,6 +27,7 @@ interface AddMemberValues {
 
 export function TripOverviewPage() {
   const { tripId } = useParams();
+  const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
   const [memberRoleFilter, setMemberRoleFilter] = useState<"all" | "owner" | "editor" | "commenter" | "viewer">("all");
   const { data: trip, isLoading, error } = useTripQuery(tripId ?? "");
@@ -57,11 +59,11 @@ export function TripOverviewPage() {
   });
 
   if (isLoading) {
-    return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">Loading trip detail from API...</div>;
+    return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">{t("common.loading")}</div>;
   }
 
   if (error || !trip) {
-    return <div className="rounded-[28px] bg-coral/10 p-6 text-sm text-coral">Trip detail could not be loaded from backend.</div>;
+    return <div className="rounded-[28px] bg-coral/10 p-6 text-sm text-coral">{t("dashboard.tripLoadError")}</div>;
   }
 
   const permission = useTripPermission(trip.role);
@@ -71,7 +73,7 @@ export function TripOverviewPage() {
       version: trip.version,
       input: values
     });
-    pushToast(`Trip updated: ${updated.name}`);
+    pushToast(t("trip.updated"));
   });
 
   const onAddMember = memberForm.handleSubmit(async (values) => {
@@ -85,22 +87,22 @@ export function TripOverviewPage() {
       displayName: "",
       role: values.role
     });
-    pushToast("Member added");
+    pushToast(t("members.addMember"));
   });
 
   const onRemoveMember = async (memberId: string) => {
     await removeTripMember.mutateAsync(memberId);
-    pushToast("Member removed");
+    pushToast(t("common.remove"));
   };
 
   const onUpdateRole = async (memberId: string, role: "owner" | "editor" | "commenter" | "viewer") => {
     await updateMemberRole.mutateAsync({ memberId, role });
-    pushToast("Member role updated");
+    pushToast(t("trip.updated"));
   };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <SurfaceCard eyebrow="Trip Module" title={trip.name}>
+      <SurfaceCard eyebrow={t("trip.overview")} title={trip.name}>
         <div className={`rounded-[28px] bg-gradient-to-br ${trip.coverGradient} p-6 text-white`}>
           <p className="text-xs uppercase tracking-[0.24em] text-white/70">{trip.destination}</p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -109,25 +111,25 @@ export function TripOverviewPage() {
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div>
-              <p className="text-sm text-white/70">Date range</p>
+              <p className="text-sm text-white/70">{t("trip.startDate")} ~ {t("trip.endDate")}</p>
               <p className="mt-1 text-lg font-medium">{trip.dateRange}</p>
             </div>
             <div>
-              <p className="text-sm text-white/70">Timezone</p>
+              <p className="text-sm text-white/70">{t("trip.timezone")}</p>
               <p className="mt-1 text-lg font-medium">{trip.timezone}</p>
             </div>
             <div>
-              <p className="text-sm text-white/70">Members</p>
+              <p className="text-sm text-white/70">{t("common.members")}</p>
               <p className="mt-1 text-lg font-medium">{members.length || trip.travelersCount}</p>
             </div>
             <div>
-              <p className="text-sm text-white/70">Version</p>
+              <p className="text-sm text-white/70">{t("trip.version")}</p>
               <p className="mt-1 text-lg font-medium">v{trip.version}</p>
             </div>
           </div>
           <div className="mt-6 rounded-2xl border border-white/25 bg-white/10 p-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs uppercase tracking-[0.24em] text-white/70">Collaboration members</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-white/70">{t("members.title")}</p>
               <select
                 className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white"
                 onChange={(event) => {
@@ -135,15 +137,15 @@ export function TripOverviewPage() {
                 }}
                 value={memberRoleFilter}
               >
-                <option value="all">all roles</option>
-                <option value="owner">owner</option>
-                <option value="editor">editor</option>
-                <option value="commenter">commenter</option>
-                <option value="viewer">viewer</option>
+                <option value="all">{t("members.role")}</option>
+                <option value="owner">{t("members.owner")}</option>
+                <option value="editor">{t("members.editor")}</option>
+                <option value="commenter">{t("members.commenter")}</option>
+                <option value="viewer">{t("members.viewer")}</option>
               </select>
             </div>
-            {!permission.canManageMembers ? <p className="mt-3 text-sm text-white/75">Only owners can change member roles or invite new collaborators.</p> : null}
-            {members.length === 0 ? <p className="mt-2 text-sm text-white/75">No members added yet.</p> : null}
+            {!permission.canManageMembers ? null : null}
+            {members.length === 0 ? <p className="mt-2 text-sm text-white/75">{t("common.noData")}</p> : null}
             <div className="mt-3 grid gap-2">
               {members.map((member) => (
                 <div className="flex items-center justify-between rounded-xl border border-white/20 px-3 py-2" key={member.id}>
@@ -160,10 +162,10 @@ export function TripOverviewPage() {
                         void onUpdateRole(member.id, event.target.value as "owner" | "editor" | "commenter" | "viewer");
                       }}
                     >
-                      <option value="owner">owner</option>
-                      <option value="editor">editor</option>
-                      <option value="commenter">commenter</option>
-                      <option value="viewer">viewer</option>
+                      <option value="owner">{t("members.owner")}</option>
+                      <option value="editor">{t("members.editor")}</option>
+                      <option value="commenter">{t("members.commenter")}</option>
+                      <option value="viewer">{t("members.viewer")}</option>
                     </select>
                     <button
                       className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium text-white/90"
@@ -171,7 +173,7 @@ export function TripOverviewPage() {
                       onClick={() => onRemoveMember(member.id)}
                       type="button"
                     >
-                      Remove
+                      {t("common.remove")}
                     </button>
                   </div>
                 </div>
@@ -180,41 +182,41 @@ export function TripOverviewPage() {
           </div>
         </div>
       </SurfaceCard>
-      <SurfaceCard eyebrow="Server Data" title="Patch trip metadata">
+      <SurfaceCard eyebrow={t("trip.editMetadata")} title={t("trip.editMetadata")}>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {!permission.canEdit ? <p className="rounded-2xl bg-sand/80 px-4 py-3 text-sm text-ink/70">Your current role is view-only for trip settings. Switch to an owner or editor role to modify metadata.</p> : null}
+          {!permission.canEdit ? null : null}
           <fieldset className="grid gap-4" disabled={!permission.canEdit || patchTrip.isPending}>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Trip name</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("trip.name")}</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("name")} />
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Destination</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("trip.destination")}</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("destinationText")} />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Start date</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.startDate")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="date" {...form.register("startDate")} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">End date</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.endDate")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="date" {...form.register("endDate")} />
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Timezone</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.timezone")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("timezone")} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Currency</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.currency")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("currency")} />
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Travelers</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.travelers")}</span>
               <input
                 className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3"
                 type="number"
@@ -223,7 +225,7 @@ export function TripOverviewPage() {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Status</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.status")}</span>
               <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("status")}>
                 <option value="draft">draft</option>
                 <option value="active">active</option>
@@ -233,30 +235,30 @@ export function TripOverviewPage() {
           </div>
           </fieldset>
           <button className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:opacity-60" disabled={!permission.canEdit || patchTrip.isPending} type="submit">
-            {patchTrip.isPending ? "Saving..." : "Save trip"}
+            {patchTrip.isPending ? t("common.saving") : t("trip.update")}
           </button>
         </form>
         {permission.canManageMembers ? (
           <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onAddMember}>
-            <p className="text-sm font-semibold text-ink">Add member</p>
+            <p className="text-sm font-semibold text-ink">{t("members.addMember")}</p>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Email</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("members.addMemberEmail")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email", { required: true })} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Display name</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.displayName")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("displayName")} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Role</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("members.addMemberRole")}</span>
               <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("role")}>
-                <option value="viewer">viewer</option>
-                <option value="commenter">commenter</option>
-                <option value="editor">editor</option>
+                <option value="viewer">{t("members.viewer")}</option>
+                <option value="commenter">{t("members.commenter")}</option>
+                <option value="editor">{t("members.editor")}</option>
               </select>
             </label>
             <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={addTripMember.isPending} type="submit">
-              {addTripMember.isPending ? "Adding..." : "Add member"}
+              {addTripMember.isPending ? t("members.adding") : t("members.addMember")}
             </button>
           </form>
         ) : null}

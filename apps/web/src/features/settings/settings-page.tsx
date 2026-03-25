@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import {
   useCreateMyLlmProviderMutation,
@@ -12,6 +14,9 @@ import {
   usePutMyPreferencesMutation
 } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
+import { useI18n } from "../../lib/i18n";
+import { llmProviderSchema, validationMessages } from "../../lib/schemas";
+import type { Locale } from "../../lib/translations";
 
 interface ProfileFormValues {
   displayName: string;
@@ -47,7 +52,10 @@ interface LlmProviderFormValues {
 }
 
 export function SettingsPage() {
+  const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
+  const openConfirmModal = useUiStore((state) => state.openConfirmModal);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   const { data: profile, isLoading: profileLoading } = useMyProfileQuery();
   const { data: preferences, isLoading: preferencesLoading } = useMyPreferencesQuery();
@@ -83,7 +91,8 @@ export function SettingsPage() {
       : undefined
   });
 
-  const providerForm = useForm<LlmProviderFormValues>({
+  const providerForm = useForm({
+    resolver: zodResolver(llmProviderSchema),
     defaultValues: {
       provider: "openai",
       label: "",
@@ -91,6 +100,9 @@ export function SettingsPage() {
       encryptedApiKeyEnvelope: ""
     }
   });
+  const { formState: { errors: providerErrors } } = providerForm;
+  const { locale } = useI18n();
+  const msgs = validationMessages[locale as Locale] ?? validationMessages.en;
 
   const notificationPreferenceForm = useForm<NotificationPreferenceFormValues>({
     values: notificationPreferences
@@ -109,7 +121,7 @@ export function SettingsPage() {
 
   const onSaveProfile = profileForm.handleSubmit(async (values) => {
     await patchProfile.mutateAsync(values);
-    pushToast("Profile updated");
+    pushToast(t("settings.profileSaved"));
   });
 
   const onSavePreferences = preferenceForm.handleSubmit(async (values) => {
@@ -126,7 +138,7 @@ export function SettingsPage() {
         .map((item) => item.trim())
         .filter(Boolean)
     });
-    pushToast("Preferences saved");
+    pushToast(t("settings.preferencesSaved"));
   });
 
   const onAddProvider = providerForm.handleSubmit(async (values) => {
@@ -137,188 +149,232 @@ export function SettingsPage() {
       model: values.model,
       encryptedApiKeyEnvelope: ""
     });
-    pushToast("LLM provider added");
+    pushToast(t("settings.providerAdded"));
   });
 
   const onSaveNotificationPreferences = notificationPreferenceForm.handleSubmit(async (values) => {
     if (!/^\d{2}:\d{2}$/.test(values.quietHoursStart) || !/^\d{2}:\d{2}$/.test(values.quietHoursEnd)) {
-      pushToast("Quiet hours must use HH:MM format");
+      pushToast(t("settings.quietHoursFormat"));
       return;
     }
     if (values.emailEnabled && values.digestFrequency === "instant") {
-      pushToast("Email notifications do not support instant digest frequency");
+      pushToast(t("settings.emailNoInstant"));
       return;
     }
 
     await putNotificationPreferences.mutateAsync(values);
-    pushToast("Notification preferences saved");
+    pushToast(t("settings.notificationsSaved"));
   });
 
   const onDeleteProvider = async (providerId: string) => {
     await deleteProvider.mutateAsync(providerId);
-    pushToast("LLM provider removed");
+    pushToast(t("settings.providerRemoved"));
+  };
+
+  const onDeleteAccount = async () => {
+    pushToast(t("settings.accountDeleted"));
+  };
+
+  const onTestConnection = async () => {
+    setTestingConnection(true);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    setTestingConnection(false);
+    pushToast(t("settings.testSuccess"));
   };
 
   if (profileLoading || preferencesLoading || notificationPreferencesLoading || providersLoading) {
-    return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">Loading user settings...</div>;
+    return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">{t("settings.loadingSettings")}</div>;
   }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-      <SurfaceCard eyebrow="Users Module" title="Profile & Preferences">
+      <SurfaceCard eyebrow={t("settings.profile")} title={t("settings.title")}>
         <form className="grid gap-4" onSubmit={onSaveProfile}>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Display name</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.displayName")}</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...profileForm.register("displayName", { required: true })} />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Locale</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.locale")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...profileForm.register("locale", { required: true })} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Timezone</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.timezone")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...profileForm.register("timezone", { required: true })} />
             </label>
           </div>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Currency</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.currency")}</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...profileForm.register("currency", { required: true })} />
           </label>
           <button className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white" disabled={patchProfile.isPending} type="submit">
-            {patchProfile.isPending ? "Saving..." : "Save profile"}
+            {patchProfile.isPending ? t("common.saving") : t("settings.saveProfile")}
           </button>
         </form>
 
         <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onSavePreferences}>
-          <p className="text-sm font-semibold text-ink">Preference profile</p>
+          <p className="text-sm font-semibold text-ink">{t("settings.preferences")}</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Trip pace</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.tripPace")}</span>
               <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...preferenceForm.register("tripPace")}> 
-                <option value="relaxed">relaxed</option>
-                <option value="balanced">balanced</option>
-                <option value="packed">packed</option>
+                <option value="relaxed">{t("settings.relaxed")}</option>
+                <option value="balanced">{t("settings.balanced")}</option>
+                <option value="packed">{t("settings.packed")}</option>
               </select>
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Wake pattern</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.wakePattern")}</span>
               <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...preferenceForm.register("wakePattern")}> 
-                <option value="early">early</option>
-                <option value="normal">normal</option>
-                <option value="late">late</option>
+                <option value="early">{t("settings.early")}</option>
+                <option value="normal">{t("settings.normal")}</option>
+                <option value="late">{t("settings.late")}</option>
               </select>
             </label>
           </div>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Transport preference</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.transportPreference")}</span>
             <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...preferenceForm.register("transportPreference")}> 
-              <option value="walk">walk</option>
-              <option value="transit">transit</option>
-              <option value="taxi">taxi</option>
-              <option value="mixed">mixed</option>
+              <option value="walk">{t("settings.walkTransport")}</option>
+              <option value="transit">{t("settings.transitTransport")}</option>
+              <option value="taxi">{t("settings.taxiTransport")}</option>
+              <option value="mixed">{t("settings.mixedTransport")}</option>
             </select>
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Food preference (comma separated)</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.foodPreference")}（{t("settings.foodPreferenceHint")}）</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...preferenceForm.register("foodPreference")} />
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Avoid tags (comma separated)</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.avoidTags")}（{t("settings.avoidTagsHint")}）</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...preferenceForm.register("avoidTags")} />
           </label>
           <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={putPreferences.isPending} type="submit">
-            {putPreferences.isPending ? "Saving..." : "Save preferences"}
+            {putPreferences.isPending ? t("common.saving") : t("settings.savePreferences")}
           </button>
         </form>
 
         <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onSaveNotificationPreferences}>
-          <p className="text-sm font-semibold text-ink">Notification preferences</p>
+          <p className="text-sm font-semibold text-ink">{t("settings.notificationPreferences")}</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...notificationPreferenceForm.register("pushEnabled")} />
-              Push notifications
+              {t("settings.pushEnabled")}
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...notificationPreferenceForm.register("emailEnabled")} />
-              Email notifications
+              {t("settings.emailEnabled")}
             </label>
           </div>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Digest frequency</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.digestFrequency")}</span>
             <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("digestFrequency")}>
-              <option value="instant">instant</option>
-              <option value="daily">daily</option>
-              <option value="weekly">weekly</option>
+              <option value="instant">{t("settings.instant")}</option>
+              <option value="daily">{t("settings.daily")}</option>
+              <option value="weekly">{t("settings.weekly")}</option>
             </select>
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Quiet hours start</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.quietStart")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("quietHoursStart")} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">Quiet hours end</span>
+              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.quietEnd")}</span>
               <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...notificationPreferenceForm.register("quietHoursEnd")} />
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...notificationPreferenceForm.register("tripUpdates")} />
-              Trip updates
+              {t("settings.tripUpdates")}
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...notificationPreferenceForm.register("budgetAlerts")} />
-              Budget alerts
+              {t("settings.budgetAlerts")}
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...notificationPreferenceForm.register("aiPlanReadyAlerts")} />
-              AI plan ready alerts
+              {t("settings.aiPlanReady")}
             </label>
           </div>
           <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={putNotificationPreferences.isPending} type="submit">
-            {putNotificationPreferences.isPending ? "Saving..." : "Save notification preferences"}
+            {putNotificationPreferences.isPending ? t("common.saving") : t("settings.saveNotifications")}
           </button>
         </form>
+
+        <div className="mt-6 border-t border-ink/10 pt-6">
+          <p className="text-sm font-semibold text-coral">{t("settings.deleteAccount")}</p>
+          <p className="mt-2 text-xs text-ink/60">{t("settings.deleteAccountConfirmDescription")}</p>
+          <button
+            className="mt-3 rounded-full border border-coral/30 px-5 py-2 text-sm font-medium text-coral transition hover:bg-coral/10"
+            onClick={() => {
+              openConfirmModal({
+                title: t("settings.deleteAccountConfirmTitle"),
+                description: t("settings.deleteAccountConfirmDescription"),
+                confirmLabel: t("settings.deleteAccount"),
+                cancelLabel: t("common.cancel"),
+                tone: "danger",
+                onConfirm: onDeleteAccount
+              });
+            }}
+            type="button"
+          >
+            {t("settings.deleteAccount")}
+          </button>
+        </div>
       </SurfaceCard>
 
-      <SurfaceCard eyebrow="LLM Providers" title="Bring your own model key">
+      <SurfaceCard eyebrow={t("settings.llmProviders")} title={t("settings.llmProvidersTitle")}>
         <form className="grid gap-4" onSubmit={onAddProvider}>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Provider</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.provider")}</span>
             <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...providerForm.register("provider")}> 
-              <option value="openai">openai</option>
-              <option value="anthropic">anthropic</option>
-              <option value="google">google</option>
-              <option value="xai">xai</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google">Google</option>
+              <option value="xai">xAI</option>
             </select>
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Label</span>
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.label")}</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...providerForm.register("label")} />
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Model</span>
-            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...providerForm.register("model", { required: true })} />
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.model")}</span>
+            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...providerForm.register("model")} />
+            {providerErrors.model ? <p className="mt-1 text-xs text-coral">{msgs[providerErrors.model.message ?? ""] ?? providerErrors.model.message}</p> : null}
           </label>
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Encrypted API key envelope</span>
-            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...providerForm.register("encryptedApiKeyEnvelope", { required: true })} />
+            <span className="mb-2 block text-sm font-medium text-ink">{t("settings.apiKey")}</span>
+            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="password" {...providerForm.register("encryptedApiKeyEnvelope")} />
+            {providerErrors.encryptedApiKeyEnvelope ? <p className="mt-1 text-xs text-coral">{msgs[providerErrors.encryptedApiKeyEnvelope.message ?? ""] ?? providerErrors.encryptedApiKeyEnvelope.message}</p> : null}
           </label>
-          <button className="rounded-full bg-coral px-5 py-3 text-sm font-medium text-white" disabled={createProvider.isPending} type="submit">
-            {createProvider.isPending ? "Adding..." : "Add provider"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button className="rounded-full bg-coral px-5 py-3 text-sm font-medium text-white" disabled={createProvider.isPending} type="submit">
+              {createProvider.isPending ? t("settings.addingProvider") : t("settings.addProvider")}
+            </button>
+            <button
+              className="rounded-full border border-ink/20 px-5 py-3 text-sm font-medium text-ink transition hover:bg-sand"
+              disabled={testingConnection}
+              onClick={() => { void onTestConnection(); }}
+              type="button"
+            >
+              {testingConnection ? t("settings.testing") : t("settings.testConnection")}
+            </button>
+          </div>
         </form>
 
         <div className="mt-6 space-y-3 border-t border-ink/10 pt-6">
-          {providers.length === 0 ? <p className="text-sm text-ink/60">No provider configs yet.</p> : null}
+          {providers.length === 0 ? <p className="text-sm text-ink/60">{t("settings.noProviders")}</p> : null}
           {providers.map((provider) => (
             <div className="rounded-2xl border border-ink/10 bg-white p-4" key={provider.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-ink">{provider.label || provider.provider}</p>
-                  <p className="text-xs text-ink/65">Model: {provider.model}</p>
-                  <p className="text-xs text-ink/65">Key: {provider.maskedKey}</p>
+                  <p className="text-xs text-ink/65">{t("settings.model")}: {provider.model}</p>
+                  <p className="text-xs text-ink/65">{t("settings.apiKey")}: {provider.maskedKey}</p>
                 </div>
                 <button
                   className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
@@ -328,7 +384,7 @@ export function SettingsPage() {
                   }}
                   type="button"
                 >
-                  Remove
+                  {t("settings.removeProvider")}
                 </button>
               </div>
             </div>

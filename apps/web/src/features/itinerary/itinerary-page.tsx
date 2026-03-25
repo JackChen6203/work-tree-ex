@@ -4,9 +4,11 @@ import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
 import { useCreateItineraryItemMutation, useDeleteItineraryItemMutation, useItineraryDaysQuery, usePatchItineraryItemMutation, useReorderItineraryItemsMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
+import { useI18n } from "../../lib/i18n";
 
 export function ItineraryPage() {
   const { tripId = "" } = useParams();
+  const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
   const { data: days = [], isLoading } = useItineraryDaysQuery(tripId);
   const createItem = useCreateItineraryItemMutation(tripId);
@@ -17,21 +19,31 @@ export function ItineraryPage() {
   const [editingTitle, setEditingTitle] = useState("");
   const [editingNote, setEditingNote] = useState("");
 
+  const typeLabels: Record<string, string> = {
+    attraction: t("itinerary.attraction"),
+    restaurant: t("itinerary.restaurant"),
+    transit: t("itinerary.transit"),
+    lodging: t("itinerary.lodging"),
+    activity: t("itinerary.activity"),
+    free: t("itinerary.free"),
+    custom: t("itinerary.activity")
+  };
+
   const addItem = async () => {
     const targetDay = days[0]?.dayId ?? "day-1";
     await createItem.mutateAsync({
       dayId: targetDay,
-      title: "新行程項目",
+      title: t("itinerary.addItem"),
       itemType: "custom",
       allDay: false,
-      note: "由 itinerary page 建立"
+      note: ""
     });
-    pushToast("Itinerary item created");
+    pushToast(t("itinerary.addItem"));
   };
 
   const removeItem = async (itemId: string) => {
     await deleteItem.mutateAsync(itemId);
-    pushToast("Itinerary item removed");
+    pushToast(t("common.delete"));
   };
 
   const moveItem = async (dayId: string, itemId: string, targetSortOrder: number) => {
@@ -44,7 +56,6 @@ export function ItineraryPage() {
         }
       ]
     });
-    pushToast("Itinerary order updated");
   };
 
   const startEdit = (itemId: string, title: string, note?: string) => {
@@ -62,7 +73,6 @@ export function ItineraryPage() {
   const saveEdit = async (itemId: string, version: number) => {
     const nextTitle = editingTitle.trim();
     if (!nextTitle) {
-      pushToast("Title is required");
       return;
     }
     await patchItem.mutateAsync({
@@ -74,14 +84,14 @@ export function ItineraryPage() {
       }
     });
     cancelEdit();
-    pushToast("Itinerary item updated");
+    pushToast(t("common.save"));
   };
 
   return (
     <div className="grid gap-6">
       <SurfaceCard
-        eyebrow="Itinerary Module"
-        title="Daily timeline"
+        eyebrow={t("nav.itinerary")}
+        title={t("itinerary.title")}
         action={
           <button
             className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
@@ -91,22 +101,23 @@ export function ItineraryPage() {
             }}
             type="button"
           >
-            {createItem.isPending ? "Adding..." : "Add item"}
+            {createItem.isPending ? t("itinerary.adding") : t("itinerary.addItem")}
           </button>
         }
       >
-        {isLoading ? <div className="mb-4 rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading itinerary...</div> : null}
+        {isLoading ? <div className="mb-4 rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("itinerary.loading")}</div> : null}
         <div className="grid gap-5">
           {days.map((day, index) => (
             <div key={day.dayId} className="rounded-[28px] border border-ink/10 bg-sand/70 p-5">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-ink/45">
-                    Day {index + 1} . {day.date}
+                    {t("itinerary.day").replace("{n}", String(index + 1))} · {day.date}
                   </p>
-                  <h3 className="mt-2 font-display text-2xl font-bold text-ink">{day.items.length} items planned</h3>
+                  <h3 className="mt-2 font-display text-2xl font-bold text-ink">
+                    {day.items.length > 0 ? `${day.items.length} ${t("ai.items")}` : t("itinerary.noItems")}
+                  </h3>
                 </div>
-                <StatusPill tone="neutral">Versioned reorder</StatusPill>
               </div>
               <div className="mt-5 grid gap-4">
                 {day.items.map((item, itemIndex) => (
@@ -134,14 +145,13 @@ export function ItineraryPage() {
                           <>
                             <p className="text-sm font-semibold text-ink">{item.title}</p>
                             <p className="mt-1 text-sm text-ink/60">
-                              {item.itemType} . sort #{item.sortOrder}
+                              {typeLabels[item.itemType] ?? item.itemType}
                             </p>
                           </>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill tone="neutral">v{item.version}</StatusPill>
-                        <StatusPill tone="accent">{item.allDay ? "all-day" : "timed"}</StatusPill>
+                        <StatusPill tone="accent">{item.allDay ? t("itinerary.allDay") : t("itinerary.startTime")}</StatusPill>
                         {editingItemId === item.id ? (
                           <>
                             <button
@@ -152,14 +162,14 @@ export function ItineraryPage() {
                               }}
                               type="button"
                             >
-                              Save
+                              {t("common.save")}
                             </button>
                             <button
                               className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
                               onClick={cancelEdit}
                               type="button"
                             >
-                              Cancel
+                              {t("common.cancel")}
                             </button>
                           </>
                         ) : (
@@ -171,7 +181,7 @@ export function ItineraryPage() {
                             }}
                             type="button"
                           >
-                            Edit
+                            {t("common.edit")}
                           </button>
                         )}
                         <button
@@ -182,7 +192,7 @@ export function ItineraryPage() {
                           }}
                           type="button"
                         >
-                          Up
+                          {t("itinerary.sortUp")}
                         </button>
                         <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink disabled:opacity-40"
@@ -192,7 +202,7 @@ export function ItineraryPage() {
                           }}
                           type="button"
                         >
-                          Down
+                          {t("itinerary.sortDown")}
                         </button>
                         <button
                           className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink"
@@ -202,7 +212,7 @@ export function ItineraryPage() {
                           }}
                           type="button"
                         >
-                          Remove
+                          {t("common.delete")}
                         </button>
                       </div>
                     </div>
@@ -212,7 +222,7 @@ export function ItineraryPage() {
               </div>
             </div>
           ))}
-          {!isLoading && days.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No itinerary days found.</div> : null}
+          {!isLoading && days.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("itinerary.noItems")}</div> : null}
         </div>
       </SurfaceCard>
     </div>

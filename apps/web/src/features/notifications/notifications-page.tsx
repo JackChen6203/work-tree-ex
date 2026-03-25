@@ -60,8 +60,8 @@ export function NotificationsPage() {
 
   return (
     <SurfaceCard
-      eyebrow="Notification Module"
-      title="In-app inbox"
+      eyebrow={t("nav.inbox")}
+      title={t("notifications.title")}
       action={
         <button className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand" onClick={markAllRead} type="button">
           {t("notifications.markAllRead")}
@@ -87,8 +87,8 @@ export function NotificationsPage() {
           {unreadOnly ? t("notifications.showAll") : t("notifications.showUnread")}
         </button>
       </div>
-      {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">Loading notifications...</div> : null}
-      {!isLoading && items.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">No notifications found.</div> : null}
+      {isLoading ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("common.loading")}</div> : null}
+      {!isLoading && items.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("notifications.empty")}</div> : null}
       <div className="space-y-3">
         {items.map((item) => (
           <div key={item.id} className={`rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}>
