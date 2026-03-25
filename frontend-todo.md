@@ -240,7 +240,7 @@
 - [x] Trip 建立 wizard 接入 Zod schema 驗證
 - [x] Trip name ≤200 字即時驗證 + 錯誤訊息
 - [x] Date range 驗證（endDate ≥ startDate）
-- [ ] Email 格式驗證（invite member）
+- [x] Email 格式驗證（invite member）
 - [ ] Budget amount 非負數驗證
 - [ ] Expense 表單 Zod 驗證
 - [x] LLM API key 格式驗證（`enc_` 前綴 + 最少 16 字）
@@ -275,7 +275,7 @@
 
 - [x] 分類花費條狀圖（CSS bar chart 或 SVG）
 - [x] 估算 vs 實際百分比對照圖
-- [ ] Per-person 分攤計算顯示
+- [x] Per-person 分攤計算顯示
 - [ ] Per-day 花費趨勢折線圖
 - [x] 匯率來源與快照日期顯示
 - [x] Over-budget 紅色警告動畫
@@ -294,13 +294,13 @@
 
 ## FE-P2-08｜AI Planner 條件表單完善
 
-- [ ] 條件輸入從 hardcoded → 真實表單（連接 user preferences）
-- [ ] Budget 從 trip budget profile 自動帶入
+- [x] 條件輸入從 hardcoded → 真實表單（連接 user preferences）
+- [x] Budget 從 trip budget profile 自動帶入
 - [ ] Must-visit / avoid 支援 tag input（新增/刪除 chips）
 - [ ] Wake pattern / POI density 滑桿選擇器
 - [ ] 提交後顯示真實 planning job 進度輪詢
-- [ ] Draft 比較 side-by-side diff 視圖
-- [ ] Adopt 確認 dialog 使用 `openAdoptDraftModal`
+- [x] Draft 比較 side-by-side diff 視圖
+- [x] Adopt 確認 dialog 使用 `openAdoptDraftModal`
 
 ---
 
