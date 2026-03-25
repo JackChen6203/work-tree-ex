@@ -9,8 +9,11 @@ import { useI18n } from "../../lib/i18n";
 import { getSession, oauthStartUrl } from "../../lib/auth-api";
 import { magicLinkAuthEnabled, oauthProviders } from "../../lib/oauth-providers";
 import { useRequestMagicLinkMutation, useVerifyMagicLinkMutation } from "../../lib/queries";
+import { broadcastSessionSignedIn } from "../../lib/session-sync";
 import { useSessionStore } from "../../store/session-store";
 import { useUiStore } from "../../store/ui-store";
+
+const oauthCategories = ["social", "travel"] as const;
 
 export function AuthPage() {
   const navigate = useNavigate();
@@ -22,12 +25,20 @@ export function AuthPage() {
   const verifyMagicLink = useVerifyMagicLinkMutation();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [requestedEmail, setRequestedEmail] = useState("");
   const [previewCode, setPreviewCode] = useState<string | null>(null);
+  const oauthProviderGroups = oauthCategories
+    .map((category) => ({
+      category,
+      items: oauthProviders.filter((provider) => provider.category === category)
+    }))
+    .filter((group) => group.items.length > 0);
 
   const onRequest = async () => {
     trackEvent({ name: analyticsEventNames.authLoginRequested, context: { method: "email_magic_link" } });
     try {
       const response = await requestMagicLink.mutateAsync(email);
+      setRequestedEmail(email);
       setPreviewCode(response.previewCode ?? null);
       pushToast(t("auth.linkSent"));
     } catch {
@@ -38,13 +49,20 @@ export function AuthPage() {
   const onVerify = async () => {
     try {
       const response = await verifyMagicLink.mutateAsync({ email, code });
-      setUser(response.user);
+      setUser(response.user, response.roles);
+      broadcastSessionSignedIn(response.user, response.roles);
       pushToast(t("auth.loginSuccess"));
       trackEvent({ name: analyticsEventNames.authLoginSucceeded, context: { method: "email_magic_link" } });
       navigate("/");
     } catch {
       trackEvent({ name: analyticsEventNames.authLoginFailed, context: { method: "email_magic_link", reason: "verify_failed" } });
     }
+  };
+
+  const resetMagicLinkFlow = () => {
+    setRequestedEmail("");
+    setPreviewCode(null);
+    setCode("");
   };
 
   useEffect(() => {
@@ -69,7 +87,8 @@ export function AuthPage() {
       try {
         const session = await getSession();
         if (session.user) {
-          setUser(session.user);
+          setUser(session.user, session.roles);
+          broadcastSessionSignedIn(session.user, session.roles);
           pushToast(t("auth.oauthSuccess"));
           trackEvent({
             name: analyticsEventNames.authLoginSucceeded,
@@ -98,82 +117,124 @@ export function AuthPage() {
             <div>
               <p className="text-sm leading-7 text-ink/70">{t("auth.description")}</p>
               {magicLinkAuthEnabled ? (
-                <form
-                  className="mt-6 space-y-4"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (previewCode) {
-                      void onVerify();
-                      return;
-                    }
-                    void onRequest();
-                  }}
-                >
-                  <label className="block">
-                    <span className="mb-2 block text-sm font-medium text-ink">{t("auth.email")}</span>
-                    <input
-                      className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3 outline-none transition focus:border-pine"
-                      placeholder="you@example.com"
-                      type="email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      required
-                    />
-                  </label>
-                  {previewCode ? (
+                requestedEmail ? (
+                  <div className="mt-6 space-y-4 rounded-[26px] border border-ink/10 bg-sand/70 p-5">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-pine">{t("auth.waitingEyebrow")}</p>
+                      <h3 className="mt-2 font-display text-2xl font-bold text-ink">{t("auth.waitingTitle")}</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/70">{t("auth.waitingDescription")}</p>
+                      <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-ink">{requestedEmail}</p>
+                    </div>
+
+                    <form
+                      className="space-y-4"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void onVerify();
+                      }}
+                    >
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-ink">{t("auth.code")}</span>
+                        <input
+                          className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-pine"
+                          placeholder="123456"
+                          value={code}
+                          onChange={(event) => setCode(event.target.value)}
+                          required
+                        />
+                      </label>
+                      {previewCode ? <p className="text-xs text-pine">{t("auth.previewCode")}: {previewCode}</p> : null}
+                      {verifyMagicLink.error ? <p className="text-xs text-coral">{verifyMagicLink.error.message}</p> : null}
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="submit"
+                          className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-sand transition hover:bg-pine"
+                          disabled={verifyMagicLink.isPending}
+                        >
+                          {verifyMagicLink.isPending ? t("auth.verifying") : t("auth.verifyCode")}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-ink/20 bg-white px-5 py-3 text-sm font-medium text-ink transition hover:bg-sand"
+                          disabled={requestMagicLink.isPending}
+                          onClick={() => {
+                            void onRequest();
+                          }}
+                        >
+                          {requestMagicLink.isPending ? t("auth.resending") : t("auth.requestAnother")}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-full border border-ink/12 px-5 py-3 text-sm font-medium text-ink/75 transition hover:bg-white"
+                          onClick={resetMagicLinkFlow}
+                        >
+                          {t("auth.changeEmail")}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                ) : (
+                  <form
+                    className="mt-6 space-y-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void onRequest();
+                    }}
+                  >
                     <label className="block">
-                      <span className="mb-2 block text-sm font-medium text-ink">{t("auth.code")}</span>
+                      <span className="mb-2 block text-sm font-medium text-ink">{t("auth.email")}</span>
                       <input
                         className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3 outline-none transition focus:border-pine"
-                        placeholder="123456"
-                        value={code}
-                        onChange={(event) => setCode(event.target.value)}
+                        placeholder="you@example.com"
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
                         required
                       />
                     </label>
-                  ) : null}
-                  {previewCode ? <p className="text-xs text-pine">{t("auth.previewCode")}: {previewCode}</p> : null}
-                  {requestMagicLink.error ? <p className="text-xs text-coral">{requestMagicLink.error.message}</p> : null}
-                  {verifyMagicLink.error ? <p className="text-xs text-coral">{verifyMagicLink.error.message}</p> : null}
-                  <button
-                    type="submit"
-                    className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-sand transition hover:bg-pine"
-                    disabled={requestMagicLink.isPending || verifyMagicLink.isPending}
-                  >
-                    {previewCode ? t("auth.verifyCode") : t("auth.sendLink")}
-                  </button>
-                  {previewCode ? (
+                    <p className="text-xs leading-6 text-ink/60">{t("auth.magicLinkHint")}</p>
+                    {requestMagicLink.error ? <p className="text-xs text-coral">{requestMagicLink.error.message}</p> : null}
                     <button
-                      type="button"
-                      className="ml-3 rounded-full border border-ink/20 px-5 py-3 text-sm font-medium text-ink transition hover:bg-sand"
-                      onClick={() => {
-                        setPreviewCode(null);
-                        setCode("");
-                      }}
+                      type="submit"
+                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-sand transition hover:bg-pine"
+                      disabled={requestMagicLink.isPending}
                     >
-                      {t("auth.requestAnother")}
+                      {requestMagicLink.isPending ? t("auth.sendingLink") : t("auth.sendLink")}
                     </button>
-                  ) : null}
-                </form>
+                  </form>
+                )
               ) : null}
 
               <div className={magicLinkAuthEnabled ? "mt-7 border-t border-ink/10 pt-5" : "mt-6"}>
                 <p className="text-sm font-medium text-ink">{t("auth.oauthTitle")}</p>
                 <p className="mt-1 text-xs text-ink/60">{t("auth.oauthDescription")}</p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {oauthProviders.map((provider) => (
-                    <a
-                      key={provider.id}
-                      href={oauthStartUrl(provider.id)}
-                      onClick={() => {
-                        trackEvent({ name: analyticsEventNames.authLoginRequested, context: { method: "oauth", provider: provider.id } });
-                      }}
-                      className="rounded-full border border-ink/15 bg-white px-4 py-2 text-center text-sm font-medium text-ink transition hover:bg-sand"
-                    >
-                      {provider.label}
-                    </a>
-                  ))}
-                </div>
+                {oauthProviderGroups.length > 0 ? (
+                  <div className="mt-4 space-y-4">
+                    {oauthProviderGroups.map((group) => (
+                      <section key={group.category}>
+                        <p className="mb-2 text-xs uppercase tracking-[0.22em] text-ink/45">
+                          {group.category === "social" ? t("auth.oauthCategorySocial") : t("auth.oauthCategoryTravel")}
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {group.items.map((provider) => (
+                            <a
+                              key={provider.id}
+                              href={oauthStartUrl(provider.id)}
+                              onClick={() => {
+                                trackEvent({ name: analyticsEventNames.authLoginRequested, context: { method: "oauth", provider: provider.id } });
+                              }}
+                              className="rounded-[20px] border border-ink/15 bg-white px-4 py-3 text-center text-sm font-medium text-ink transition hover:bg-sand"
+                            >
+                              {provider.label}
+                            </a>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-[20px] border border-ink/10 bg-sand/60 px-4 py-3 text-sm text-ink/65">{t("auth.noOAuthProviders")}</p>
+                )}
               </div>
             </div>
             <div className="rounded-[24px] bg-gradient-to-br from-[#f5e4d9] to-[#d7e1dd] p-5">

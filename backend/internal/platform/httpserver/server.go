@@ -11,12 +11,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/config"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 type Server struct {
-	cfg    config.Config
-	logger *slog.Logger
-	engine *gin.Engine
+	cfg            config.Config
+	logger         *slog.Logger
+	engine         *gin.Engine
+	tracerShutdown func(context.Context) error
 }
 
 func New(cfg config.Config, logger *slog.Logger) *Server {
@@ -24,9 +26,18 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// Initialize OpenTelemetry tracer
+	tracerShutdown, err := InitTracer(logger)
+	if err != nil {
+		logger.Warn("failed to initialize OpenTelemetry tracer, continuing without tracing", "error", err)
+	}
+
 	engine := gin.New()
+	engine.Use(otelgin.Middleware(serviceName))
 	engine.Use(corsMiddleware(cfg.CORS.AllowedOrigins))
 	engine.Use(requestIDMiddleware())
+	engine.Use(jwtMiddleware())
+	engine.Use(csrfMiddleware())
 	engine.Use(rateLimitMiddleware(50, 100))
 	engine.Use(accessLogMiddleware(logger))
 	engine.Use(recoveryMiddleware(logger))
@@ -34,9 +45,10 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	registerRoutes(engine)
 
 	return &Server{
-		cfg:    cfg,
-		logger: logger,
-		engine: engine,
+		cfg:            cfg,
+		logger:         logger,
+		engine:         engine,
+		tracerShutdown: tracerShutdown,
 	}
 }
 
@@ -76,6 +88,13 @@ func (s *Server) Run(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.cfg.HTTP.ShutdownTimeout)
 	defer cancel()
+
+	// Shutdown OpenTelemetry tracer to flush pending spans
+	if s.tracerShutdown != nil {
+		if err := s.tracerShutdown(shutdownCtx); err != nil {
+			s.logger.Warn("opentelemetry tracer shutdown error", "error", err)
+		}
+	}
 
 	return httpServer.Shutdown(shutdownCtx)
 }

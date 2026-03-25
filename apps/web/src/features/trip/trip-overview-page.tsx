@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
+import { useTripPermission } from "../auth/use-trip-permission";
 import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery, useUpdateTripMemberRoleMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 
@@ -62,6 +63,8 @@ export function TripOverviewPage() {
   if (error || !trip) {
     return <div className="rounded-[28px] bg-coral/10 p-6 text-sm text-coral">Trip detail could not be loaded from backend.</div>;
   }
+
+  const permission = useTripPermission(trip.role);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const updated = await patchTrip.mutateAsync({
@@ -139,6 +142,7 @@ export function TripOverviewPage() {
                 <option value="viewer">viewer</option>
               </select>
             </div>
+            {!permission.canManageMembers ? <p className="mt-3 text-sm text-white/75">Only owners can change member roles or invite new collaborators.</p> : null}
             {members.length === 0 ? <p className="mt-2 text-sm text-white/75">No members added yet.</p> : null}
             <div className="mt-3 grid gap-2">
               {members.map((member) => (
@@ -151,7 +155,7 @@ export function TripOverviewPage() {
                     <select
                       className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-medium text-white"
                       defaultValue={member.role}
-                      disabled={updateMemberRole.isPending}
+                      disabled={!permission.canManageMembers || updateMemberRole.isPending}
                       onChange={(event) => {
                         void onUpdateRole(member.id, event.target.value as "owner" | "editor" | "commenter" | "viewer");
                       }}
@@ -163,7 +167,7 @@ export function TripOverviewPage() {
                     </select>
                     <button
                       className="rounded-full border border-white/30 px-3 py-1 text-xs font-medium text-white/90"
-                      disabled={removeTripMember.isPending || updateMemberRole.isPending}
+                      disabled={!permission.canManageMembers || removeTripMember.isPending || updateMemberRole.isPending}
                       onClick={() => onRemoveMember(member.id)}
                       type="button"
                     >
@@ -178,6 +182,8 @@ export function TripOverviewPage() {
       </SurfaceCard>
       <SurfaceCard eyebrow="Server Data" title="Patch trip metadata">
         <form className="grid gap-4" onSubmit={onSubmit}>
+          {!permission.canEdit ? <p className="rounded-2xl bg-sand/80 px-4 py-3 text-sm text-ink/70">Your current role is view-only for trip settings. Switch to an owner or editor role to modify metadata.</p> : null}
+          <fieldset className="grid gap-4" disabled={!permission.canEdit || patchTrip.isPending}>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-ink">Trip name</span>
             <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("name")} />
@@ -225,32 +231,35 @@ export function TripOverviewPage() {
               </select>
             </label>
           </div>
-          <button className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white" disabled={patchTrip.isPending} type="submit">
+          </fieldset>
+          <button className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:opacity-60" disabled={!permission.canEdit || patchTrip.isPending} type="submit">
             {patchTrip.isPending ? "Saving..." : "Save trip"}
           </button>
         </form>
-        <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onAddMember}>
-          <p className="text-sm font-semibold text-ink">Add member</p>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Email</span>
-            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email", { required: true })} />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Display name</span>
-            <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("displayName")} />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-ink">Role</span>
-            <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("role")}> 
-              <option value="viewer">viewer</option>
-              <option value="commenter">commenter</option>
-              <option value="editor">editor</option>
-            </select>
-          </label>
-          <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={addTripMember.isPending} type="submit">
-            {addTripMember.isPending ? "Adding..." : "Add member"}
-          </button>
-        </form>
+        {permission.canManageMembers ? (
+          <form className="mt-6 grid gap-4 border-t border-ink/10 pt-6" onSubmit={onAddMember}>
+            <p className="text-sm font-semibold text-ink">Add member</p>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Email</span>
+              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email", { required: true })} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Display name</span>
+              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("displayName")} />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">Role</span>
+              <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("role")}>
+                <option value="viewer">viewer</option>
+                <option value="commenter">commenter</option>
+                <option value="editor">editor</option>
+              </select>
+            </label>
+            <button className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white" disabled={addTripMember.isPending} type="submit">
+              {addTripMember.isPending ? "Adding..." : "Add member"}
+            </button>
+          </form>
+        ) : null}
       </SurfaceCard>
     </div>
   );

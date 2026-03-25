@@ -150,3 +150,148 @@ func mustJSON(t *testing.T, value any) []byte {
 	}
 	return data
 }
+
+func TestCreateItemTimeRangeValidation(t *testing.T) {
+	r := setupRouter()
+
+	// endAt before startAt should be rejected
+	body := mustJSON(t, map[string]any{
+		"dayId":    "day-1",
+		"title":    "Bad times",
+		"itemType": "custom",
+		"allDay":   false,
+		"startAt":  "2025-08-03T14:00:00Z",
+		"endAt":    "2025-08-03T10:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-tr/items", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "it-time-1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for endAt before startAt, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateItemWithSnapshotBinding(t *testing.T) {
+	r := setupRouter()
+
+	placeSnap := "ps-123"
+	routeSnap := "rs-456"
+	body := mustJSON(t, map[string]any{
+		"dayId":           "day-1",
+		"title":           "Snapshot item",
+		"itemType":        "place_visit",
+		"allDay":          false,
+		"placeSnapshotId": placeSnap,
+		"routeSnapshotId": routeSnap,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-snap/items", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "it-snap-1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Item struct {
+				PlaceSnapshotID *string `json:"placeSnapshotId"`
+				RouteSnapshotID *string `json:"routeSnapshotId"`
+			} `json:"item"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Data.Item.PlaceSnapshotID == nil || *resp.Data.Item.PlaceSnapshotID != placeSnap {
+		t.Fatalf("expected placeSnapshotId=%s", placeSnap)
+	}
+	if resp.Data.Item.RouteSnapshotID == nil || *resp.Data.Item.RouteSnapshotID != routeSnap {
+		t.Fatalf("expected routeSnapshotId=%s", routeSnap)
+	}
+}
+
+func TestReorderRollbackOnFailure(t *testing.T) {
+	r := setupRouter()
+
+	// Seed trip data
+	seedReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-rb/days", nil)
+	seedW := httptest.NewRecorder()
+	r.ServeHTTP(seedW, seedReq)
+	if seedW.Code != http.StatusOK {
+		t.Fatalf("expected 200 seed, got %d", seedW.Code)
+	}
+
+	// Create an item to reorder
+	createBody := mustJSON(t, map[string]any{
+		"dayId": "day-1", "title": "Rollback Test", "itemType": "custom", "allDay": false,
+	})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-rb/items", bytes.NewBuffer(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Idempotency-Key", "rb-create-1")
+	createW := httptest.NewRecorder()
+	r.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", createW.Code)
+	}
+
+	var created struct {
+		Data struct {
+			Item struct {
+				ID string `json:"id"`
+			} `json:"item"`
+		} `json:"data"`
+	}
+	json.Unmarshal(createW.Body.Bytes(), &created)
+
+	// Try to reorder to a non-existent day: should fail and rollback
+	reorderBody := mustJSON(t, map[string]any{
+		"operations": []map[string]any{{
+			"itemId":          created.Data.Item.ID,
+			"targetDayId":     "day-nonexistent",
+			"targetSortOrder": 1,
+		}},
+	})
+	reorderReq := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-rb/items/reorder", bytes.NewBuffer(reorderBody))
+	reorderReq.Header.Set("Content-Type", "application/json")
+	reorderReq.Header.Set("Idempotency-Key", "rb-reorder-1")
+	reorderW := httptest.NewRecorder()
+	r.ServeHTTP(reorderW, reorderReq)
+
+	if reorderW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for bad dayId, got %d", reorderW.Code)
+	}
+
+	// Verify item is still in its original day (rollback worked)
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-rb/days", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 after rollback, got %d", listW.Code)
+	}
+
+	var listed struct {
+		Data []itineraryDay `json:"data"`
+	}
+	json.Unmarshal(listW.Body.Bytes(), &listed)
+
+	found := false
+	for _, day := range listed.Data {
+		for _, item := range day.Items {
+			if item.ID == created.Data.Item.ID {
+				found = true
+				if day.DayID != "day-1" {
+					t.Fatalf("expected item still in day-1 after rollback, found in %s", day.DayID)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("item disappeared after failed reorder - rollback did not work")
+	}
+}

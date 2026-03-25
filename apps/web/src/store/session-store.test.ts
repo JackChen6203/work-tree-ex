@@ -31,6 +31,7 @@ describe("session store", () => {
       email: "demo@example.com",
       avatar: "DM"
     });
+    expect(useSessionStore.getState().roles).toEqual(["owner"]);
   });
 
   it("falls back to a signed-out state when hydration fails", async () => {
@@ -40,5 +41,6 @@ describe("session store", () => {
 
     expect(useSessionStore.getState().hydrated).toBe(true);
     expect(useSessionStore.getState().user).toBeNull();
+    expect(useSessionStore.getState().roles).toEqual([]);
   });
 });

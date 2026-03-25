@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
+	gosync "sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
@@ -24,16 +25,41 @@ type mutationFlushItem struct {
 	BaseVersion int    `json:"baseVersion"`
 }
 
+// OutboxEvent represents a transactional outbox event.
+type OutboxEvent struct {
+	ID            string     `json:"id"`
+	TripID        string     `json:"tripId,omitempty"`
+	AggregateType string     `json:"aggregateType"`
+	AggregateID   string     `json:"aggregateId"`
+	EventType     string     `json:"eventType"`
+	Payload       gin.H      `json:"payload"`
+	DedupeKey     string     `json:"dedupeKey"`
+	Status        string     `json:"status"` // pending | processed | dlq
+	RetryCount    int        `json:"retryCount"`
+	AvailableAt   time.Time  `json:"availableAt"`
+	ProcessedAt   *time.Time `json:"processedAt,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt"`
+}
+
+const maxRetries = 3
+
 var (
-	syncMu                sync.RWMutex
+	syncMu                gosync.RWMutex
 	entityVersions        = map[string]int{}
 	flushIdempotencyStore = map[string]gin.H{}
 	latestSyncVersion     int
+
+	// Outbox store
+	outboxEvents     = []OutboxEvent{}
+	outboxByID       = map[string]*OutboxEvent{}
+	outboxDedupeKeys = map[string]bool{}
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/sync/bootstrap", bootstrap)
 	v1.POST("/sync/mutations/flush", flushMutations)
+	v1.GET("/sync/outbox/events", listOutboxEvents)
+	v1.POST("/sync/outbox/events/:eventId/ack", ackOutboxEvent)
 }
 
 func bootstrap(c *gin.Context) {
@@ -49,11 +75,22 @@ func bootstrap(c *gin.Context) {
 	}
 
 	tripID := strings.TrimSpace(c.Query("tripId"))
+
+	// Client version check for full re-sync
+	clientVersion := strings.TrimSpace(c.GetHeader("X-Client-Version"))
+	fullResync := false
+	if clientVersion != "" {
+		cv, err := strconv.Atoi(clientVersion)
+		if err == nil && cv < 10 {
+			fullResync = true
+		}
+	}
+
 	payload := gin.H{
 		"serverTime":           time.Now().UTC(),
 		"sinceVersion":         sinceVersion,
 		"tripId":               tripID,
-		"fullResyncRequired":   false,
+		"fullResyncRequired":   fullResync,
 		"changedTrips":         []gin.H{},
 		"changedDays":          []gin.H{},
 		"changedNotifications": []gin.H{},
@@ -63,7 +100,13 @@ func bootstrap(c *gin.Context) {
 	currentVersion := latestSyncVersion
 	syncMu.RUnlock()
 
-	if sinceVersion == 0 {
+	if fullResync {
+		// Full re-sync: return all data
+		if tripID != "" {
+			payload["changedTrips"] = []gin.H{{"id": tripID, "version": currentVersion}}
+			payload["changedDays"] = []gin.H{{"tripId": tripID, "dayId": "day-1", "version": currentVersion}}
+		}
+	} else if sinceVersion == 0 {
 		if tripID != "" {
 			payload["changedTrips"] = []gin.H{{"id": tripID, "version": 1}}
 			payload["changedDays"] = []gin.H{{"tripId": tripID, "dayId": "day-1", "version": 1}}
@@ -140,6 +183,28 @@ func flushMutations(c *gin.Context) {
 		latestSyncVersion++
 		entityVersions[entityKey] = latestSyncVersion
 		accepted++
+
+		// Write outbox event (same "transaction")
+		dedupeKey := idempotencyKey + ":" + mutationID
+		if !outboxDedupeKeys[dedupeKey] {
+			now := time.Now().UTC()
+			evt := OutboxEvent{
+				ID:            uuid.NewString(),
+				TripID:        in.TripID,
+				AggregateType: entityType,
+				AggregateID:   entityID,
+				EventType:     entityType + ".updated",
+				Payload:       gin.H{"mutationId": mutationID, "version": latestSyncVersion},
+				DedupeKey:     dedupeKey,
+				Status:        "pending",
+				RetryCount:    0,
+				AvailableAt:   now,
+				CreatedAt:     now,
+			}
+			outboxEvents = append(outboxEvents, evt)
+			outboxByID[evt.ID] = &outboxEvents[len(outboxEvents)-1]
+			outboxDedupeKeys[dedupeKey] = true
+		}
 	}
 	nextVersion := latestSyncVersion
 	payload := gin.H{
@@ -154,4 +219,62 @@ func flushMutations(c *gin.Context) {
 	syncMu.Unlock()
 
 	response.JSON(c, http.StatusOK, payload)
+}
+
+func listOutboxEvents(c *gin.Context) {
+	statusFilter := strings.TrimSpace(c.Query("status"))
+	if statusFilter == "" {
+		statusFilter = "pending"
+	}
+
+	syncMu.RLock()
+	defer syncMu.RUnlock()
+
+	now := time.Now().UTC()
+	items := make([]OutboxEvent, 0)
+	for _, evt := range outboxEvents {
+		if evt.Status == statusFilter && !evt.AvailableAt.After(now) {
+			items = append(items, evt)
+		}
+	}
+
+	response.JSON(c, http.StatusOK, items)
+}
+
+func ackOutboxEvent(c *gin.Context) {
+	eventID := strings.TrimSpace(c.Param("eventId"))
+
+	var body struct {
+		Success bool   `json:"success"`
+		Error   string `json:"error,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	syncMu.Lock()
+	defer syncMu.Unlock()
+
+	evt, ok := outboxByID[eventID]
+	if !ok {
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "outbox event not found", gin.H{"eventId": eventID})
+		return
+	}
+
+	if body.Success {
+		now := time.Now().UTC()
+		evt.Status = "processed"
+		evt.ProcessedAt = &now
+	} else {
+		evt.RetryCount++
+		if evt.RetryCount > maxRetries {
+			evt.Status = "dlq"
+		} else {
+			// Exponential backoff: 1s, 2s, 4s
+			evt.AvailableAt = time.Now().UTC().Add(time.Duration(1<<evt.RetryCount) * time.Second)
+		}
+	}
+
+	response.JSON(c, http.StatusOK, *evt)
 }

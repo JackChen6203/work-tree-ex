@@ -11,11 +11,12 @@ interface PendingMutationRecord {
 interface SessionState {
   hydrated: boolean;
   user: SessionUser | null;
+  roles: string[];
   isOnline: boolean;
   pendingMutations: number;
   pendingMutationRecords: PendingMutationRecord[];
   hydrate: () => Promise<void>;
-  setUser: (user: SessionUser | null) => void;
+  setUser: (user: SessionUser | null, roles?: string[]) => void;
   clearUser: () => void;
   setOnline: (isOnline: boolean) => void;
   enqueuePendingMutation: (scope: string, id?: string) => string;
@@ -26,10 +27,11 @@ interface SessionState {
 const defaultSessionState = {
   hydrated: false,
   user: null,
+  roles: [],
   isOnline: true,
   pendingMutations: 0,
   pendingMutationRecords: []
-} satisfies Pick<SessionState, "hydrated" | "user" | "isOnline" | "pendingMutations" | "pendingMutationRecords">;
+} satisfies Pick<SessionState, "hydrated" | "user" | "roles" | "isOnline" | "pendingMutations" | "pendingMutationRecords">;
 
 export const useSessionStore = create<SessionState>((set, get) => {
   let inflightHydration: Promise<void> | null = null;
@@ -47,10 +49,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
       inflightHydration = getSession()
         .then((session) => {
-          set({ hydrated: true, user: session.user });
+          set({ hydrated: true, user: session.user, roles: session.roles });
         })
         .catch(() => {
-          set({ hydrated: true, user: null });
+          set({ hydrated: true, user: null, roles: [] });
         })
         .finally(() => {
           inflightHydration = null;
@@ -58,8 +60,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
       return inflightHydration;
     },
-    setUser: (user) => set({ user }),
-    clearUser: () => set({ user: null }),
+    setUser: (user, roles = []) => set({ hydrated: true, user, roles }),
+    clearUser: () => set({ hydrated: true, user: null, roles: [] }),
     setOnline: (isOnline) => set({ isOnline }),
     enqueuePendingMutation: (scope, id = crypto.randomUUID()) => {
       set((state) => {

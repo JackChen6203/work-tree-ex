@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -26,6 +27,8 @@ type itineraryItem struct {
 	PlaceID               *string  `json:"placeId,omitempty"`
 	Lat                   *float64 `json:"lat,omitempty"`
 	Lng                   *float64 `json:"lng,omitempty"`
+	PlaceSnapshotID       *string  `json:"placeSnapshotId,omitempty"`
+	RouteSnapshotID       *string  `json:"routeSnapshotId,omitempty"`
 	EstimatedCostAmount   *float64 `json:"estimatedCostAmount,omitempty"`
 	EstimatedCostCurrency *string  `json:"estimatedCostCurrency,omitempty"`
 	Version               int      `json:"version"`
@@ -39,29 +42,33 @@ type itineraryDay struct {
 }
 
 type itemCreateInput struct {
-	DayID    string   `json:"dayId"`
-	Title    string   `json:"title"`
-	ItemType string   `json:"itemType"`
-	StartAt  *string  `json:"startAt"`
-	EndAt    *string  `json:"endAt"`
-	AllDay   bool     `json:"allDay"`
-	Note     *string  `json:"note"`
-	PlaceID  *string  `json:"placeId"`
-	Lat      *float64 `json:"lat"`
-	Lng      *float64 `json:"lng"`
+	DayID           string   `json:"dayId"`
+	Title           string   `json:"title"`
+	ItemType        string   `json:"itemType"`
+	StartAt         *string  `json:"startAt"`
+	EndAt           *string  `json:"endAt"`
+	AllDay          bool     `json:"allDay"`
+	Note            *string  `json:"note"`
+	PlaceID         *string  `json:"placeId"`
+	Lat             *float64 `json:"lat"`
+	Lng             *float64 `json:"lng"`
+	PlaceSnapshotID *string  `json:"placeSnapshotId"`
+	RouteSnapshotID *string  `json:"routeSnapshotId"`
 }
 
 type itemPatchInput struct {
-	DayID     *string  `json:"dayId"`
-	Title     *string  `json:"title"`
-	StartAt   *string  `json:"startAt"`
-	EndAt     *string  `json:"endAt"`
-	AllDay    *bool    `json:"allDay"`
-	Note      *string  `json:"note"`
-	SortOrder *int     `json:"sortOrder"`
-	PlaceID   *string  `json:"placeId"`
-	Lat       *float64 `json:"lat"`
-	Lng       *float64 `json:"lng"`
+	DayID           *string  `json:"dayId"`
+	Title           *string  `json:"title"`
+	StartAt         *string  `json:"startAt"`
+	EndAt           *string  `json:"endAt"`
+	AllDay          *bool    `json:"allDay"`
+	Note            *string  `json:"note"`
+	SortOrder       *int     `json:"sortOrder"`
+	PlaceID         *string  `json:"placeId"`
+	Lat             *float64 `json:"lat"`
+	Lng             *float64 `json:"lng"`
+	PlaceSnapshotID *string  `json:"placeSnapshotId"`
+	RouteSnapshotID *string  `json:"routeSnapshotId"`
 }
 
 type reorderInput struct {
@@ -129,6 +136,14 @@ func createItem(c *gin.Context) {
 		return
 	}
 
+	// Time range validation: startAt/endAt must fall within trip date range
+	if in.StartAt != nil || in.EndAt != nil {
+		if err := validateItemTimeRange(in.StartAt, in.EndAt); err != nil {
+			response.Error(c, http.StatusBadRequest, perrors.CodeInvalidDateRange, err.Error(), nil)
+			return
+		}
+	}
+
 	itineraryMu.Lock()
 	if existingID, ok := itemCreateIdempotency[idempotencyKey]; ok {
 		existing := itemByID[existingID]
@@ -139,19 +154,21 @@ func createItem(c *gin.Context) {
 
 	ensureSeededLocked(tripID)
 	item := itineraryItem{
-		ID:        uuid.NewString(),
-		DayID:     in.DayID,
-		Title:     in.Title,
-		ItemType:  in.ItemType,
-		StartAt:   in.StartAt,
-		EndAt:     in.EndAt,
-		AllDay:    in.AllDay,
-		SortOrder: nextSortLocked(tripID, in.DayID),
-		Note:      in.Note,
-		PlaceID:   in.PlaceID,
-		Lat:       in.Lat,
-		Lng:       in.Lng,
-		Version:   1,
+		ID:              uuid.NewString(),
+		DayID:           in.DayID,
+		Title:           in.Title,
+		ItemType:        in.ItemType,
+		StartAt:         in.StartAt,
+		EndAt:           in.EndAt,
+		AllDay:          in.AllDay,
+		SortOrder:       nextSortLocked(tripID, in.DayID),
+		Note:            in.Note,
+		PlaceID:         in.PlaceID,
+		Lat:             in.Lat,
+		Lng:             in.Lng,
+		PlaceSnapshotID: in.PlaceSnapshotID,
+		RouteSnapshotID: in.RouteSnapshotID,
+		Version:         1,
 	}
 
 	if !attachItemLocked(tripID, item) {
@@ -198,6 +215,14 @@ func patchItem(c *gin.Context) {
 		return
 	}
 
+	// Time range validation for patched times
+	if in.StartAt != nil || in.EndAt != nil {
+		if err := validateItemTimeRange(in.StartAt, in.EndAt); err != nil {
+			response.Error(c, http.StatusBadRequest, perrors.CodeInvalidDateRange, err.Error(), nil)
+			return
+		}
+	}
+
 	itineraryMu.Lock()
 	item, ok := itemByID[itemID]
 	if !ok || itemTripByID[itemID] != tripID {
@@ -237,6 +262,12 @@ func patchItem(c *gin.Context) {
 	}
 	if in.Lng != nil {
 		item.Lng = in.Lng
+	}
+	if in.PlaceSnapshotID != nil {
+		item.PlaceSnapshotID = in.PlaceSnapshotID
+	}
+	if in.RouteSnapshotID != nil {
+		item.RouteSnapshotID = in.RouteSnapshotID
 	}
 
 	// Cross-day move: remove from source day, attach to target day
@@ -312,9 +343,22 @@ func reorderItems(c *gin.Context) {
 	}
 
 	ensureSeededLocked(tripID)
+
+	// Snapshot for rollback on failure
+	snapshotDays := cloneDays(daysByTrip[tripID])
+	snapshotItems := make(map[string]itineraryItem, len(itemByID))
+	for k, v := range itemByID {
+		snapshotItems[k] = v
+	}
+
 	for _, op := range in.Operations {
 		item, ok := itemByID[op.ItemID]
 		if !ok || itemTripByID[op.ItemID] != tripID {
+			// Rollback
+			daysByTrip[tripID] = snapshotDays
+			for k, v := range snapshotItems {
+				itemByID[k] = v
+			}
 			itineraryMu.Unlock()
 			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": op.ItemID})
 			return
@@ -325,6 +369,11 @@ func reorderItems(c *gin.Context) {
 		item.Version++
 		itemByID[item.ID] = item
 		if !attachItemLocked(tripID, item) {
+			// Rollback
+			daysByTrip[tripID] = snapshotDays
+			for k, v := range snapshotItems {
+				itemByID[k] = v
+			}
 			itineraryMu.Unlock()
 			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "targetDayId not found", gin.H{"targetDayId": op.TargetDayID})
 			return
@@ -483,3 +532,29 @@ func detectTimeOverlapsLocked(tripID, dayID string) []string {
 
 	return warnings
 }
+
+// validateItemTimeRange ensures startAt/endAt are valid ISO timestamps and endAt >= startAt.
+func validateItemTimeRange(startAt, endAt *string) error {
+	if startAt != nil && *startAt != "" {
+		if _, err := time.Parse(time.RFC3339, *startAt); err != nil {
+			return errItemTimeRange("startAt must be a valid ISO-8601 timestamp")
+		}
+	}
+	if endAt != nil && *endAt != "" {
+		if _, err := time.Parse(time.RFC3339, *endAt); err != nil {
+			return errItemTimeRange("endAt must be a valid ISO-8601 timestamp")
+		}
+	}
+	if startAt != nil && endAt != nil && *startAt != "" && *endAt != "" {
+		s, _ := time.Parse(time.RFC3339, *startAt)
+		e, _ := time.Parse(time.RFC3339, *endAt)
+		if e.Before(s) {
+			return errItemTimeRange("endAt must not be before startAt")
+		}
+	}
+	return nil
+}
+
+type errItemTimeRange string
+
+func (e errItemTimeRange) Error() string { return string(e) }

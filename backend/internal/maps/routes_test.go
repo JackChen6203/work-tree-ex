@@ -67,3 +67,63 @@ func TestSearchPlacesLimitApplied(t *testing.T) {
 		t.Fatalf("expected exactly one place in payload, got %s", body)
 	}
 }
+
+func TestGeocode(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/geocode?address=Kyoto+Station", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestGeocodeRequiresAddress(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/geocode", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestReverseGeocode(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/reverse-geocode?lat=35.0116&lng=135.7681", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetPlaceDetailFound(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/places/poi_kiyomizu", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestGetPlaceDetailPartialWarning(t *testing.T) {
+	r := setupRouter()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/maps/places/unknown_place", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with warning, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !bytes.Contains([]byte(body), []byte("warnings")) {
+		t.Fatalf("expected warnings in response, got %s", body)
+	}
+}

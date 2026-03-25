@@ -11,6 +11,7 @@ import (
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/itinerary"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/maps"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/notifications"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/search"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/sync"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/trips"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/users"
@@ -31,5 +32,6 @@ func registerRoutes(engine *gin.Engine) {
 	ai.RegisterRoutes(v1)
 	notifications.RegisterRoutes(v1)
 	sync.RegisterRoutes(v1)
+	search.RegisterRoutes(v1)
 	admin.RegisterRoutes(v1)
 }

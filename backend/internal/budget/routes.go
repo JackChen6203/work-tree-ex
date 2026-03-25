@@ -83,6 +83,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.POST("/trips/:tripId/expenses", createExpense)
 	v1.PATCH("/trips/:tripId/expenses/:expenseId", patchExpense)
 	v1.DELETE("/trips/:tripId/expenses/:expenseId", deleteExpense)
+	registerRateRoutes(v1)
 }
 
 func getBudget(c *gin.Context) {
@@ -341,4 +342,118 @@ func isValidExpenseCategory(category string) bool {
 	default:
 		return false
 	}
+}
+
+// --- Currency conversion snapshot ---
+
+type currencyRate struct {
+	From      string     `json:"from"`
+	To        string     `json:"to"`
+	Rate      float64    `json:"rate"`
+	Source    string     `json:"source"`
+	FetchedAt time.Time  `json:"fetchedAt"`
+	StaleAt   *time.Time `json:"staleAt,omitempty"`
+}
+
+var (
+	rateCache = map[string]currencyRate{}
+)
+
+func init() {
+	now := time.Now().UTC()
+	seedRates := []currencyRate{
+		{From: "USD", To: "JPY", Rate: 149.50, Source: "mock", FetchedAt: now},
+		{From: "USD", To: "TWD", Rate: 32.10, Source: "mock", FetchedAt: now},
+		{From: "USD", To: "EUR", Rate: 0.92, Source: "mock", FetchedAt: now},
+		{From: "JPY", To: "TWD", Rate: 0.215, Source: "mock", FetchedAt: now},
+		{From: "TWD", To: "JPY", Rate: 4.66, Source: "mock", FetchedAt: now},
+		{From: "EUR", To: "USD", Rate: 1.09, Source: "mock", FetchedAt: now},
+	}
+	for _, r := range seedRates {
+		rateCache[r.From+":"+r.To] = r
+	}
+}
+
+func registerRateRoutes(g *gin.RouterGroup) {
+	g.GET("/trips/:tripId/budget/rates", getRates)
+	g.POST("/trips/:tripId/budget/rates/refresh", refreshRates)
+}
+
+func getRates(c *gin.Context) {
+	from := strings.ToUpper(strings.TrimSpace(c.Query("from")))
+	to := strings.ToUpper(strings.TrimSpace(c.Query("to")))
+
+	budgetMu.RLock()
+	defer budgetMu.RUnlock()
+
+	if from != "" && to != "" {
+		key := from + ":" + to
+		rate, ok := rateCache[key]
+		if !ok {
+			response.Error(c, http.StatusNotFound, perrors.CodeBudgetRateUnavailable,
+				"exchange rate not available for "+from+"/"+to, nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, rate)
+		return
+	}
+
+	rates := make([]currencyRate, 0, len(rateCache))
+	for _, r := range rateCache {
+		rates = append(rates, r)
+	}
+	response.JSON(c, http.StatusOK, rates)
+}
+
+func refreshRates(c *gin.Context) {
+	from := strings.ToUpper(strings.TrimSpace(c.Query("from")))
+	to := strings.ToUpper(strings.TrimSpace(c.Query("to")))
+	if from == "" || to == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "from and to query params required", nil)
+		return
+	}
+
+	budgetMu.Lock()
+	defer budgetMu.Unlock()
+
+	key := from + ":" + to
+	existing, hasExisting := rateCache[key]
+
+	// Simulate API call (mock: always succeed with slightly updated rate)
+	now := time.Now().UTC()
+	newRate := currencyRate{
+		From:      from,
+		To:        to,
+		Rate:      existing.Rate,
+		Source:    "mock-api",
+		FetchedAt: now,
+	}
+
+	if hasExisting {
+		// Simulate slight rate change
+		newRate.Rate = existing.Rate * 1.001
+	} else {
+		// Unknown pair → mark as stale fallback
+		stale := now
+		newRate.Rate = 1.0
+		newRate.Source = "fallback"
+		newRate.StaleAt = &stale
+	}
+
+	rateCache[key] = newRate
+	response.JSON(c, http.StatusOK, newRate)
+}
+
+// ConvertAmount converts an amount from one currency to another using cached rates.
+func ConvertAmount(from, to string, amount float64) (float64, bool) {
+	if from == to {
+		return amount, true
+	}
+	budgetMu.RLock()
+	defer budgetMu.RUnlock()
+	rate, ok := rateCache[from+":"+to]
+	if !ok {
+		return 0, false
+	}
+	return amount * rate.Rate, true
 }

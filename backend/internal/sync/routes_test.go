@@ -16,6 +16,9 @@ func setupRouter() *gin.Engine {
 	entityVersions = map[string]int{}
 	flushIdempotencyStore = map[string]gin.H{}
 	latestSyncVersion = 0
+	outboxEvents = []OutboxEvent{}
+	outboxByID = map[string]*OutboxEvent{}
+	outboxDedupeKeys = map[string]bool{}
 	syncMu.Unlock()
 	r := gin.New()
 	v1 := r.Group("/api/v1")
@@ -220,5 +223,69 @@ func TestFlushMutationsValidation(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestFlushCreatesOutboxEvents(t *testing.T) {
+	r := setupRouter()
+
+	body := `{"tripId":"trip-outbox","mutations":[{"id":"m-1","entityType":"itinerary_item","entityId":"i-1","baseVersion":0}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync/mutations/flush", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "flush-outbox-1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Check outbox events were created
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/sync/outbox/events?status=pending", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listW.Code)
+	}
+
+	var resp struct {
+		Data []struct {
+			ID        string `json:"id"`
+			EventType string `json:"eventType"`
+			Status    string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatalf("expected outbox events from flush")
+	}
+	if resp.Data[0].Status != "pending" {
+		t.Fatalf("expected status pending, got %s", resp.Data[0].Status)
+	}
+}
+
+func TestBootstrapFullResync(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sync/bootstrap?tripId=trip-old&sinceVersion=0", nil)
+	req.Header.Set("X-Client-Version", "5") // Too old, triggers full resync
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		Data struct {
+			FullResyncRequired bool `json:"fullResyncRequired"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Data.FullResyncRequired {
+		t.Fatalf("expected fullResyncRequired=true for old client")
 	}
 }

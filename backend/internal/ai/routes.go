@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -30,16 +31,20 @@ type planCreateInput struct {
 }
 
 type planDraft struct {
-	ID             string    `json:"id"`
-	TripID         string    `json:"tripId"`
-	Title          string    `json:"title"`
-	Status         string    `json:"status"`
-	Summary        string    `json:"summary"`
-	Warnings       []string  `json:"warnings"`
-	TotalEstimated float64   `json:"totalEstimated"`
-	Budget         float64   `json:"budget"`
-	Currency       string    `json:"currency"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID               string    `json:"id"`
+	TripID           string    `json:"tripId"`
+	Title            string    `json:"title"`
+	Status           string    `json:"status"`
+	Summary          string    `json:"summary"`
+	Warnings         []string  `json:"warnings"`
+	TotalEstimated   float64   `json:"totalEstimated"`
+	Budget           float64   `json:"budget"`
+	Currency         string    `json:"currency"`
+	PromptTokens     int       `json:"promptTokens,omitempty"`
+	CompletionTokens int       `json:"completionTokens,omitempty"`
+	EstimatedCost    float64   `json:"estimatedCost,omitempty"`
+	Provider         string    `json:"provider,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 var (
@@ -48,6 +53,8 @@ var (
 	planByID          = map[string]planDraft{}
 	createIdempotency = map[string]string{}
 	adoptIdempotency  = map[string]gin.H{}
+	// Distributed lock: prevent duplicate jobs per trip
+	tripJobLocks = map[string]bool{}
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
@@ -97,6 +104,65 @@ func createPlan(c *gin.Context) {
 		return
 	}
 
+	// Distributed lock: prevent duplicate jobs for same trip
+	if tripJobLocks[tripID] {
+		plannerMu.Unlock()
+		response.Error(c, http.StatusConflict, perrors.CodeConflict,
+			"a planning job is already running for this trip", gin.H{"tripId": tripID})
+		return
+	}
+	tripJobLocks[tripID] = true
+	plannerMu.Unlock()
+
+	// Execute provider adapter
+	provider := GetProvider("openai") // Default mock provider
+	prompt := BuildPrompt(
+		"Trip Plan", tripID,
+		time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 3).Format("2006-01-02"),
+		in.Constraints.TravelersCount,
+		map[string]string{
+			"pace":                in.Constraints.Pace,
+			"wakePattern":         in.Constraints.WakePattern,
+			"transportPreference": in.Constraints.TransportPreference,
+			"poiDensity":          in.Constraints.PoiDensity,
+		},
+		map[string]any{
+			"totalBudget": in.Constraints.TotalBudget,
+			"currency":    in.Constraints.Currency,
+			"mustVisit":   in.Constraints.MustVisit,
+			"avoid":       in.Constraints.Avoid,
+		},
+	)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	rawOutput, usage, err := provider.GeneratePlan(ctx, prompt.FullPrompt())
+
+	plannerMu.Lock()
+	delete(tripJobLocks, tripID) // Release lock
+	plannerMu.Unlock()
+
+	if err != nil {
+		if _, ok := err.(ProviderTimeoutError); ok {
+			response.Error(c, http.StatusGatewayTimeout, perrors.CodeAIProviderTimeout,
+				"AI provider timed out", gin.H{"provider": provider.Name()})
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError,
+			"AI provider error", gin.H{"error": err.Error()})
+		return
+	}
+
+	// Parse structured JSON output
+	_, parseErr := ParseStructuredOutput(provider.Name(), rawOutput)
+	if parseErr != nil {
+		response.Error(c, http.StatusBadGateway, perrors.CodeAIProviderInvalidOutput,
+			"AI provider returned invalid JSON", gin.H{"provider": provider.Name()})
+		return
+	}
+
+	// Calculate budget status
 	estimated := estimateTotal(in.Constraints.TotalBudget, in.Constraints.Pace)
 	ratio := estimated / in.Constraints.TotalBudget
 	status := "valid"
@@ -115,18 +181,23 @@ func createPlan(c *gin.Context) {
 	}
 
 	draft := planDraft{
-		ID:             uuid.NewString(),
-		TripID:         tripID,
-		Title:          title,
-		Status:         status,
-		Summary:        fmt.Sprintf("Estimated %.0f %s against budget %.0f %s", estimated, strings.ToUpper(in.Constraints.Currency), in.Constraints.TotalBudget, strings.ToUpper(in.Constraints.Currency)),
-		Warnings:       warnings,
-		TotalEstimated: estimated,
-		Budget:         in.Constraints.TotalBudget,
-		Currency:       strings.ToUpper(in.Constraints.Currency),
-		CreatedAt:      time.Now().UTC(),
+		ID:               uuid.NewString(),
+		TripID:           tripID,
+		Title:            title,
+		Status:           status,
+		Summary:          fmt.Sprintf("Estimated %.0f %s against budget %.0f %s", estimated, strings.ToUpper(in.Constraints.Currency), in.Constraints.TotalBudget, strings.ToUpper(in.Constraints.Currency)),
+		Warnings:         warnings,
+		TotalEstimated:   estimated,
+		Budget:           in.Constraints.TotalBudget,
+		Currency:         strings.ToUpper(in.Constraints.Currency),
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		EstimatedCost:    usage.EstimatedCost,
+		Provider:         provider.Name(),
+		CreatedAt:        time.Now().UTC(),
 	}
 
+	plannerMu.Lock()
 	plansByTrip[tripID] = append(plansByTrip[tripID], draft)
 	planByID[draft.ID] = draft
 	createIdempotency[idempotencyKey] = draft.ID

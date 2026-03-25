@@ -254,3 +254,65 @@ func mustJSON(t *testing.T, value any) []byte {
 
 	return data
 }
+
+func TestGetExchangeRates(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-rate/budget/rates?from=USD&to=JPY", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Rate float64 `json:"rate"`
+			From string  `json:"from"`
+			To   string  `json:"to"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Data.Rate < 100 {
+		t.Fatalf("expected USD/JPY rate > 100, got %f", resp.Data.Rate)
+	}
+}
+
+func TestGetExchangeRateNotFound(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/trips/t-rate/budget/rates?from=ABC&to=XYZ", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestRefreshExchangeRate(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips/t-rate/budget/rates/refresh?from=USD&to=JPY", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Source string `json:"source"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Data.Source != "mock-api" {
+		t.Fatalf("expected source mock-api, got %s", resp.Data.Source)
+	}
+}

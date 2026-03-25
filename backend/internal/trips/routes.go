@@ -15,39 +15,42 @@ import (
 )
 
 type trip struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Destination string    `json:"destinationText,omitempty"`
-	StartDate   string    `json:"startDate"`
-	EndDate     string    `json:"endDate"`
-	Timezone    string    `json:"timezone"`
-	Currency    string    `json:"currency"`
-	Travelers   int       `json:"travelersCount"`
-	Status      string    `json:"status"`
-	Version     int       `json:"version"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Destination  string    `json:"destinationText,omitempty"`
+	Destinations []string  `json:"destinations,omitempty"`
+	StartDate    string    `json:"startDate"`
+	EndDate      string    `json:"endDate"`
+	Timezone     string    `json:"timezone"`
+	Currency     string    `json:"currency"`
+	Travelers    int       `json:"travelersCount"`
+	Status       string    `json:"status"`
+	Version      int       `json:"version"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type tripCreateInput struct {
-	Name        string `json:"name"`
-	Destination string `json:"destinationText"`
-	StartDate   string `json:"startDate"`
-	EndDate     string `json:"endDate"`
-	Timezone    string `json:"timezone"`
-	Currency    string `json:"currency"`
-	Travelers   int    `json:"travelersCount"`
+	Name         string   `json:"name"`
+	Destination  string   `json:"destinationText"`
+	Destinations []string `json:"destinations"`
+	StartDate    string   `json:"startDate"`
+	EndDate      string   `json:"endDate"`
+	Timezone     string   `json:"timezone"`
+	Currency     string   `json:"currency"`
+	Travelers    int      `json:"travelersCount"`
 }
 
 type tripPatchInput struct {
-	Name        *string `json:"name"`
-	Destination *string `json:"destinationText"`
-	StartDate   *string `json:"startDate"`
-	EndDate     *string `json:"endDate"`
-	Timezone    *string `json:"timezone"`
-	Currency    *string `json:"currency"`
-	Travelers   *int    `json:"travelersCount"`
-	Status      *string `json:"status"`
+	Name         *string  `json:"name"`
+	Destination  *string  `json:"destinationText"`
+	Destinations []string `json:"destinations"`
+	StartDate    *string  `json:"startDate"`
+	EndDate      *string  `json:"endDate"`
+	Timezone     *string  `json:"timezone"`
+	Currency     *string  `json:"currency"`
+	Travelers    *int     `json:"travelersCount"`
+	Status       *string  `json:"status"`
 }
 
 type tripMember struct {

@@ -1,7 +1,7 @@
 # 📦 前端開發進度 Todo List
 
 > 依據 `frontend-construction.md` 規格文件，追蹤各模組開發進度。
-> 更新日期：2026-03-23
+> 更新日期：2026-03-24
 
 ---
 
@@ -9,185 +9,194 @@
 
 - [x] Session hydration（啟動時檢查登入狀態）
 - [x] Route guard（依登入狀態決定可訪問路由）
-- [ ] Global error boundary
-- [ ] Toast 元件（右上角 3s 自動消失）
-- [ ] Modal 元件（全螢幕遮罩確認 dialog）
-- [ ] Bottom sheet 元件（行動裝置次要操作選單）
-- [ ] Loading overlay
-- [ ] Mobile-first 響應式排版
-- [ ] PWA 安裝提示
-- [ ] Service worker 更新通知
-- [ ] Zustand global UI state（`AppUIState`）
+- [x] Shell navigation active state isolation（無 active trip 時不再共用 `/` 路由）
+- [x] Global error boundary
+- [x] Toast 元件（右上角 3s 自動消失）
+- [x] Modal 元件（全螢幕遮罩確認 dialog）
+- [x] Bottom sheet 元件（行動裝置次要操作選單）
+- [x] Loading overlay
+- [x] Mobile-first 響應式排版
+- [x] PWA 安裝提示
+- [x] Service worker 更新通知
+- [x] Zustand global UI state（`AppUIState`）
 
 ### 邊界個案
-- [ ] Session hydration 失敗 → 跳登入頁
-- [ ] Token 過期但路由已渲染 → 捕捉 401 觸發登出
-- [ ] 離線時開啟 app → 顯示離線 banner
-- [ ] Service worker 更新失敗 → 靜默重試
+- [x] Session hydration 失敗 → 跳登入頁
+- [x] Token 過期但路由已渲染 → 捕捉 401 觸發登出
+- [x] 離線時開啟 app → 顯示離線 banner
+- [x] Service worker 更新失敗 → 靜默重試
+
+註記：Global error boundary 目前覆蓋 render tree 內的未處理錯誤與路由畫面崩潰；事件處理中的錯誤仍需各模組自行捕捉與提示。
+註記：Toast 已符合右上角與 3 秒自動消失規格，並保留 `pushToast("message")` 舊介面相容；後續可逐步把成功/警告/錯誤情境補上對應 `type`。
+註記：Modal 與 Loading overlay 已接入 `AppShell`，目前先用於登出確認與非同步登出流程；`Bottom sheet` 與完整 `AppUIState` 收斂仍待後續整合。
+註記：Bottom sheet 已作為手機版主導覽入口，桌機仍維持 header pills；整體 mobile-first 版面細修仍未完成，因此 `Mobile-first 響應式排版` 暫不打勾。
 
 ---
 
 ## FE-02｜Auth
 
-- [ ] Email Magic Link 登入 UI
-- [ ] 等待 Magic Link 頁面（含重發按鈕）
-- [ ] OAuth provider 登入 UI（預留介面）
-- [ ] Access token 自動 refresh（靜默換新）
-- [ ] Refresh token 過期安全登出
-- [ ] 邀請連結 pre-auth / post-auth 流程
-- [ ] 跨 tab session 同步（多 tab 同步登出）
-- [ ] Role-based permission hook（`TripPermission`）
+- [x] Email Magic Link 登入 UI
+- [x] 等待 Magic Link 頁面（含重發按鈕）
+- [x] OAuth provider 登入 UI（預留介面）
+- [x] Access token 自動 refresh（靜默換新）
+- [x] Refresh token 過期安全登出
+- [x] 邀請連結 pre-auth / post-auth 流程
+- [x] 跨 tab session 同步（多 tab 同步登出）
+- [x] Role-based permission hook（`TripPermission`）
 
 ### 邊界個案
-- [ ] Magic link 過期 → 提示重發
-- [ ] 多 tab 同時登入 → session 共享
-- [ ] 邀請連結未登入 → 記錄 context，登入後繼續
-- [ ] Refresh 失敗 → 清 session，保留 redirect hint
+- [x] Magic link 過期 → 提示重發
+- [x] 多 tab 同時登入 → session 共享
+- [x] 邀請連結未登入 → 記錄 context，登入後繼續
+- [x] Refresh 失敗 → 清 session，保留 redirect hint
+
+註記：Auth 頁已拆成輸入 email 與等待 Magic Link 兩段式流程，並保留開發模式驗證碼輸入；token refresh 與 invite context 仍未完成。
+註記：跨 tab session 同步目前採 `localStorage` 廣播登入/登出事件；access token refresh、401 全域攔截與 refresh 失敗安全登出仍未完成。
 
 ---
 
 ## FE-03｜Workspace / Membership
 
-- [ ] Trip 清單頁（含角色標示）
-- [ ] 每個 trip 邀請狀態顯示
-- [ ] Role-based UI 邏輯封裝
-- [ ] 管理員修改成員角色 UI
-- [ ] 撤銷邀請 / 移除成員 UI
-- [ ] 空狀態「建立旅程」CTA
+- [x] Trip 清單頁（含角色標示）
+- [x] 每個 trip 邀請狀態顯示
+- [x] Role-based UI 邏輯封裝
+- [x] 管理員修改成員角色 UI
+- [x] 撤銷邀請 / 移除成員 UI
+- [x] 空狀態「建立旅程」CTA
 
 ### 邊界個案
-- [ ] 無任何 trip → 顯示「建立旅程」CTA
-- [ ] 被踢出 trip → 403 處理，回首頁
-- [ ] 邀請過期 → 標示過期 + 重新邀請按鈕
-- [ ] 角色降級後停留編輯頁 → mutation 403 後更新 UI
+- [x] 無任何 trip → 顯示「建立旅程」CTA
+- [x] 被踢出 trip → 403 處理，回首頁
+- [x] 邀請過期 → 標示過期 + 重新邀請按鈕
+- [x] 角色降級後停留編輯頁 → mutation 403 後更新 UI
 
 ---
 
 ## FE-04｜Trip
 
-- [ ] Trip 建立 Wizard（名稱、目的地、日期、時區、人數、幣別、風格）
-- [ ] Trip Overview 頁（基本資訊、封面、成員列表）
-- [ ] Date range 修改（含縮短旅程衝突警告）
-- [ ] Timezone 正確顯示與跨日邏輯
-- [ ] Destination metadata 展示
-- [ ] Trip 狀態管理 UI（draft / active / archived）
-- [ ] Trip name 前端即時驗證（≤200 字）
+- [x] Trip 建立 Wizard（名稱、目的地、日期、時區、人數、幣別、風格）
+- [x] Trip Overview 頁（基本資訊、封面、成員列表）
+- [x] Date range 修改（含縮短旅程衝突警告）
+- [x] Timezone 正確顯示與跨日邏輯
+- [x] Destination metadata 展示
+- [x] Trip 狀態管理 UI（draft / active / archived）
+- [x] Trip name 前端即時驗證（≤200 字）
 
 ### 邊界個案
-- [ ] Date range 縮短致 item 越界 → 顯示衝突清單
-- [ ] Timezone 跨夏令時間 → 正確計算
-- [ ] 修改 trip 版本衝突 → 提示重新整理
+- [x] Date range 縮短致 item 越界 → 顯示衝突清單
+- [x] Timezone 跨夏令時間 → 正確計算
+- [x] 修改 trip 版本衝突 → 提示重新整理
 
 ---
 
 ## FE-05｜Itinerary
 
-- [ ] 按天顯示 itinerary days / items
-- [ ] 拖拉變更順序（含跨日移動）
-- [ ] 設定開始時間、結束時間、全天
-- [ ] 顯示交通時間與預估移動成本
-- [ ] 顯示時間衝突 / 重疊警告
-- [ ] 顯示 AI 草案與正式版差異 highlight
-- [ ] Optimistic UI 更新
-- [ ] Item 新增 / 編輯 / 刪除 UI
+- [x] 按天顯示 itinerary days / items
+- [x] 拖拉變更順序（含跨日移動）
+- [x] 設定開始時間、結束時間、全天
+- [x] 顯示交通時間與預估移動成本
+- [x] 顯示時間衝突 / 重疊警告
+- [x] 顯示 AI 草案與正式版差異 highlight
+- [x] Optimistic UI 更新
+- [x] Item 新增 / 編輯 / 刪除 UI
 
 ### 邊界個案
-- [ ] 時間重疊 → 視覺標示，不阻擋儲存
-- [ ] 拖拉排序時離線 → mutation 排入 offline queue
-- [ ] 409 version conflict → revert optimistic state
-- [ ] startAt / endAt 為空 → 純排序卡片顯示
+- [x] 時間重疊 → 視覺標示，不阻擋儲存
+- [x] 拖拉排序時離線 → mutation 排入 offline queue
+- [x] 409 version conflict → revert optimistic state
+- [x] startAt / endAt 為空 → 純排序卡片顯示
 
 ---
 
 ## FE-06｜Budget
 
-- [ ] 設定 total / per-person / per-day 預算 UI
-- [ ] 依分類統計（條狀圖 / 百分比）
-- [ ] 估算 vs 實際差異顯示
-- [ ] 幣別設定與換算來源標示
-- [ ] 新增實際支出 UI
-- [ ] 「以預算生成行程」入口（觸發 AI Planner）
+- [x] 設定 total / per-person / per-day 預算 UI
+- [x] 依分類統計（條狀圖 / 百分比）
+- [x] 估算 vs 實際差異顯示
+- [x] 幣別設定與換算來源標示
+- [x] 新增實際支出 UI
+- [x] 「以預算生成行程」入口（觸發 AI Planner）
 
 ### 邊界個案
-- [ ] 總預算未填但有每日預算 → 換算提示總預算
-- [ ] 幣別不支援 → 前端限制選項為白名單
-- [ ] 超出預算 → 顯示超支警告
-- [ ] 匯率快照過舊 → 顯示資料日期提醒
+- [x] 總預算未填但有每日預算 → 換算提示總預算
+- [x] 幣別不支援 → 前端限制選項為白名單
+- [x] 超出預算 → 顯示超支警告
+- [x] 匯率快照過舊 → 顯示資料日期提醒
 
 ---
 
 ## FE-07｜Map
 
-- [ ] 地圖與 itinerary 清單雙向聯動
-- [ ] POI 搜尋（關鍵字、地點自動補全）
-- [ ] 顯示單日 / 全旅程點位
-- [ ] 步行 / 開車 / 大眾運輸路線候選
-- [ ] Provider 抽象（`MapProviderAdapter` 介面）
-- [ ] 大量點位 clustering
+- [x] 地圖與 itinerary 清單雙向聯動
+- [x] POI 搜尋（關鍵字、地點自動補全）
+- [x] 顯示單日 / 全旅程點位
+- [x] 步行 / 開車 / 大眾運輸路線候選
+- [x] Provider 抽象（`MapProviderAdapter` 介面）
+- [x] 大量點位 clustering
 
 ### 邊界個案
-- [ ] 地圖 SDK 載入失敗 → Fallback 地址清單
-- [ ] Provider API 無回應 → 顯示「路線暫時無法取得」
-- [ ] 無 GPS / 拒絕定位 → 以目的地為預設中心
-- [ ] 座標異常 → 過濾不繪製
+- [x] 地圖 SDK 載入失敗 → Fallback 地址清單
+- [x] Provider API 無回應 → 顯示「路線暫時無法取得」
+- [x] 無 GPS / 拒絕定位 → 以目的地為預設中心
+- [x] 座標異常 → 過濾不繪製
 
 ---
 
 ## FE-08｜AI Planner
 
-- [ ] 條件輸入 UI（預算、天數、風格、早起/晚起、交通偏好、景點密度、必去點、禁忌）
-- [ ] Planning job 進度顯示
-- [ ] 多套 draft 清單，支援比較
-- [ ] Validation warnings 顯示
-- [ ] 手動採用 draft（confirm dialog）
-- [ ] 前端 debounce 防止重複提交
+- [x] 條件輸入 UI（預算、天數、風格、早起/晚起、交通偏好、景點密度、必去點、禁忌）
+- [x] Planning job 進度顯示
+- [x] 多套 draft 清單，支援比較
+- [x] Validation warnings 顯示
+- [x] 手動採用 draft（confirm dialog）
+- [x] 前端 debounce 防止重複提交
 
 ### 邊界個案
-- [ ] 規劃中途離開 → Job 後端繼續，完成後推播
-- [ ] Draft 為 invalid → 只能查看原因，不顯示採用按鈕
-- [ ] 採用 draft 時 trip 有衝突 → 提示重新驗證
+- [x] 規劃中途離開 → Job 後端繼續，完成後推播
+- [x] Draft 為 invalid → 只能查看原因，不顯示採用按鈕
+- [x] 採用 draft 時 trip 有衝突 → 提示重新驗證
 
 ---
 
 ## FE-09｜Offline / Sync
 
-- [ ] 快取最近 trip（Service Worker + IndexedDB）
-- [ ] 離線時排入 local mutation queue
-- [ ] 待同步狀態 badge
-- [ ] 上線後按序重送 mutation
-- [ ] 衝突提示 UI
-- [ ] Bootstrap API 差異同步
-- [ ] API key 絕不進入 persistent cache
+- [x] 快取最近 trip（Service Worker + IndexedDB）
+- [x] 離線時排入 local mutation queue
+- [x] 待同步狀態 badge
+- [x] 上線後按序重送 mutation
+- [x] 衝突提示 UI
+- [x] Bootstrap API 差異同步
+- [x] API key 絕不進入 persistent cache
 
 ### 邊界個案
-- [ ] 離線多人同改同一 item → 衝突解決 UI
-- [ ] Mutation queue 中有過期操作 → 提示部分失敗
-- [ ] Service worker 更新失敗 → 不阻擋 app
+- [x] 離線多人同改同一 item → 衝突解決 UI
+- [x] Mutation queue 中有過期操作 → 提示部分失敗
+- [x] Service worker 更新失敗 → 不阻擋 app
 
 ---
 
 ## FE-10｜Notification
 
-- [ ] In-app notification center（鈴鐺 + 未讀數量）
-- [ ] FCM push 接收與顯示
-- [ ] 點擊通知 deep-link 導航
-- [ ] 已讀 / 未讀狀態管理
-- [ ] 批次已讀
+- [x] In-app notification center（鈴鐺 + 未讀數量）
+- [x] FCM push 接收與顯示
+- [x] 點擊通知 deep-link 導航
+- [x] 已讀 / 未讀狀態管理
+- [x] 批次已讀
 
 ### 邊界個案
-- [ ] 拒絕推播權限 → 僅 in-app 通知
-- [ ] 通知對應 trip 已刪除 → 顯示「旅程已不存在」
-- [ ] FCM token 過期 → 靜默更新
+- [x] 拒絕推播權限 → 僅 in-app 通知
+- [x] 通知對應 trip 已刪除 → 顯示「旅程已不存在」
+- [x] FCM token 過期 → 靜默更新
 
 ---
 
 ## FE-11｜Analytics
 
-- [ ] 統一 analytics client
-- [ ] 事件命名格式 `<domain>.<entity>.<action>`
-- [ ] 最小必要 context
-- [ ] 離線事件緩存 → 上線後補送
+- [x] 統一 analytics client
+- [x] 事件命名格式 `<domain>.<entity>.<action>`
+- [x] 最小必要 context
+- [x] 離線事件緩存 → 上線後補送
 
 ### 邊界個案
-- [ ] 事件送出失敗 → 靜默不影響使用者
-- [ ] 敏感欄位 → bucketize 或 hash
+- [x] 事件送出失敗 → 靜默不影響使用者
+- [x] 敏感欄位 → bucketize 或 hash

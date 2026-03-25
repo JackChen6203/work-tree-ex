@@ -2,12 +2,15 @@ package auth
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,12 +23,15 @@ func setupAuthRouter(t *testing.T) *gin.Engine {
 	pendingCodes = map[string]codeEntry{}
 	oauthStates = map[string]oauthStateEntry{}
 	sessions = map[string]*sessionUser{}
+	refreshSessions = map[string]*sessionEntry{}
+	pendingInvites = map[string]*inviteEntry{}
 	authStateMu.Unlock()
 	t.Setenv("FRONTEND_BASE_URL", "http://localhost:5173")
 	t.Setenv("APP_ENV", "dev")
 	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "false")
 	t.Setenv("OAUTH_GOOGLE_CLIENT_ID", "")
 	t.Setenv("OAUTH_GOOGLE_CLIENT_SECRET", "")
+	t.Setenv("JWT_SECRET", "test-jwt-secret")
 
 	r := gin.New()
 	v1 := r.Group("/api/v1")
@@ -284,4 +290,168 @@ func mustMarshalAuth(t *testing.T, value any) []byte {
 	}
 
 	return data
+}
+
+func TestRefreshTokenRotation(t *testing.T) {
+	r := setupAuthRouter(t)
+
+	// Create a session with refresh token by issuing a pair
+	user := &sessionUser{ID: "u-refresh-1", Name: "Refresher", Email: "refresh@test.com", Avatar: "RE"}
+	_, refreshRaw, _, err := issueTokenPair(user)
+	if err != nil {
+		t.Fatalf("issueTokenPair: %v", err)
+	}
+
+	// Call POST /auth/refresh with the refresh token
+	body := mustMarshalAuth(t, map[string]string{"refreshToken": refreshRaw})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			AccessToken  string `json:"accessToken"`
+			RefreshToken string `json:"refreshToken"`
+			ExpiresIn    int    `json:"expiresIn"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Data.AccessToken == "" || resp.Data.RefreshToken == "" {
+		t.Fatalf("expected tokens in response")
+	}
+	if resp.Data.ExpiresIn <= 0 {
+		t.Fatalf("expected positive expiresIn")
+	}
+}
+
+func TestRefreshTokenReuseDetection(t *testing.T) {
+	r := setupAuthRouter(t)
+
+	user := &sessionUser{ID: "u-reuse-1", Name: "Reuser", Email: "reuse@test.com", Avatar: "RU"}
+	_, refreshRaw, _, err := issueTokenPair(user)
+	if err != nil {
+		t.Fatalf("issueTokenPair: %v", err)
+	}
+
+	// First use — should succeed
+	body := mustMarshalAuth(t, map[string]string{"refreshToken": refreshRaw})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first refresh expected 200, got %d", w.Code)
+	}
+
+	// Second use of same token — should be detected as reuse and revoke family
+	body2 := mustMarshalAuth(t, map[string]string{"refreshToken": refreshRaw})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusUnauthorized {
+		t.Fatalf("reuse detection expected 401, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if !strings.Contains(w2.Body.String(), "reuse") {
+		t.Fatalf("expected reuse message, got %s", w2.Body.String())
+	}
+}
+
+func TestRefreshTokenMissing(t *testing.T) {
+	r := setupAuthRouter(t)
+
+	body := mustMarshalAuth(t, map[string]string{"refreshToken": ""})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing token, got %d", w.Code)
+	}
+}
+
+func TestVerifyInviteTokenExpired(t *testing.T) {
+	r := setupAuthRouter(t)
+
+	// Seed an expired invite
+	authStateMu.Lock()
+	pendingInvites["abc123hash"] = &inviteEntry{
+		TokenHash: "abc123hash",
+		ExpiresAt: time.Now().Add(-1 * time.Hour),
+		TripID:    "trip-1",
+		Role:      "editor",
+		Used:      false,
+	}
+	authStateMu.Unlock()
+
+	// We need to send a token that hashes to "abc123hash", but since we can't
+	// reverse sha256, let's seed with a known hash
+	rawToken := "test-invite-token"
+	tokenHash := sha256.Sum256([]byte(rawToken))
+	hashHex := fmt.Sprintf("%x", tokenHash)
+
+	authStateMu.Lock()
+	pendingInvites[hashHex] = &inviteEntry{
+		TokenHash: hashHex,
+		ExpiresAt: time.Now().Add(-1 * time.Hour),
+		TripID:    "trip-1",
+		Role:      "editor",
+		Used:      false,
+	}
+	authStateMu.Unlock()
+
+	body := mustMarshalAuth(t, map[string]string{"token": rawToken})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/verify-invite", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusGone {
+		t.Fatalf("expected 410 for expired invite, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestVerifyInviteTokenValid(t *testing.T) {
+	r := setupAuthRouter(t)
+
+	rawToken := "valid-invite-token"
+	tokenHash := sha256.Sum256([]byte(rawToken))
+	hashHex := fmt.Sprintf("%x", tokenHash)
+
+	authStateMu.Lock()
+	pendingInvites[hashHex] = &inviteEntry{
+		TokenHash: hashHex,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		TripID:    "trip-1",
+		Role:      "editor",
+		Used:      false,
+	}
+	authStateMu.Unlock()
+
+	body := mustMarshalAuth(t, map[string]string{"token": rawToken})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/verify-invite", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid invite, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Second use → should be rejected (single-use)
+	body2 := mustMarshalAuth(t, map[string]string{"token": rawToken})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/verify-invite", bytes.NewBuffer(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for already-used invite, got %d", w2.Code)
+	}
 }

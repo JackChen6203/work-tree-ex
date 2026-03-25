@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
@@ -24,12 +27,59 @@ type routeEstimateInput struct {
 	Mode string `json:"mode"`
 }
 
+// --- Quota / Circuit Breaker ---
+
+var (
+	quotaCounter atomic.Int64
+	quotaLimit   int64 = 1000
+	quotaResetAt time.Time
+	quotaMu      sync.Mutex
+	circuitOpen  bool
+)
+
+func checkQuota() bool {
+	quotaMu.Lock()
+	defer quotaMu.Unlock()
+	now := time.Now().UTC()
+	if now.After(quotaResetAt) {
+		quotaCounter.Store(0)
+		quotaResetAt = now.Add(1 * time.Hour)
+		circuitOpen = false
+	}
+	if circuitOpen {
+		return false
+	}
+	current := quotaCounter.Add(1)
+	if current > quotaLimit {
+		circuitOpen = true
+		return false
+	}
+	return true
+}
+
+// --- Place store for detail lookups ---
+
+var placeStore = map[string]NormalizedPlace{
+	"poi_kiyomizu":  {ProviderPlaceID: "poi_kiyomizu", Name: "Kiyomizu-dera", Address: "Kyoto Higashiyama Ward", Lat: 34.9949, Lng: 135.7850, Categories: []string{"temple", "landmark"}},
+	"poi_ninenzaka": {ProviderPlaceID: "poi_ninenzaka", Name: "Ninenzaka", Address: "Kyoto Higashiyama Ward", Lat: 34.9984, Lng: 135.7809, Categories: []string{"shopping", "street"}},
+	"poi_pontocho":  {ProviderPlaceID: "poi_pontocho", Name: "Pontocho Alley", Address: "Kyoto Nakagyo Ward", Lat: 35.0048, Lng: 135.7708, Categories: []string{"food", "nightlife"}},
+}
+
 func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/maps/search", searchPlaces)
 	v1.POST("/maps/routes", estimateRoute)
+	v1.GET("/maps/geocode", geocode)
+	v1.GET("/maps/reverse-geocode", reverseGeocode)
+	v1.GET("/maps/places/:placeId", getPlaceDetail)
 }
 
 func searchPlaces(c *gin.Context) {
+	if !checkQuota() {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
+			"map provider quota exceeded, try again later", nil)
+		return
+	}
+
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "q query is required", nil)
@@ -49,37 +99,16 @@ func searchPlaces(c *gin.Context) {
 	lat := parseFloatWithDefault(c.Query("lat"), 35.0116)
 	lng := parseFloatWithDefault(c.Query("lng"), 135.7681)
 
-	items := []gin.H{
-		{
-			"providerPlaceId": "poi_kiyomizu",
-			"name":            "Kiyomizu-dera",
-			"address":         "Kyoto Higashiyama Ward",
-			"lat":             lat + 0.004,
-			"lng":             lng + 0.005,
-			"categories":      []string{"temple", "landmark"},
-		},
-		{
-			"providerPlaceId": "poi_ninenzaka",
-			"name":            "Ninenzaka",
-			"address":         "Kyoto Higashiyama Ward",
-			"lat":             lat + 0.006,
-			"lng":             lng + 0.003,
-			"categories":      []string{"shopping", "street"},
-		},
-		{
-			"providerPlaceId": "poi_pontocho",
-			"name":            "Pontocho Alley",
-			"address":         "Kyoto Nakagyo Ward",
-			"lat":             lat + 0.002,
-			"lng":             lng + 0.001,
-			"categories":      []string{"food", "nightlife"},
-		},
+	items := []NormalizedPlace{
+		{ProviderPlaceID: "poi_kiyomizu", Name: "Kiyomizu-dera", Address: "Kyoto Higashiyama Ward", Lat: lat + 0.004, Lng: lng + 0.005, Categories: []string{"temple", "landmark"}},
+		{ProviderPlaceID: "poi_ninenzaka", Name: "Ninenzaka", Address: "Kyoto Higashiyama Ward", Lat: lat + 0.006, Lng: lng + 0.003, Categories: []string{"shopping", "street"}},
+		{ProviderPlaceID: "poi_pontocho", Name: "Pontocho Alley", Address: "Kyoto Nakagyo Ward", Lat: lat + 0.002, Lng: lng + 0.001, Categories: []string{"food", "nightlife"}},
 	}
 
-	filtered := make([]gin.H, 0, len(items))
+	filtered := make([]NormalizedPlace, 0, len(items))
 	queryLower := strings.ToLower(q)
 	for _, item := range items {
-		name := strings.ToLower(item["name"].(string))
+		name := strings.ToLower(item.Name)
 		if strings.Contains(name, queryLower) || strings.Contains(queryLower, "kyoto") {
 			filtered = append(filtered, item)
 			if len(filtered) == limit {
@@ -92,6 +121,12 @@ func searchPlaces(c *gin.Context) {
 }
 
 func estimateRoute(c *gin.Context) {
+	if !checkQuota() {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
+			"map provider quota exceeded, try again later", nil)
+		return
+	}
+
 	var in routeEstimateInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
@@ -121,21 +156,101 @@ func estimateRoute(c *gin.Context) {
 	var costAmount *float64
 	var costCurrency *string
 	if mode == "transit" || mode == "taxi" || mode == "drive" {
-		cost := math.Round((float64(distanceMeters) / 1000 * 220) + 120) // mocked estimate in JPY
+		cost := math.Round((float64(distanceMeters) / 1000 * 220) + 120)
 		costAmount = &cost
 		currency := "JPY"
 		costCurrency = &currency
 	}
 
-	response.JSON(c, http.StatusOK, gin.H{
-		"mode":                  mode,
-		"distanceMeters":        distanceMeters,
-		"durationSeconds":       durationSeconds,
-		"estimatedCostAmount":   costAmount,
-		"estimatedCostCurrency": costCurrency,
-		"provider":              "mock-map-adapter",
-		"snapshotToken":         fmt.Sprintf("rt_%d", distanceMeters+durationSeconds),
-	})
+	route := NormalizedRoute{
+		Mode:                  mode,
+		DistanceMeters:        distanceMeters,
+		DurationSeconds:       durationSeconds,
+		EstimatedCostAmount:   costAmount,
+		EstimatedCostCurrency: costCurrency,
+	}
+
+	response.JSON(c, http.StatusOK, route)
+}
+
+func geocode(c *gin.Context) {
+	if !checkQuota() {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
+			"map provider quota exceeded, try again later", nil)
+		return
+	}
+
+	address := strings.TrimSpace(c.Query("address"))
+	if address == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "address query is required", nil)
+		return
+	}
+
+	result := NormalizedPlace{
+		ProviderPlaceID: fmt.Sprintf("geocoded_%d", time.Now().UnixNano()%10000),
+		Name:            address,
+		Address:         address,
+		Lat:             35.0116,
+		Lng:             135.7681,
+		Categories:      []string{},
+	}
+
+	response.JSON(c, http.StatusOK, result)
+}
+
+func reverseGeocode(c *gin.Context) {
+	if !checkQuota() {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
+			"map provider quota exceeded, try again later", nil)
+		return
+	}
+
+	latStr := strings.TrimSpace(c.Query("lat"))
+	lngStr := strings.TrimSpace(c.Query("lng"))
+	if latStr == "" || lngStr == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "lat and lng query params are required", nil)
+		return
+	}
+
+	lat := parseFloatWithDefault(latStr, 0)
+	lng := parseFloatWithDefault(lngStr, 0)
+
+	result := NormalizedPlace{
+		ProviderPlaceID: fmt.Sprintf("rev_%d", time.Now().UnixNano()%10000),
+		Name:            fmt.Sprintf("Location at %.4f, %.4f", lat, lng),
+		Address:         fmt.Sprintf("%.4f, %.4f", lat, lng),
+		Lat:             lat,
+		Lng:             lng,
+		Categories:      []string{},
+	}
+
+	response.JSON(c, http.StatusOK, result)
+}
+
+func getPlaceDetail(c *gin.Context) {
+	if !checkQuota() {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
+			"map provider quota exceeded, try again later", nil)
+		return
+	}
+
+	placeID := strings.TrimSpace(c.Param("placeId"))
+	place, ok := placeStore[placeID]
+	if !ok {
+		// Partial warning: return minimal place with warning
+		response.JSON(c, http.StatusOK, gin.H{
+			"providerPlaceId": placeID,
+			"name":            placeID,
+			"address":         "",
+			"lat":             0,
+			"lng":             0,
+			"categories":      []string{},
+			"warnings":        []string{"place not found in provider, data may be incomplete"},
+		})
+		return
+	}
+
+	response.JSON(c, http.StatusOK, place)
 }
 
 func parseFloatWithDefault(raw string, fallback float64) float64 {

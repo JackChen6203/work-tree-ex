@@ -359,3 +359,68 @@ func TestPutNotificationPreferencesRejectsInstantEmailDigest(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", putRec.Code, putRec.Body.String())
 	}
 }
+
+func TestDeleteMe(t *testing.T) {
+	r := newUsersRouter()
+
+	// First create some data (a provider)
+	payload := map[string]any{
+		"provider":                "openai",
+		"label":                   "To Be Deleted",
+		"model":                   "gpt-4.1-mini",
+		"encryptedApiKeyEnvelope": "enc_del_12345678abcd",
+	}
+	b, _ := json.Marshal(payload)
+	postReq := httptest.NewRequest(http.MethodPost, "/users/me/llm-providers", bytes.NewReader(b))
+	postReq.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	r.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", postRec.Code)
+	}
+
+	// Delete account
+	delReq := httptest.NewRequest(http.MethodDelete, "/users/me", nil)
+	delRec := httptest.NewRecorder()
+	r.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", delRec.Code)
+	}
+
+	// Verify profile shows [deleted]
+	getReq := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+	getRec := httptest.NewRecorder()
+	r.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getRec.Code)
+	}
+	var resp struct {
+		Data struct {
+			DisplayName string `json:"displayName"`
+			Email       string `json:"email"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Data.DisplayName != "[deleted]" {
+		t.Fatalf("expected [deleted], got %s", resp.Data.DisplayName)
+	}
+	if resp.Data.Email != "" {
+		t.Fatalf("expected empty email, got %s", resp.Data.Email)
+	}
+
+	// Verify LLM providers are cleared
+	listReq := httptest.NewRequest(http.MethodGet, "/users/me/llm-providers", nil)
+	listRec := httptest.NewRecorder()
+	r.ServeHTTP(listRec, listReq)
+	var listed struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(listed.Data) != 0 {
+		t.Fatalf("expected 0 providers after delete, got %d", len(listed.Data))
+	}
+}

@@ -22,12 +22,36 @@ type notification struct {
 	CreatedAt time.Time  `json:"createdAt"`
 }
 
+type pushDelivery struct {
+	NotificationID string    `json:"notificationId"`
+	Status         string    `json:"status"` // pending | sent | failed
+	RetryCount     int       `json:"retryCount"`
+	LastAttemptAt  time.Time `json:"lastAttemptAt"`
+}
+
+// DeliveryPrefs per-user delivery preferences
+type DeliveryPrefs struct {
+	InApp bool `json:"inApp"`
+	Push  bool `json:"push"`
+	Email bool `json:"email"`
+}
+
 var (
 	notificationsMu sync.RWMutex
 	items           = []notification{
 		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較並採用到行程", Link: "/dashboard", CreatedAt: time.Now().Add(-3 * time.Minute).UTC()},
 		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "新成員已加入行程並取得編輯權限", Link: "/trips", CreatedAt: time.Now().Add(-1 * time.Hour).UTC()},
 	}
+
+	// Dedupe: eventType:resourceID → last trigger time
+	dedupeStore  = map[string]time.Time{}
+	dedupeWindow = 5 * time.Minute
+
+	// Push delivery tracking
+	pushDeliveries = map[string]*pushDelivery{}
+
+	// Default delivery preferences (per-user, simplified to global for mock)
+	defaultDeliveryPrefs = DeliveryPrefs{InApp: true, Push: true, Email: false}
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
@@ -37,6 +61,8 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.POST("/notifications/:notificationId/read", markRead)
 	v1.POST("/notifications/:notificationId/unread", markUnread)
 	v1.DELETE("/notifications/:notificationId", deleteNotification)
+	v1.POST("/notifications/trigger", triggerNotification)
+	v1.GET("/notifications/push-status", listPushDeliveries)
 }
 
 func listNotifications(c *gin.Context) {
@@ -180,4 +206,100 @@ func deleteNotification(c *gin.Context) {
 	}
 
 	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
+}
+
+// --- Event-driven notification trigger ---
+
+type triggerInput struct {
+	EventType  string `json:"eventType"`
+	ResourceID string `json:"resourceId"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	Link       string `json:"link"`
+	UserID     string `json:"userId"`
+}
+
+func triggerNotification(c *gin.Context) {
+	var in triggerInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(in.EventType) == "" || strings.TrimSpace(in.Title) == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "eventType and title are required", nil)
+		return
+	}
+
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+
+	// Dedupe check: same eventType + resourceID within window → skip
+	dedupeKey := in.EventType + ":" + in.ResourceID
+	now := time.Now().UTC()
+	if lastTime, exists := dedupeStore[dedupeKey]; exists {
+		if now.Sub(lastTime) < dedupeWindow {
+			response.JSON(c, http.StatusOK, gin.H{
+				"skipped": true,
+				"reason":  "dedupe: same event triggered within " + dedupeWindow.String(),
+			})
+			return
+		}
+	}
+	dedupeStore[dedupeKey] = now
+
+	// Check delivery preferences
+	prefs := defaultDeliveryPrefs
+	channels := []string{}
+
+	notifID := "n-" + strconv.Itoa(len(items)+1)
+	notif := notification{
+		ID:        notifID,
+		Type:      in.EventType,
+		Title:     in.Title,
+		Body:      in.Body,
+		Link:      in.Link,
+		CreatedAt: now,
+	}
+
+	// In-app delivery
+	if prefs.InApp {
+		items = append(items, notif)
+		channels = append(channels, "in_app")
+	}
+
+	// Push delivery (simulated)
+	if prefs.Push {
+		pd := &pushDelivery{
+			NotificationID: notifID,
+			Status:         "sent",
+			RetryCount:     0,
+			LastAttemptAt:  now,
+		}
+		pushDeliveries[notifID] = pd
+		channels = append(channels, "push")
+	}
+
+	// Email delivery (skipped if not enabled)
+	if prefs.Email {
+		channels = append(channels, "email")
+	}
+
+	response.JSON(c, http.StatusCreated, gin.H{
+		"notificationId": notifID,
+		"channels":       channels,
+		"skipped":        false,
+	})
+}
+
+func listPushDeliveries(c *gin.Context) {
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+
+	deliveries := make([]*pushDelivery, 0, len(pushDeliveries))
+	for _, pd := range pushDeliveries {
+		deliveries = append(deliveries, pd)
+	}
+
+	response.JSON(c, http.StatusOK, deliveries)
 }

@@ -43,6 +43,7 @@ func registerShareLinkRoutes(v1 *gin.RouterGroup) {
 	v1.POST("/trips/:tripId/share-links", createShareLink)
 	v1.GET("/trips/:tripId/share-links", listShareLinks)
 	v1.POST("/trips/:tripId/share-links/:linkId/revoke", revokeShareLink)
+	v1.GET("/trips/:tripId/share/:token", verifyShareLink)
 }
 
 func createShareLink(c *gin.Context) {
@@ -135,4 +136,48 @@ func revokeShareLink(c *gin.Context) {
 	now := time.Now().UTC()
 	sl.RevokedAt = &now
 	response.JSON(c, http.StatusOK, sl)
+}
+
+func verifyShareLink(c *gin.Context) {
+	tripID := c.Param("tripId")
+	rawToken := c.Param("token")
+
+	hash := sha256.Sum256([]byte(rawToken))
+	hashHex := hex.EncodeToString(hash[:])
+
+	shareLinkMu.RLock()
+	var matched *shareLink
+	for _, sl := range shareLinksByTrip[tripID] {
+		if sl.TokenHash == hashHex {
+			matched = &sl
+			break
+		}
+	}
+	shareLinkMu.RUnlock()
+
+	if matched == nil {
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "share link not found", nil)
+		return
+	}
+
+	if matched.RevokedAt != nil {
+		response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "share link has been revoked", nil)
+		return
+	}
+
+	if matched.ExpiresAt != nil && time.Now().After(*matched.ExpiresAt) {
+		response.Error(c, http.StatusGone, perrors.CodeBadRequest, "share link has expired", nil)
+		return
+	}
+
+	t, err := activeRepository.Get(c.Request.Context(), tripID)
+	if err != nil {
+		response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{
+		"trip":        t,
+		"accessScope": matched.AccessScope,
+	})
 }

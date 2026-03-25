@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
+	pjwt "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/jwt"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
 
@@ -44,6 +46,20 @@ type codeEntry struct {
 }
 
 const sessionCookieName = "tt_session"
+
+// accessTokenTTL is the default JWT access token duration.
+const accessTokenTTL = 15 * time.Minute
+
+// refreshTokenTTL is the default refresh token duration.
+const refreshTokenTTL = 7 * 24 * time.Hour
+
+type sessionEntry struct {
+	User             *sessionUser
+	RefreshTokenHash [32]byte
+	FamilyID         string
+	Used             bool
+	ExpiresAt        time.Time
+}
 
 type oauthStateEntry struct {
 	Provider  string
@@ -112,10 +128,11 @@ var oauthProviders = map[string]oauthProviderConfig{
 }
 
 var (
-	authStateMu  sync.Mutex
-	pendingCodes = map[string]codeEntry{}
-	oauthStates  = map[string]oauthStateEntry{}
-	sessions     = map[string]*sessionUser{}
+	authStateMu     sync.Mutex
+	pendingCodes    = map[string]codeEntry{}
+	oauthStates     = map[string]oauthStateEntry{}
+	sessions        = map[string]*sessionUser{}
+	refreshSessions = map[string]*sessionEntry{} // keyed by refresh token hash hex
 )
 
 const maxMagicLinkFailedAttempts = 5
@@ -132,6 +149,8 @@ func RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/oauth/:provider/callback", callbackOAuth)
 	group.GET("/session", getSession)
 	group.POST("/logout", logout)
+	group.POST("/refresh", refreshToken)
+	group.POST("/verify-invite", verifyInviteToken)
 }
 
 func startOAuth(c *gin.Context) {
@@ -670,4 +689,187 @@ func avatarFromEmail(email string) string {
 		return "TT"
 	}
 	return strings.ToUpper(string(letters))
+}
+
+// ── Refresh Token Rotation ───────────────────────────────────────────
+
+type refreshTokenInput struct {
+	RefreshToken string `json:"refreshToken"`
+}
+
+func refreshToken(c *gin.Context) {
+	var in refreshTokenInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", nil)
+		return
+	}
+
+	token := strings.TrimSpace(in.RefreshToken)
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "refreshToken is required", nil)
+		return
+	}
+
+	tokenHash := sha256.Sum256([]byte(token))
+	hashHex := fmt.Sprintf("%x", tokenHash)
+
+	authStateMu.Lock()
+
+	entry, ok := refreshSessions[hashHex]
+	if !ok {
+		authStateMu.Unlock()
+		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "invalid or expired refresh token", nil)
+		return
+	}
+
+	// Reuse detection: if token was already used, revoke entire family.
+	if entry.Used {
+		familyID := entry.FamilyID
+		for k, s := range refreshSessions {
+			if s.FamilyID == familyID {
+				delete(refreshSessions, k)
+			}
+		}
+		authStateMu.Unlock()
+		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "refresh token reuse detected, session family revoked", nil)
+		return
+	}
+
+	if time.Now().After(entry.ExpiresAt) {
+		delete(refreshSessions, hashHex)
+		authStateMu.Unlock()
+		response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "refresh token has expired", nil)
+		return
+	}
+
+	// Mark old token as used (for reuse detection).
+	entry.Used = true
+
+	// Issue new refresh token with same family.
+	newRefreshRaw, err := generateOpaqueToken(48)
+	if err != nil {
+		authStateMu.Unlock()
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate refresh token", nil)
+		return
+	}
+
+	newHash := sha256.Sum256([]byte(newRefreshRaw))
+	newHashHex := fmt.Sprintf("%x", newHash)
+	refreshSessions[newHashHex] = &sessionEntry{
+		User:             entry.User,
+		RefreshTokenHash: newHash,
+		FamilyID:         entry.FamilyID,
+		Used:             false,
+		ExpiresAt:        time.Now().Add(refreshTokenTTL),
+	}
+	user := entry.User
+	authStateMu.Unlock()
+
+	accessToken, err := generateJWTForUser(user)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate access token", nil)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, gin.H{
+		"accessToken":  accessToken,
+		"refreshToken": newRefreshRaw,
+		"expiresIn":    int(accessTokenTTL.Seconds()),
+	})
+}
+
+func issueTokenPair(user *sessionUser) (accessToken, refreshRaw, familyID string, err error) {
+	familyID = uuid.NewString()
+	return issueTokenPairWithFamily(user, familyID)
+}
+
+func issueTokenPairWithFamily(user *sessionUser, familyID string) (accessToken, refreshRaw, _ string, err error) {
+	accessToken, err = generateJWTForUser(user)
+	if err != nil {
+		return "", "", familyID, err
+	}
+
+	refreshRaw, err = generateOpaqueToken(48)
+	if err != nil {
+		return "", "", familyID, err
+	}
+
+	tokenHash := sha256.Sum256([]byte(refreshRaw))
+	hashHex := fmt.Sprintf("%x", tokenHash)
+
+	authStateMu.Lock()
+	refreshSessions[hashHex] = &sessionEntry{
+		User:             user,
+		RefreshTokenHash: tokenHash,
+		FamilyID:         familyID,
+		Used:             false,
+		ExpiresAt:        time.Now().Add(refreshTokenTTL),
+	}
+	authStateMu.Unlock()
+
+	return accessToken, refreshRaw, familyID, nil
+}
+
+func generateJWTForUser(user *sessionUser) (string, error) {
+	return pjwt.Generate(user.ID, user.Email, accessTokenTTL)
+}
+
+// ── Invite Token Verification ────────────────────────────────────────
+
+type verifyInviteInput struct {
+	Token string `json:"token"`
+}
+
+type inviteEntry struct {
+	TokenHash string
+	ExpiresAt time.Time
+	TripID    string
+	Role      string
+	Used      bool
+}
+
+var pendingInvites = map[string]*inviteEntry{}
+
+func verifyInviteToken(c *gin.Context) {
+	var in verifyInviteInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", nil)
+		return
+	}
+
+	token := strings.TrimSpace(in.Token)
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "token is required", nil)
+		return
+	}
+
+	tokenHash := sha256.Sum256([]byte(token))
+	hashHex := fmt.Sprintf("%x", tokenHash)
+
+	authStateMu.Lock()
+	defer authStateMu.Unlock()
+
+	entry, ok := pendingInvites[hashHex]
+	if !ok {
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "invite token not found", nil)
+		return
+	}
+
+	if time.Now().After(entry.ExpiresAt) {
+		response.Error(c, http.StatusGone, perrors.CodeBadRequest, "invite token has expired", nil)
+		return
+	}
+
+	if entry.Used {
+		response.Error(c, http.StatusConflict, perrors.CodeConflict, "invite token has already been used", nil)
+		return
+	}
+
+	entry.Used = true
+
+	response.JSON(c, http.StatusOK, gin.H{
+		"tripId": entry.TripID,
+		"role":   entry.Role,
+		"valid":  true,
+	})
 }

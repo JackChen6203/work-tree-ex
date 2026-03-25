@@ -101,6 +101,7 @@ var (
 func RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/me", getMe)
 	group.PATCH("/me", patchMe)
+	group.DELETE("/me", deleteMe)
 	group.GET("/me/preferences", getMyPreferences)
 	group.PUT("/me/preferences", putMyPreferences)
 	group.GET("/me/notification-preferences", getMyNotificationPreferences)
@@ -275,6 +276,14 @@ func createMyProvider(c *gin.Context) {
 		return
 	}
 
+	// BE-02 edge case: LLM key encryption failure → 500 alert
+	envelope := strings.TrimSpace(in.EncryptedAPIKeyEnvelope)
+	if !strings.HasPrefix(envelope, "enc_") || len(envelope) < 16 {
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError,
+			"encryption envelope validation failed, key not stored", nil)
+		return
+	}
+
 	masked := "****"
 	if len(in.EncryptedAPIKeyEnvelope) > 4 {
 		masked = "****" + in.EncryptedAPIKeyEnvelope[len(in.EncryptedAPIKeyEnvelope)-4:]
@@ -316,6 +325,35 @@ func deleteMyProvider(c *gin.Context) {
 	}
 
 	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider not found", gin.H{"providerId": providerID})
+}
+
+func deleteMe(c *gin.Context) {
+	usersMu.Lock()
+	// Clear preferences and LLM providers
+	myPreference = preference{
+		TripPace:            "",
+		WakePattern:         "",
+		TransportPreference: "",
+		FoodPreference:      []string{},
+		AvoidTags:           []string{},
+		Version:             0,
+	}
+	myNotificationPreference = notificationPreference{
+		Version: 0,
+	}
+	providerList = []llmProvider{}
+	// Soft delete: mark profile as deleted but retain for audit log purposes
+	me = profile{
+		ID:          me.ID,
+		Email:       "",
+		DisplayName: "[deleted]",
+		Locale:      "",
+		Timezone:    "",
+		Currency:    "",
+	}
+	usersMu.Unlock()
+
+	response.NoContent(c)
 }
 
 func isHHMM(v string) bool {
