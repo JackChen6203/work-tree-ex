@@ -271,11 +271,11 @@
 
 ## BE-P2-01｜PostgreSQL 持久化遷移
 
-- [ ] 建立 `database/postgres.go` 連線池（pgx + connection pool config）
-- [ ] Trips 模組：`repository_memory.go` → `repository_postgres.go`（CRUD + version bump）
-- [ ] Trip membership：in-memory map → PostgreSQL `trip_memberships` table
-- [ ] Invitations：in-memory map → PostgreSQL `trip_invitations` table
-- [ ] Share links：in-memory map → PostgreSQL `share_links` table
+- [x] 建立 `database/postgres.go` 連線池（pgx + connection pool config）
+- [x] Trips 模組：`repository_memory.go` → `repository_postgres.go`（CRUD + version bump）
+- [x] Trip membership：in-memory map → PostgreSQL `trip_memberships` table
+- [x] Invitations：in-memory map → PostgreSQL `trip_invitations` table
+- [x] Share links：in-memory map → PostgreSQL `share_links` table
 - [ ] Itinerary days/items：in-memory → PostgreSQL `itinerary_days` + `itinerary_items`
 - [ ] Budget profiles/expenses：in-memory → PostgreSQL `budget_profiles` + `expenses`
 - [ ] Notifications：in-memory → PostgreSQL `notifications` table
@@ -286,7 +286,7 @@
 - [ ] Outbox events：in-memory → PostgreSQL `outbox_events`
 - [ ] Audit logs：in-memory → PostgreSQL `audit_logs`
 - [ ] FCM tokens：in-memory → PostgreSQL `fcm_tokens`
-- [ ] Idempotency keys：in-memory → PostgreSQL `trip_idempotency_keys`
+- [x] Idempotency keys：in-memory → PostgreSQL `trip_idempotency_keys`
 
 ### 邊界個案
 - [ ] 連線池耗盡 → graceful error + 503
@@ -391,4 +391,3 @@
 - [ ] Staging 環境部署
 - [ ] Production 環境部署（Blue-green / Canary）
 - [ ] Rollback playbook
-

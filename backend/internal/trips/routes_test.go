@@ -13,6 +13,7 @@ import (
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	SetRepository(newMemoryRepository())
+	SetCollaborationPool(nil)
 	resetMemberStoreForTests()
 	r := gin.New()
 	v1 := r.Group("/api/v1")

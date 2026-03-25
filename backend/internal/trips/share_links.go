@@ -3,6 +3,7 @@ package trips
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -61,14 +62,39 @@ func createShareLink(c *gin.Context) {
 
 	key := tripID + ":sl:" + idempotencyKey
 	shareLinkMu.Lock()
-	defer shareLinkMu.Unlock()
-
 	if existingID, ok := shareLinkIdempotency[key]; ok {
-		if sl, exists := shareLinkByID[existingID]; exists {
-			response.JSON(c, http.StatusOK, sl)
-			return
+		if getCollaborationPool() != nil {
+			shareLinkMu.Unlock()
+			sl, err := getShareLinkByIDPostgres(c.Request.Context(), existingID)
+			if err == nil {
+				response.JSON(c, http.StatusOK, sl)
+				return
+			}
+		} else {
+			if sl, exists := shareLinkByID[existingID]; exists {
+				shareLinkMu.Unlock()
+				response.JSON(c, http.StatusOK, sl)
+				return
+			}
 		}
 	}
+	shareLinkMu.Unlock()
+
+	if getCollaborationPool() != nil {
+		sl, err := createShareLinkPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create share link", nil)
+			return
+		}
+		shareLinkMu.Lock()
+		shareLinkIdempotency[key] = sl.ID
+		shareLinkMu.Unlock()
+		response.JSON(c, http.StatusCreated, sl)
+		return
+	}
+
+	shareLinkMu.Lock()
+	defer shareLinkMu.Unlock()
 
 	rawToken := uuid.NewString()
 	hash := sha256.Sum256([]byte(rawToken))
@@ -97,12 +123,21 @@ func listShareLinks(c *gin.Context) {
 		return
 	}
 
-	shareLinkMu.RLock()
-	items := shareLinksByTrip[tripID]
-	shareLinkMu.RUnlock()
-
-	if items == nil {
-		items = []shareLink{}
+	var items []shareLink
+	if getCollaborationPool() != nil {
+		var err error
+		items, err = listShareLinksPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list share links", nil)
+			return
+		}
+	} else {
+		shareLinkMu.RLock()
+		items = shareLinksByTrip[tripID]
+		shareLinkMu.RUnlock()
+		if items == nil {
+			items = []shareLink{}
+		}
 	}
 
 	// Strip raw tokens from list view
@@ -118,6 +153,23 @@ func listShareLinks(c *gin.Context) {
 func revokeShareLink(c *gin.Context) {
 	tripID := c.Param("tripId")
 	linkID := c.Param("linkId")
+
+	if getCollaborationPool() != nil {
+		sl, err := revokeShareLinkPostgres(c.Request.Context(), tripID, linkID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrShareLinkNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "share link not found", gin.H{"linkId": linkID})
+			case errors.Is(err, ErrShareLinkAlreadyRevoked):
+				response.Error(c, http.StatusConflict, perrors.CodeConflict, "share link already revoked", nil)
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to revoke share link", nil)
+			}
+			return
+		}
+		response.JSON(c, http.StatusOK, sl)
+		return
+	}
 
 	shareLinkMu.Lock()
 	defer shareLinkMu.Unlock()
@@ -142,32 +194,47 @@ func verifyShareLink(c *gin.Context) {
 	tripID := c.Param("tripId")
 	rawToken := c.Param("token")
 
-	hash := sha256.Sum256([]byte(rawToken))
-	hashHex := hex.EncodeToString(hash[:])
-
-	shareLinkMu.RLock()
 	var matched *shareLink
-	for _, sl := range shareLinksByTrip[tripID] {
-		if sl.TokenHash == hashHex {
-			matched = &sl
-			break
+	if getCollaborationPool() != nil {
+		sl, err := getShareLinkByRawTokenPostgres(c.Request.Context(), tripID, rawToken)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrShareLinkNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "share link not found", nil)
+			case errors.Is(err, ErrShareLinkRevoked):
+				response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "share link has been revoked", nil)
+			case errors.Is(err, ErrShareLinkExpired):
+				response.Error(c, http.StatusGone, perrors.CodeBadRequest, "share link has expired", nil)
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to verify share link", nil)
+			}
+			return
 		}
-	}
-	shareLinkMu.RUnlock()
-
-	if matched == nil {
-		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "share link not found", nil)
-		return
-	}
-
-	if matched.RevokedAt != nil {
-		response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "share link has been revoked", nil)
-		return
-	}
-
-	if matched.ExpiresAt != nil && time.Now().After(*matched.ExpiresAt) {
-		response.Error(c, http.StatusGone, perrors.CodeBadRequest, "share link has expired", nil)
-		return
+		matched = &sl
+	} else {
+		hash := sha256.Sum256([]byte(rawToken))
+		hashHex := hex.EncodeToString(hash[:])
+		shareLinkMu.RLock()
+		for _, sl := range shareLinksByTrip[tripID] {
+			if sl.TokenHash == hashHex {
+				copied := sl
+				matched = &copied
+				break
+			}
+		}
+		shareLinkMu.RUnlock()
+		if matched == nil {
+			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "share link not found", nil)
+			return
+		}
+		if matched.RevokedAt != nil {
+			response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "share link has been revoked", nil)
+			return
+		}
+		if matched.ExpiresAt != nil && time.Now().After(*matched.ExpiresAt) {
+			response.Error(c, http.StatusGone, perrors.CodeBadRequest, "share link has expired", nil)
+			return
+		}
 	}
 
 	t, err := activeRepository.Get(c.Request.Context(), tripID)

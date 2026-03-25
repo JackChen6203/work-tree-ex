@@ -3,6 +3,7 @@ package trips
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -91,14 +92,45 @@ func createInvitation(c *gin.Context) {
 
 	key := tripID + ":inv:" + idempotencyKey
 	invitationMu.Lock()
-	defer invitationMu.Unlock()
-
 	if existingID, ok := invitationIdempotency[key]; ok {
-		if inv, exists := invitationByID[existingID]; exists {
-			response.JSON(c, http.StatusOK, inv)
-			return
+		if getCollaborationPool() != nil {
+			invitationMu.Unlock()
+			inv, err := getInvitationByIDPostgres(c.Request.Context(), existingID)
+			if err == nil {
+				response.JSON(c, http.StatusOK, inv)
+				return
+			}
+		} else {
+			if inv, exists := invitationByID[existingID]; exists {
+				invitationMu.Unlock()
+				response.JSON(c, http.StatusOK, inv)
+				return
+			}
 		}
 	}
+	invitationMu.Unlock()
+
+	if getCollaborationPool() != nil {
+		inv, created, err := createInvitationPostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create invitation", nil)
+			return
+		}
+
+		invitationMu.Lock()
+		invitationIdempotency[key] = inv.ID
+		invitationMu.Unlock()
+
+		if created {
+			response.JSON(c, http.StatusCreated, inv)
+			return
+		}
+		response.JSON(c, http.StatusOK, inv)
+		return
+	}
+
+	invitationMu.Lock()
+	defer invitationMu.Unlock()
 
 	// Check for existing pending invitation to same email
 	for _, inv := range invitationsByTrip[tripID] {
@@ -140,12 +172,21 @@ func listInvitations(c *gin.Context) {
 		return
 	}
 
-	invitationMu.RLock()
-	items := invitationsByTrip[tripID]
-	invitationMu.RUnlock()
-
-	if items == nil {
-		items = []invitation{}
+	var items []invitation
+	if getCollaborationPool() != nil {
+		var err error
+		items, err = listInvitationsPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list invitations", nil)
+			return
+		}
+	} else {
+		invitationMu.RLock()
+		items = invitationsByTrip[tripID]
+		invitationMu.RUnlock()
+		if items == nil {
+			items = []invitation{}
+		}
 	}
 
 	// Strip raw tokens from list view
@@ -161,6 +202,23 @@ func listInvitations(c *gin.Context) {
 func revokeInvitation(c *gin.Context) {
 	tripID := c.Param("tripId")
 	invitationID := c.Param("invitationId")
+
+	if getCollaborationPool() != nil {
+		inv, err := revokeInvitationPostgres(c.Request.Context(), tripID, invitationID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvitationNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "invitation not found", gin.H{"invitationId": invitationID})
+			case errors.Is(err, ErrInvitationNotPending):
+				response.Error(c, http.StatusConflict, perrors.CodeConflict, "invitation is not pending", nil)
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to revoke invitation", nil)
+			}
+			return
+		}
+		response.JSON(c, http.StatusOK, inv)
+		return
+	}
 
 	invitationMu.Lock()
 	defer invitationMu.Unlock()
@@ -183,6 +241,28 @@ func revokeInvitation(c *gin.Context) {
 func acceptInvitation(c *gin.Context) {
 	tripID := c.Param("tripId")
 	invitationID := c.Param("invitationId")
+
+	if getCollaborationPool() != nil {
+		inv, member, err := acceptInvitationPostgres(c.Request.Context(), tripID, invitationID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvitationNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "invitation not found", gin.H{"invitationId": invitationID})
+			case errors.Is(err, ErrInvitationExpired):
+				response.Error(c, http.StatusGone, perrors.CodeBadRequest, "invitation has expired", nil)
+			case errors.Is(err, ErrInvitationNotPending):
+				response.Error(c, http.StatusConflict, perrors.CodeConflict, "invitation is not pending", nil)
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to accept invitation", nil)
+			}
+			return
+		}
+		response.JSON(c, http.StatusOK, gin.H{
+			"invitation": inv,
+			"member":     member,
+		})
+		return
+	}
 
 	invitationMu.Lock()
 
