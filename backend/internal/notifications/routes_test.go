@@ -13,11 +13,14 @@ import (
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	notificationsMu.Lock()
 	items = []notification{
 		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較", Link: "/dashboard"},
 		{ID: "n-2", Type: "member_joined", Title: "成員接受邀請", Body: "Mina 已加入行程", Link: "/trips"},
 	}
+	dedupeStore = map[string]time.Time{}
+	pushDeliveries = map[string]*pushDelivery{}
 	notificationsMu.Unlock()
 
 	r := gin.New()
