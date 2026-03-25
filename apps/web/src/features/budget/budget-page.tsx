@@ -98,7 +98,7 @@ export function BudgetPage() {
     <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
       <SurfaceCard eyebrow={t("nav.budget")} title={t("budget.title")}>
         {loadingProfile ? <div className="mb-4 rounded-[20px] bg-sand p-3 text-sm text-ink/65">{t("common.loading")}</div> : null}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-[24px] bg-sand p-4">
             <p className="text-sm text-ink/60">{t("budget.totalBudget")}</p>
             <p className="mt-2 font-display text-3xl font-bold text-ink">{profile?.currency ?? "JPY"} {estimated.toLocaleString()}</p>
@@ -110,6 +110,10 @@ export function BudgetPage() {
           <div className="rounded-[24px] bg-sand p-4">
             <p className="text-sm text-ink/60">{t("budget.perDay")}</p>
             <p className="mt-2 font-display text-3xl font-bold text-ink">{profile?.currency ?? "JPY"} {(profile?.perDayBudget ?? 0).toLocaleString()}</p>
+          </div>
+          <div className="rounded-[24px] bg-sand p-4">
+            <p className="text-sm text-ink/60">{t("budget.perPerson")}</p>
+            <p className="mt-2 font-display text-3xl font-bold text-ink">{profile?.currency ?? "JPY"} {(profile?.perPersonBudget ?? Math.round(estimated / 2)).toLocaleString()}</p>
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-3">

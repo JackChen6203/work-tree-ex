@@ -258,15 +258,25 @@ func listTripMembers(c *gin.Context) {
 		return
 	}
 
-	membersMu.RLock()
-	items := make([]tripMember, 0, len(tripMembers[tripID]))
-	for _, item := range tripMembers[tripID] {
-		if roleFilter != "" && item.Role != roleFilter {
-			continue
+	var items []tripMember
+	if getCollaborationPool() != nil {
+		var err error
+		items, err = listTripMembersPostgres(c.Request.Context(), tripID, roleFilter)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list trip members", nil)
+			return
 		}
-		items = append(items, item)
+	} else {
+		membersMu.RLock()
+		items = make([]tripMember, 0, len(tripMembers[tripID]))
+		for _, item := range tripMembers[tripID] {
+			if roleFilter != "" && item.Role != roleFilter {
+				continue
+			}
+			items = append(items, item)
+		}
+		membersMu.RUnlock()
 	}
-	membersMu.RUnlock()
 
 	response.JSON(c, http.StatusOK, items)
 }
@@ -311,7 +321,26 @@ func addTripMember(c *gin.Context) {
 		response.JSON(c, http.StatusOK, existing)
 		return
 	}
+	membersMu.Unlock()
 
+	if getCollaborationPool() != nil {
+		item, err := addTripMemberPostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			if errors.Is(err, ErrMemberAlreadyExists) {
+				response.Error(c, http.StatusConflict, perrors.CodeConflict, "member already exists", gin.H{"email": in.Email, "userId": in.UserID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to add member", nil)
+			return
+		}
+		membersMu.Lock()
+		idempotentAdds[key] = item
+		membersMu.Unlock()
+		response.JSON(c, http.StatusCreated, item)
+		return
+	}
+
+	membersMu.Lock()
 	for _, m := range tripMembers[tripID] {
 		if strings.TrimSpace(in.UserID) != "" && m.UserID == strings.TrimSpace(in.UserID) {
 			membersMu.Unlock()
@@ -336,7 +365,6 @@ func addTripMember(c *gin.Context) {
 		JoinedAt:    now,
 		CreatedAt:   now,
 	}
-
 	tripMembers[tripID] = append(tripMembers[tripID], item)
 	idempotentAdds[key] = item
 	membersMu.Unlock()
@@ -358,6 +386,23 @@ func removeTripMember(c *gin.Context) {
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
+		return
+	}
+
+	if getCollaborationPool() != nil {
+		err := removeTripMemberPostgres(c.Request.Context(), tripID, memberID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrLastOwner):
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "cannot remove the last owner", nil)
+			case errors.Is(err, ErrMemberNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to remove trip member", nil)
+			}
+			return
+		}
+		response.NoContent(c)
 		return
 	}
 
@@ -406,6 +451,23 @@ func patchTripMember(c *gin.Context) {
 
 	if !isValidMemberRole(in.Role) {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "role must be owner/editor/commenter/viewer", nil)
+		return
+	}
+
+	if getCollaborationPool() != nil {
+		item, err := patchTripMemberPostgres(c.Request.Context(), tripID, memberID, strings.TrimSpace(in.Role))
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrLastOwner):
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "cannot demote the last owner", nil)
+			case errors.Is(err, ErrMemberNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch member", nil)
+			}
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
 		return
 	}
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useParams } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
@@ -7,6 +8,9 @@ import { useTripPermission } from "../auth/use-trip-permission";
 import { useAddTripMemberMutation, usePatchTripMutation, useRemoveTripMemberMutation, useTripMembersQuery, useTripQuery, useUpdateTripMemberRoleMutation } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 import { useI18n } from "../../lib/i18n";
+import { addMemberSchema, validationMessages } from "../../lib/schemas";
+import type { AddMemberFormValues } from "../../lib/schemas";
+import type { Locale } from "../../lib/translations";
 
 interface TripPatchValues {
   name: string;
@@ -27,7 +31,8 @@ interface AddMemberValues {
 
 export function TripOverviewPage() {
   const { tripId } = useParams();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const msgs = validationMessages[locale as Locale] ?? validationMessages.en;
   const pushToast = useUiStore((state) => state.pushToast);
   const [memberRoleFilter, setMemberRoleFilter] = useState<"all" | "owner" | "editor" | "commenter" | "viewer">("all");
   const { data: trip, isLoading, error } = useTripQuery(tripId ?? "");
@@ -50,13 +55,14 @@ export function TripOverviewPage() {
         }
       : undefined
   });
-  const memberForm = useForm<AddMemberValues>({
+  const memberForm = useForm<AddMemberFormValues>({
+    resolver: zodResolver(addMemberSchema),
     defaultValues: {
       email: "",
-      displayName: "",
       role: "viewer"
     }
   });
+  const { formState: { errors: memberErrors } } = memberForm;
 
   if (isLoading) {
     return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">{t("common.loading")}</div>;
@@ -79,12 +85,11 @@ export function TripOverviewPage() {
   const onAddMember = memberForm.handleSubmit(async (values) => {
     await addTripMember.mutateAsync({
       email: values.email,
-      displayName: values.displayName,
+      displayName: values.email.split("@")[0],
       role: values.role
     });
     memberForm.reset({
       email: "",
-      displayName: "",
       role: values.role
     });
     pushToast(t("members.addMember"));
@@ -243,11 +248,9 @@ export function TripOverviewPage() {
             <p className="text-sm font-semibold text-ink">{t("members.addMember")}</p>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("members.addMemberEmail")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email", { required: true })} />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("settings.displayName")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...memberForm.register("displayName")} />
+              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" type="email" {...memberForm.register("email")} />
+              {memberErrors.email ? <p className="mt-1 text-xs text-coral">{msgs[memberErrors.email.message ?? ""] ?? memberErrors.email.message}</p> : null}
+
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("members.addMemberRole")}</span>

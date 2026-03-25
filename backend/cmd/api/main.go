@@ -23,8 +23,10 @@ func main() {
 			os.Exit(1)
 		}
 		trips.SetRepository(trips.NewPostgresRepository(pool))
+		trips.SetCollaborationPool(pool)
 		logger.Info("trips repository configured", "store", "postgres")
 	} else {
+		trips.SetCollaborationPool(nil)
 		logger.Info("trips repository configured", "store", "memory")
 	}
 
