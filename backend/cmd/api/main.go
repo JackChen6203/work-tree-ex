@@ -10,6 +10,7 @@ import (
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/httpserver"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/logging"
+	syncpkg "github.com/solidityDeveloper/time_tree_ex/backend/internal/sync"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/trips"
 )
 
@@ -28,11 +29,13 @@ func main() {
 		trips.SetCollaborationPool(pool)
 		notifications.SetPool(pool)
 		budget.SetPool(pool)
+		syncpkg.SetPool(pool)
 		logger.Info("trips repository configured", "store", "postgres")
 	} else {
 		trips.SetCollaborationPool(nil)
 		notifications.SetPool(nil)
 		budget.SetPool(nil)
+		syncpkg.SetPool(nil)
 		logger.Info("trips repository configured", "store", "memory")
 	}
 
