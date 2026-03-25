@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
@@ -11,9 +11,11 @@ import {
   useMarkNotificationUnreadMutation,
   useNotificationsQuery
 } from "../../lib/queries";
+import { getTrip } from "../../lib/trips-api";
 
 export function NotificationsPage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const pushToast = useUiStore((state) => state.pushToast);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const { data: notifications = [], isLoading } = useNotificationsQuery(unreadOnly);
@@ -58,6 +60,40 @@ export function NotificationsPage() {
     });
   };
 
+  const normalizeNotificationLink = (link: string) => {
+    if (!link) {
+      return "/notifications";
+    }
+    if (link.startsWith("http://") || link.startsWith("https://")) {
+      try {
+        const url = new URL(link);
+        return `${url.pathname}${url.search}${url.hash}`;
+      } catch {
+        return "/notifications";
+      }
+    }
+    return link.startsWith("/") ? link : `/${link}`;
+  };
+
+  const openNotification = async (notificationId: string, href: string) => {
+    const targetPath = normalizeNotificationLink(href);
+    const tripMatch = targetPath.match(/^\/trips\/([^/]+)/);
+    if (tripMatch) {
+      try {
+        await getTrip(tripMatch[1]);
+      } catch (error) {
+        if ((error as Error & { status?: number }).status === 404) {
+          pushToast({ type: "warning", message: t("notifications.tripDeleted") });
+          markRead(notificationId);
+          return;
+        }
+      }
+    }
+
+    markRead(notificationId);
+    navigate(targetPath);
+  };
+
   return (
     <SurfaceCard
       eyebrow={t("nav.inbox")}
@@ -94,9 +130,15 @@ export function NotificationsPage() {
           <div key={item.id} className={`rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <Link className="font-medium text-ink underline-offset-4 hover:underline" onClick={() => markRead(item.id)} to={item.href}>
+                <button
+                  className="font-medium text-ink underline-offset-4 hover:underline"
+                  onClick={() => {
+                    void openNotification(item.id, item.href);
+                  }}
+                  type="button"
+                >
                   {item.title}
-                </Link>
+                </button>
                 <p className="mt-2 text-sm text-ink/65">{item.detail}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">{item.unread ? t("notifications.unread") : t("notifications.read")}</p>
               </div>

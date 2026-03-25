@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const optionalNonNegativeAmountSchema = z.number().finite("amountNumber").min(0, "amountNonNegative").optional();
+
 // ── Trip ──────────────────────────────────────────────
 
 export const createTripSchema = z.object({
@@ -17,11 +19,22 @@ export const createTripSchema = z.object({
 
 export type CreateTripFormValues = z.infer<typeof createTripSchema>;
 
+// ── Budget ────────────────────────────────────────────
+
+export const upsertBudgetSchema = z.object({
+  totalBudget: optionalNonNegativeAmountSchema,
+  perPersonBudget: optionalNonNegativeAmountSchema,
+  perDayBudget: optionalNonNegativeAmountSchema,
+  currency: z.string().length(3, "currency3")
+});
+
+export type UpsertBudgetFormValues = z.infer<typeof upsertBudgetSchema>;
+
 // ── Expense ──────────────────────────────────────────
 
 export const addExpenseSchema = z.object({
   category: z.string().min(1, "required"),
-  amount: z.number({ coerce: true }).positive("amountPositive"),
+  amount: z.number({ coerce: true }).finite("amountNumber").min(0, "amountNonNegative"),
   currency: z.string().min(1, "required"),
   note: z.string().max(1000).optional(),
   expenseAt: z.string().optional()
@@ -33,6 +46,7 @@ export type AddExpenseFormValues = z.infer<typeof addExpenseSchema>;
 
 export const addMemberSchema = z.object({
   email: z.string().email("invalidEmail"),
+  displayName: z.string().max(100, "max100").optional(),
   role: z.enum(["editor", "commenter", "viewer"])
 });
 
@@ -69,11 +83,14 @@ export const validationMessages: Record<string, Record<string, string>> = {
   "zh-TW": {
     required: "此欄位為必填",
     max200: "最多 200 字",
+    max100: "最多 100 字",
     max5000: "最多 5000 字",
     currency3: "幣別需為 3 碼（如 TWD）",
     min1: "最少 1 人",
     max50: "最多 50 人",
     endDateBeforeStart: "結束日期不可早於開始日期",
+    amountNumber: "金額需為數字",
+    amountNonNegative: "金額不可為負數",
     amountPositive: "金額需大於 0",
     invalidEmail: "Email 格式不正確",
     apiKeyMin16: "API 金鑰至少 16 字元"
@@ -81,11 +98,14 @@ export const validationMessages: Record<string, Record<string, string>> = {
   en: {
     required: "This field is required",
     max200: "Max 200 characters",
+    max100: "Max 100 characters",
     max5000: "Max 5000 characters",
     currency3: "Currency must be 3 characters (e.g. USD)",
     min1: "Min 1 traveler",
     max50: "Max 50 travelers",
     endDateBeforeStart: "End date must be on or after start date",
+    amountNumber: "Amount must be a number",
+    amountNonNegative: "Amount cannot be negative",
     amountPositive: "Amount must be positive",
     invalidEmail: "Invalid email format",
     apiKeyMin16: "API key must be at least 16 characters"

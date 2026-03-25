@@ -140,6 +140,13 @@ export const dictionaries = {
     "dashboard.daysUntil": "距離出發還有 {n} 天",
     "dashboard.tripInProgress": "旅程進行中",
     "dashboard.noUpcoming": "目前沒有即將出發的旅程",
+    "dashboard.recentActivity": "最近活動",
+    "dashboard.noRecentActivity": "目前沒有近期活動。",
+    "dashboard.quickAccess": "快速存取",
+    "dashboard.quickAccessHint": "最近編輯的旅程",
+    "dashboard.openTrip": "打開旅程",
+    "dashboard.openItinerary": "行程頁",
+    "dashboard.openBudget": "預算頁",
 
     // Trip form
     "trip.name": "旅程名稱",
@@ -227,6 +234,8 @@ export const dictionaries = {
     "budget.noBudget": "尚未設定預算",
     "budget.noExpenses": "尚無支出紀錄",
     "budget.aiPlanCta": "以預算生成行程",
+    "budget.dailyTrend": "每日花費趨勢",
+    "budget.trendNoData": "目前沒有可繪製趨勢的支出資料。",
 
     // Map
     "map.title": "地圖與路線",
@@ -270,6 +279,7 @@ export const dictionaries = {
     "ai.adopted": "已採用方案",
     "ai.adoptConfirmTitle": "確認採用此 AI 方案？",
     "ai.adoptConfirmDescription": "採用後將覆蓋目前行程安排，此操作無法撤銷。",
+    "ai.adoptNoWarnings": "採用後將覆蓋目前行程安排。",
     "ai.status": "狀態",
     "ai.warnings": "驗證警告",
     "ai.items": "行程項目",
@@ -292,6 +302,7 @@ export const dictionaries = {
     "notifications.read": "已讀",
     "notifications.noNotifications": "暫無通知",
     "notifications.empty": "一切安好，暫時沒有新通知。",
+    "notifications.tripDeleted": "旅程已刪除",
 
     // Settings
     "settings.title": "帳號與設定",
@@ -509,6 +520,13 @@ export const dictionaries = {
     "dashboard.daysUntil": "{n} days until departure",
     "dashboard.tripInProgress": "Trip in progress",
     "dashboard.noUpcoming": "No upcoming trips",
+    "dashboard.recentActivity": "Recent activity",
+    "dashboard.noRecentActivity": "No recent activity yet.",
+    "dashboard.quickAccess": "Quick access",
+    "dashboard.quickAccessHint": "Most recently edited trip",
+    "dashboard.openTrip": "Open trip",
+    "dashboard.openItinerary": "Itinerary",
+    "dashboard.openBudget": "Budget",
 
     // Trip form
     "trip.name": "Trip name",
@@ -596,6 +614,8 @@ export const dictionaries = {
     "budget.noBudget": "No budget set",
     "budget.noExpenses": "No expenses yet",
     "budget.aiPlanCta": "Plan with AI budget",
+    "budget.dailyTrend": "Per-day spending trend",
+    "budget.trendNoData": "No expense data to render a trend yet.",
 
     // Map
     "map.title": "Map and routes",
@@ -639,6 +659,7 @@ export const dictionaries = {
     "ai.adopted": "Plan adopted",
     "ai.adoptConfirmTitle": "Adopt this AI plan?",
     "ai.adoptConfirmDescription": "This will overwrite the current itinerary. This action cannot be undone.",
+    "ai.adoptNoWarnings": "This will replace the current itinerary.",
     "ai.status": "Status",
     "ai.warnings": "Validation warnings",
     "ai.items": "Items",
@@ -661,6 +682,7 @@ export const dictionaries = {
     "notifications.read": "Read",
     "notifications.noNotifications": "No notifications",
     "notifications.empty": "All caught up, no new notifications.",
+    "notifications.tripDeleted": "This trip was deleted",
 
     // Settings
     "settings.title": "Account & Settings",

@@ -1,18 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateTripMutation, useTripsQuery } from "../../lib/queries";
+import { useCreateTripMutation, useNotificationsQuery, useTripsQuery } from "../../lib/queries";
 import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
 import { createTripSchema, validationMessages } from "../../lib/schemas";
 import type { CreateTripFormValues } from "../../lib/schemas";
 import type { Locale } from "../../lib/translations";
-
-
 
 export function DashboardPage() {
   const { t, locale } = useI18n();
@@ -21,6 +19,7 @@ export function DashboardPage() {
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
   const { data: trips = [], isLoading, error } = useTripsQuery();
+  const { data: notifications = [], isLoading: loadingNotifications } = useNotificationsQuery(false);
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
     resolver: zodResolver(createTripSchema),
@@ -35,6 +34,42 @@ export function DashboardPage() {
     }
   });
   const { formState: { errors } } = form;
+  const today = new Date().toISOString().slice(0, 10);
+  const upcomingTrip = useMemo(
+    () =>
+      trips
+        .filter((trip) => trip.startDate > today)
+        .sort((left, right) => left.startDate.localeCompare(right.startDate))[0],
+    [trips, today]
+  );
+  const currentTrip = useMemo(
+    () => trips.find((trip) => trip.startDate <= today && trip.endDate >= today),
+    [trips, today]
+  );
+  const activityFeed = useMemo(
+    () =>
+      notifications.slice(0, 5).map((notification) => ({
+        id: notification.id,
+        title: notification.title,
+        detail: notification.body,
+        href: notification.link,
+        createdAt: notification.createdAt
+      })),
+    [notifications]
+  );
+  const quickAccessTrip = useMemo(() => {
+    for (const notification of notifications) {
+      const match = notification.link.match(/^\/trips\/([^/]+)/);
+      if (!match) {
+        continue;
+      }
+      const matchedTrip = trips.find((trip) => trip.id === match[1]);
+      if (matchedTrip) {
+        return matchedTrip;
+      }
+    }
+    return trips[0] ?? null;
+  }, [notifications, trips]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const trip = await createTrip.mutateAsync(values);
@@ -145,12 +180,6 @@ export function DashboardPage() {
       <div className="space-y-6">
         <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.upcomingTrip")}>
           {(() => {
-            const today = new Date().toISOString().slice(0, 10);
-            const upcomingTrip = trips.find((trip) => trip.dateRange && trip.dateRange > today);
-            const currentTrip = trips.find((trip) => {
-              const parts = (trip.dateRange ?? "").split(" – ");
-              return parts.length === 2 && parts[0] <= today && parts[1] >= today;
-            });
             if (currentTrip) {
               return (
                 <div className="rounded-[24px] bg-gradient-to-br from-pine/10 to-pine/5 p-5">
@@ -161,7 +190,7 @@ export function DashboardPage() {
               );
             }
             if (upcomingTrip) {
-              const diffMs = new Date(upcomingTrip.dateRange.split(" – ")[0] ?? "").getTime() - Date.now();
+              const diffMs = new Date(upcomingTrip.startDate).getTime() - Date.now();
               const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
               return (
                 <div className="rounded-[24px] bg-gradient-to-br from-coral/10 to-coral/5 p-5">
@@ -173,6 +202,36 @@ export function DashboardPage() {
             }
             return <p className="text-sm text-ink/60">{t("dashboard.noUpcoming")}</p>;
           })()}
+        </SurfaceCard>
+        <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.recentActivity")}>
+          {loadingNotifications ? <p className="text-sm text-ink/60">{t("common.loading")}</p> : null}
+          {!loadingNotifications && activityFeed.length === 0 ? <p className="text-sm text-ink/60">{t("dashboard.noRecentActivity")}</p> : null}
+          <div className="space-y-3">
+            {activityFeed.map((item) => (
+              <Link key={item.id} to={item.href} className="block rounded-[20px] border border-ink/10 bg-sand px-4 py-3 transition hover:bg-white">
+                <p className="text-sm font-medium text-ink">{item.title}</p>
+                <p className="mt-1 text-xs text-ink/65">{item.detail}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-ink/45">
+                  {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </SurfaceCard>
+        <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.quickAccess")}>
+          {!quickAccessTrip ? <p className="text-sm text-ink/60">{t("dashboard.noTripsHint")}</p> : null}
+          {quickAccessTrip ? (
+            <div className="rounded-[24px] bg-gradient-to-br from-ink/5 to-pine/10 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-ink/50">{t("dashboard.quickAccessHint")}</p>
+              <p className="mt-2 text-lg font-semibold text-ink">{quickAccessTrip.name}</p>
+              <p className="text-sm text-ink/60">{quickAccessTrip.destination}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link to={`/trips/${quickAccessTrip.id}`} className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink">{t("dashboard.openTrip")}</Link>
+                <Link to={`/trips/${quickAccessTrip.id}/itinerary`} className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink">{t("dashboard.openItinerary")}</Link>
+                <Link to={`/trips/${quickAccessTrip.id}/budget`} className="rounded-full border border-ink/15 px-3 py-1 text-xs font-medium text-ink">{t("dashboard.openBudget")}</Link>
+              </div>
+            </div>
+          ) : null}
         </SurfaceCard>
       </div>
     </div>

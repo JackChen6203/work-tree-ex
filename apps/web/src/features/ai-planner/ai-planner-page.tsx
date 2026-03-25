@@ -10,6 +10,7 @@ export function AiPlannerPage() {
   const { tripId = "" } = useParams();
   const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
+  const openAdoptDraftModal = useUiStore((state) => state.openAdoptDraftModal);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const { data: drafts = [], isLoading } = useAiPlansQuery(tripId);
   const { data: selectedPlan, isLoading: detailLoading } = useAiPlanQuery(tripId, selectedPlanId);
@@ -32,18 +33,20 @@ export function AiPlannerPage() {
     pushToast(t("ai.generated"));
   };
 
-  const onAdopt = async (planId: string, status: "valid" | "warning" | "invalid") => {
-    const confirmWarnings =
-      status === "warning"
-        ? window.confirm(t("ai.adoptConfirmDescription"))
-        : false;
-
-    if (status === "warning" && !confirmWarnings) {
+  const onAdopt = (planId: string, title: string, status: "valid" | "warning" | "invalid") => {
+    if (status === "invalid") {
       return;
     }
-
-    const result = await adoptPlan.mutateAsync({ planId, confirmWarnings });
-    pushToast(result.adopted ? t("ai.adopted") : t("common.cancel"));
+    openAdoptDraftModal({
+      draftId: planId,
+      tripId,
+      draftTitle: title,
+      hasWarnings: status === "warning",
+      onConfirm: async (confirmWarnings) => {
+        const result = await adoptPlan.mutateAsync({ planId, confirmWarnings });
+        pushToast(result.adopted ? t("ai.adopted") : t("common.cancel"));
+      }
+    });
   };
 
   return (
@@ -110,7 +113,7 @@ export function AiPlannerPage() {
                 className="mt-5 rounded-full bg-pine px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-ink/35"
                 disabled={draft.status === "invalid" || adoptPlan.isPending}
                 onClick={() => {
-                  void onAdopt(draft.id, draft.status);
+                  onAdopt(draft.id, draft.title, draft.status);
                 }}
                 type="button"
               >

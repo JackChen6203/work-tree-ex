@@ -240,9 +240,9 @@
 - [x] Trip 建立 wizard 接入 Zod schema 驗證
 - [x] Trip name ≤200 字即時驗證 + 錯誤訊息
 - [x] Date range 驗證（endDate ≥ startDate）
-- [ ] Email 格式驗證（invite member）
-- [ ] Budget amount 非負數驗證
-- [ ] Expense 表單 Zod 驗證
+- [x] Email 格式驗證（invite member）
+- [x] Budget amount 非負數驗證
+- [x] Expense 表單 Zod 驗證
 - [x] LLM API key 格式驗證（`enc_` 前綴 + 最少 16 字）
 - [x] 表單錯誤訊息 i18n 化
 
@@ -275,8 +275,8 @@
 
 - [x] 分類花費條狀圖（CSS bar chart 或 SVG）
 - [x] 估算 vs 實際百分比對照圖
-- [ ] Per-person 分攤計算顯示
-- [ ] Per-day 花費趨勢折線圖
+- [x] Per-person 分攤計算顯示
+- [x] Per-day 花費趨勢折線圖
 - [x] 匯率來源與快照日期顯示
 - [x] Over-budget 紅色警告動畫
 
@@ -286,9 +286,9 @@
 
 - [x] 移除 "Frontend foundation" 佔位 SurfaceCard
 - [x] Trip 列表空狀態 → 大型「建立旅程」CTA + 插圖
-- [ ] 最近活動 feed（近期 trip 變更、通知摘要）
+- [x] 最近活動 feed（近期 trip 變更、通知摘要）
 - [x] 即將出發 trip countdown
-- [ ] 快速存取 widget（最近編輯的 trip）
+- [x] 快速存取 widget（最近編輯的 trip）
 
 ---
 
@@ -300,7 +300,7 @@
 - [ ] Wake pattern / POI density 滑桿選擇器
 - [ ] 提交後顯示真實 planning job 進度輪詢
 - [ ] Draft 比較 side-by-side diff 視圖
-- [ ] Adopt 確認 dialog 使用 `openAdoptDraftModal`
+- [x] Adopt 確認 dialog 使用 `openAdoptDraftModal`
 
 ---
 
@@ -309,8 +309,8 @@
 - [x] App Shell header 新增鈴鐺圖示
 - [x] 鈴鐺上方 unread count badge
 - [x] 點擊鈴鐺 → 下拉通知面板（或跳轉 /notifications）
-- [ ] 通知 deep-link → 正確導航到 trip/itinerary/budget
-- [ ] 通知刪除的 trip → 顯示「旅程已刪除」提示
+- [x] 通知 deep-link → 正確導航到 trip/itinerary/budget
+- [x] 通知刪除的 trip → 顯示「旅程已刪除」提示
 
 ---
 
@@ -330,4 +330,3 @@
 - [ ] Offline → online 同步 E2E
 - [ ] 推播通知 E2E（mock FCM）
 - [ ] 跨裝置 responsive 截圖測試
-
