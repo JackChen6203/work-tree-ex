@@ -391,3 +391,36 @@
 - [ ] Staging 環境部署
 - [ ] Production 環境部署（Blue-green / Canary）
 - [ ] Rollback playbook
+
+---
+
+# Quest 衍生任務
+
+> 來源：`quest.md` — 用戶反饋產生的後端支援需求
+
+---
+
+## BE-Q1｜目的地 / 出發地搜尋 API
+
+- [ ] `GET /api/v1/places/autocomplete?q={query}&lang={locale}` 代理 API
+- [ ] Response 標準化為 `[]PlaceAutocompleteResult`（placeId, label, lat, lng）
+- [ ] `GET /api/v1/places/timezone?lat=&lng=` 座標 → timezone 推算 API
+- [ ] 搜尋結果快取 24h（Redis / in-memory cache）
+- [ ] Rate limit per user：100 req/min
+- [ ] 外部 API 不可用 → 500 + fallback 訊息
+- [ ] query 輸入清洗（XSS / injection protection）
+
+---
+
+## BE-Q2｜Trip Schema 擴展
+
+- [ ] Migration：trips 表新增 `departure_text` 欄位
+- [ ] Migration：trips 表新增 `departure_lat` / `departure_lng` 欄位
+- [ ] Migration：trips 表新增 `destination_lat` / `destination_lng` 欄位
+- [ ] Migration：trips 表新增 `initial_budget` 欄位
+- [ ] Trip Create API 接受新欄位（departure, coordinates, budget）
+- [ ] Trip Patch API 接受新欄位
+- [ ] 預算金額寫入時同步更新 `budget_profiles.total_budget`
+- [ ] 新欄位全部 nullable（backward compatible）
+- [ ] 預算金額 ≤ 0 → 400 validation error
+

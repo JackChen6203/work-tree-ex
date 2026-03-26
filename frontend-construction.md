@@ -672,3 +672,90 @@ interface OfflineDB {
 - Gauge chart：total spend / total budget %
 - 數字 summary card：每人/每日平均
 
+---
+
+## FE-Q1｜Trip 建立 Wizard UX 強化（Quest #3–#7）
+
+**模式**：Trip 建立表單增強，目的地搜尋整合、出發地欄位、下拉選單優化
+
+> 來源：`quest.md` #3 #4 #5 #6 #7
+
+### 細部功能
+- 建立旅程表單新增「預算金額」欄位（數字輸入，帶幣別前綴）
+- 建立旅程表單新增「出發地點」欄位（文字輸入 + 未來可串接地圖搜尋）
+- 「目的地」欄位改為自動完成下拉（呼叫後端 `/api/v1/places/autocomplete`）
+  - 最後一個選項顯示「沒有您想要的地方嗎？」→ 連結至 Google Maps / Gemini AI 推薦
+  - 選取後自動帶入座標（經緯度）回填到 `destinationLat` / `destinationLng`
+- 「時區」欄位改為下拉選單（依 IANA timezone list 產生選項）
+  - 選取目的地後自動推算時區（from 座標 → timezone API）
+- 「幣別」欄位改為下拉選單（ISO-4217 幣別清單，支援搜尋過濾）
+
+### 邊界個案
+- 目的地搜尋 API 失敗 → fallback 為純文字手動輸入，不阻擋建立
+- 目的地搜尋結果為空 → 顯示「沒有找到結果，請手動輸入」
+- 自動推算時區失敗 → 保留手動選擇功能
+- 幣別清單過長 → 支援搜尋過濾 + 常用幣別置頂（TWD, USD, JPY, EUR）
+
+### 資料結構
+
+```typescript
+// 加強版 Trip 建立表單
+interface TripCreateFormEnhanced {
+  name: string;
+  departureText: string;           // 出發地（新增）
+  departureLat?: number;
+  departureLng?: number;
+  destinationText: string;
+  destinationLat?: number;         // 目的地座標（新增）
+  destinationLng?: number;
+  startDate: string;
+  endDate: string;
+  timezone: string;                // IANA，改為下拉
+  currency: string;                // ISO-4217，改為下拉
+  travelersCount: number;
+  budgetAmount?: number;           // 預算金額（新增）
+}
+
+// 目的地搜尋結果
+interface PlaceAutocompleteOption {
+  placeId: string;
+  label: string;                   // "京都, 日本"
+  lat: number;
+  lng: number;
+  timezone?: string;
+}
+
+// 幣別選項
+interface CurrencyOption {
+  code: string;     // "TWD"
+  label: string;    // "新台幣 (TWD)" | "New Taiwan Dollar (TWD)"
+  symbol: string;   // "NT$"
+}
+
+// 時區選項
+interface TimezoneOption {
+  value: string;    // "Asia/Taipei"
+  label: string;    // "(UTC+8) 台北" | "(UTC+8) Taipei"
+  utcOffset: string;
+}
+```
+
+---
+
+## FE-Q2｜功能路由啟用與錯誤狀態（Quest #1 #2）
+
+**模式**：修復導覽啟用邏輯與旅程載入錯誤處理
+
+> 來源：`quest.md` #1 #2
+
+### 細部功能
+- 行程、預算、地圖、AI 規劃功能在建立 trip 後啟用導覽連結
+- Trip detail 載入失敗時顯示友善錯誤訊息 + 重試按鈕
+
+### 邊界個案
+- 無 trip → itinerary / budget / map / ai 導覽 disabled（灰化 + tooltip 說明）
+- Trip detail API 回 404 → 顯示「旅程不存在或已刪除」
+- Trip detail API 回 403 → 顯示「無權限存取此旅程」
+- Trip detail API timeout → 顯示「載入逾時，請重試」
+
+

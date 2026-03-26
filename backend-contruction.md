@@ -913,3 +913,82 @@ Step 3: 旅行風格偏好（可跳過）
 - SendGrid / Resend API 真實發信
 - Email template rendering（Go `html/template`）
 
+---
+
+## BE-Q1｜目的地 / 出發地 搜尋 API（Quest #5）
+
+**模式**：Place Autocomplete 代理 API + Geocode → Timezone 推算
+
+> 來源：`quest.md` #5
+
+### 細部功能
+- `GET /api/v1/places/autocomplete?q={query}&lang={locale}` → 代理 Google Places / Mapbox Geocoding
+- Response 標準化為 `[]PlaceAutocompleteResult`（placeId, label, lat, lng）
+- 可選：傳入座標回推 timezone（`GET /api/v1/places/timezone?lat=&lng=`）
+- 搜尋結果快取 24h（避免重複呼叫外部 API）
+- Rate limit per user：100 req/min
+
+### 邊界個案
+- 外部 API 不可用 → 500 + fallback 訊息（讓前端 fallback 為手動輸入）
+- query 空字串 → 400 Bad Request
+- query 含 SQL injection / XSS → 輸入清洗
+- 超過 quota → 429 + 告警
+
+### 資料結構（Go）
+
+```go
+type PlaceAutocompleteResult struct {
+	PlaceID  string  `json:"placeId"`
+	Label    string  `json:"label"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+	Timezone string  `json:"timezone,omitempty"`
+}
+
+type TimezoneResult struct {
+	TimezoneID string `json:"timezoneId"` // "Asia/Tokyo"
+	UTCOffset  string `json:"utcOffset"`  // "+09:00"
+}
+```
+
+### API Endpoints
+- `GET /api/v1/places/autocomplete?q=京都&lang=zh-TW` → `[]PlaceAutocompleteResult`
+- `GET /api/v1/places/timezone?lat=35.0116&lng=135.7681` → `TimezoneResult`
+
+---
+
+## BE-Q2｜Trip Schema 擴展（Quest #3 #4 #6 #7）
+
+**模式**：trips 表新增欄位支援出發地、預算、座標
+
+> 來源：`quest.md` #3 #4 #6 #7
+
+### 細部功能
+- `trips` 表新增欄位：
+  - `departure_text VARCHAR(500)` — 出發地點文字
+  - `departure_lat DECIMAL(10,7)` — 出發地緯度
+  - `departure_lng DECIMAL(10,7)` — 出發地經度
+  - `destination_lat DECIMAL(10,7)` — 目的地緯度
+  - `destination_lng DECIMAL(10,7)` — 目的地經度
+  - `initial_budget BIGINT` — 建立時的預算金額（分為單位）
+- Trip Create / Patch API 接受新欄位
+- 預算金額寫入時同步更新 `budget_profiles.total_budget`
+
+### 邊界個案
+- 座標未提供 → nullable，不阻擋建立
+- 預算金額 ≤ 0 → 400 validation error
+- Migration 須 backward-compatible（新欄位全部 nullable）
+
+### Migration SQL
+
+```sql
+ALTER TABLE trips
+  ADD COLUMN departure_text VARCHAR(500),
+  ADD COLUMN departure_lat DECIMAL(10,7),
+  ADD COLUMN departure_lng DECIMAL(10,7),
+  ADD COLUMN destination_lat DECIMAL(10,7),
+  ADD COLUMN destination_lng DECIMAL(10,7),
+  ADD COLUMN initial_budget BIGINT DEFAULT 0;
+```
+
+
