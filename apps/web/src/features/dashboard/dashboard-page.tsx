@@ -24,7 +24,8 @@ export function DashboardPage() {
   const [selectedDestinationPoint, setSelectedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
-  const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
+  const { data: destinationCandidatesData, isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
+  const destinationCandidates = Array.isArray(destinationCandidatesData) ? destinationCandidatesData : [];
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
     resolver: zodResolver(createTripSchema),

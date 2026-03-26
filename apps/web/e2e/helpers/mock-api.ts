@@ -330,6 +330,23 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
       return;
     }
 
+    if (method === "GET" && path === "/api/v1/maps/search") {
+      const q = url.searchParams.get("q") ?? "Kyoto";
+      await route.fulfill(
+        json([
+          {
+            providerPlaceId: "place-1",
+            name: q,
+            address: `${q} Station`,
+            lat: 35.0116,
+            lng: 135.7681,
+            categories: ["city"]
+          }
+        ])
+      );
+      return;
+    }
+
     if (method === "GET" && path === "/api/v1/sync/bootstrap") {
       await route.fulfill(
         json({

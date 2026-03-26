@@ -17,11 +17,12 @@ test("trip create -> itinerary edit -> budget setup flow", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Create trip|建立旅程/i }).click();
   await page.locator('input[name="name"]').fill("E2E Kyoto Trip");
+  await page.locator('input[name="departureText"]').fill("Taipei");
   await page.locator('input[name="destinationText"]').fill("Kyoto");
   await page.locator('input[name="startDate"]').fill("2026-07-01");
   await page.locator('input[name="endDate"]').fill("2026-07-03");
-  await page.locator('input[name="timezone"]').fill("Asia/Tokyo");
-  await page.locator('input[name="currency"]').fill("JPY");
+  await page.locator('select[name="timezone"]').selectOption("Asia/Tokyo");
+  await page.locator('select[name="currency"]').selectOption("JPY");
   await page.locator('input[name="travelersCount"]').fill("2");
   await page.getByRole("button", { name: /Submit|送出/i }).click();
 
