@@ -92,13 +92,13 @@
 
 ## FE-P3-05｜Trip Wizard 強化
 
-- [ ] 步驟式 wizard UI（Step indicator）
-  - [ ] Step 1：名稱 + 目的地 + 出發地
-  - [ ] Step 2：日期 + 時區 + 人數
-  - [ ] Step 3：幣別 + 預算 + 風格
-- [ ] 風格（pace）視覺選擇卡片
+- [x] 步驟式 wizard UI（Step indicator）
+  - [x] Step 1：名稱 + 目的地 + 出發地
+  - [x] Step 2：日期 + 時區 + 人數
+  - [x] Step 3：幣別 + 預算 + 風格
+- [x] 風格（pace）視覺選擇卡片
 - [ ] 封面圖片上傳（或生成）
-- [ ] Wizard 完成後自動導向 trip overview
+- [x] Wizard 完成後自動導向 trip overview
 
 ---
 

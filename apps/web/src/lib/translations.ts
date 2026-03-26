@@ -114,6 +114,8 @@ export const dictionaries = {
     "common.remove": "移除",
     "common.edit": "編輯",
     "common.confirm": "確認",
+    "common.back": "上一步",
+    "common.next": "下一步",
     "common.retry": "重試",
     "common.actionFailed": "操作失敗",
 
@@ -170,6 +172,9 @@ export const dictionaries = {
     "trip.travelersCount": "旅伴人數",
     "trip.style": "旅行風格",
     "trip.pace": "步調",
+    "trip.wizard.step1": "名稱、目的地、出發地",
+    "trip.wizard.step2": "日期、時區、人數",
+    "trip.wizard.step3": "幣別、預算、風格",
     "trip.update": "更新旅程",
     "trip.updating": "更新中...",
 
@@ -512,6 +517,8 @@ export const dictionaries = {
     "common.remove": "Remove",
     "common.edit": "Edit",
     "common.confirm": "Confirm",
+    "common.back": "Back",
+    "common.next": "Next",
     "common.retry": "Retry",
     "common.actionFailed": "Action failed",
 
@@ -568,6 +575,9 @@ export const dictionaries = {
     "trip.travelersCount": "Travelers",
     "trip.style": "Travel style",
     "trip.pace": "Pace",
+    "trip.wizard.step1": "Name, destination, departure",
+    "trip.wizard.step2": "Dates, timezone, travelers",
+    "trip.wizard.step3": "Currency, budget, style",
     "trip.update": "Update trip",
     "trip.updating": "Updating...",
 

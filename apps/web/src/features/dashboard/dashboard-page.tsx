@@ -14,18 +14,26 @@ import type { Locale } from "../../lib/translations";
 import { upsertBudgetProfile } from "../../lib/budget-api";
 import { budgetSeedCategories, currencyOptions, timezoneOptions } from "../../lib/trip-form-options";
 
+type TripWizardStep = 1 | 2 | 3;
+
+const wizardStepFields: Record<TripWizardStep, Array<keyof CreateTripFormValues>> = {
+  1: ["name", "departureText", "destinationText"],
+  2: ["startDate", "endDate", "timezone", "travelersCount"],
+  3: ["currency", "totalBudget", "pace"]
+};
+
 export function DashboardPage() {
   const { t, locale } = useI18n();
   const msgs = validationMessages[locale as Locale] ?? validationMessages.en;
   const navigate = useNavigate();
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
+  const [wizardStep, setWizardStep] = useState<TripWizardStep>(1);
   const [destinationKeyword, setDestinationKeyword] = useState("");
   const [selectedDestinationPoint, setSelectedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
-  const { data: destinationCandidatesData, isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
-  const destinationCandidates = Array.isArray(destinationCandidatesData) ? destinationCandidatesData : [];
+  const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
     resolver: zodResolver(createTripSchema),
@@ -38,10 +46,12 @@ export function DashboardPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       currency: "TWD",
       totalBudget: undefined,
+      pace: "balanced",
       travelersCount: 2
     }
   });
   const destinationValue = form.watch("destinationText");
+  const paceValue = form.watch("pace");
   const destinationSuggestions = useMemo(() => destinationCandidates.slice(0, 6), [destinationCandidates]);
   const destinationSearchActive = destinationValue.trim().length > 0;
   const destinationField = form.register("destinationText");
@@ -65,6 +75,19 @@ export function DashboardPage() {
       .filter(Boolean)
     : trips.slice(0, 3)) as typeof trips;
 
+  const nextWizardStep = async () => {
+    const fields = wizardStepFields[wizardStep];
+    const isStepValid = await form.trigger(fields, { shouldFocus: true });
+    if (!isStepValid) {
+      return;
+    }
+    setWizardStep((current) => (current < 3 ? ((current + 1) as TripWizardStep) : current));
+  };
+
+  const previousWizardStep = () => {
+    setWizardStep((current) => (current > 1 ? ((current - 1) as TripWizardStep) : current));
+  };
+
   const onSubmit = form.handleSubmit(async (values) => {
     const departureText = values.departureText.trim();
     const destinationText = values.destinationText.trim();
@@ -77,6 +100,7 @@ export function DashboardPage() {
       endDate: values.endDate,
       timezone: values.timezone,
       currency: values.currency,
+      pace: values.pace,
       travelersCount: values.travelersCount
     });
 
@@ -104,12 +128,20 @@ export function DashboardPage() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       currency: "TWD",
       totalBudget: undefined,
+      pace: "balanced",
       travelersCount: 2
     });
     setDestinationKeyword("");
     setSelectedDestinationPoint(null);
+    setWizardStep(1);
     navigate(`/trips/${trip.id}`);
   });
+
+  const wizardSteps: Array<{ id: TripWizardStep; title: string }> = [
+    { id: 1, title: t("trip.wizard.step1") },
+    { id: 2, title: t("trip.wizard.step2") },
+    { id: 3, title: t("trip.wizard.step3") }
+  ];
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -119,7 +151,15 @@ export function DashboardPage() {
         action={
           <button
             className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-sand"
-            onClick={() => setShowForm((current) => !current)}
+            onClick={() =>
+              setShowForm((current) => {
+                const next = !current;
+                if (next) {
+                  setWizardStep(1);
+                }
+                return next;
+              })
+            }
             type="button"
           >
             {showForm ? t("dashboard.closeForm") : t("dashboard.createTrip")}
@@ -128,146 +168,222 @@ export function DashboardPage() {
       >
         {showForm ? (
           <form className="mb-6 grid gap-4 rounded-[28px] bg-sand/75 p-5 md:grid-cols-2" onSubmit={onSubmit}>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.name")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("name")} />
-              {errors.name ? <p className="mt-1 text-xs text-coral">{msgs[errors.name.message ?? ""] ?? errors.name.message}</p> : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.departure")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("departureText")} />
-              {errors.departureText ? <p className="mt-1 text-xs text-coral">{msgs[errors.departureText.message ?? ""] ?? errors.departureText.message}</p> : null}
-            </label>
-            <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.destination")}</span>
-              <input
-                className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
-                {...destinationField}
-                onChange={(event) => {
-                  destinationField.onChange(event);
-                  const value = event.target.value.trim();
-                  setDestinationKeyword(value);
-                  setSelectedDestinationPoint(null);
-                }}
-              />
-              {errors.destinationText ? <p className="mt-1 text-xs text-coral">{msgs[errors.destinationText.message ?? ""] ?? errors.destinationText.message}</p> : null}
-              {destinationSearchActive ? (
-                <div className="mt-2 rounded-2xl border border-ink/10 bg-white p-3">
-                  <p className="text-xs font-medium text-ink/60">{t("trip.destinationSearchHint")}</p>
-                  {isDestinationSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.destinationSearching")}</p> : null}
-                  {!isDestinationSearching && destinationSuggestions.length === 0 ? (
-                    <p className="mt-2 text-xs text-ink/55">{t("trip.destinationNoMatch")}</p>
+            <div className="md:col-span-2 grid gap-3 rounded-2xl border border-ink/10 bg-white/75 p-3 md:grid-cols-3">
+              {wizardSteps.map((step) => {
+                const isCurrent = wizardStep === step.id;
+                const isCompleted = wizardStep > step.id;
+                return (
+                  <div
+                    className={`rounded-xl border px-3 py-2 text-sm ${isCurrent ? "border-coral bg-coral/10 text-ink" : isCompleted ? "border-pine/30 bg-pine/10 text-ink/75" : "border-ink/10 bg-white text-ink/55"}`}
+                    key={step.id}
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.18em]">{`Step ${step.id}`}</p>
+                    <p className="mt-1 font-medium">{step.title}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {wizardStep === 1 ? (
+              <>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.name")}</span>
+                  <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("name")} />
+                  {errors.name ? <p className="mt-1 text-xs text-coral">{msgs[errors.name.message ?? ""] ?? errors.name.message}</p> : null}
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.departure")}</span>
+                  <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("departureText")} />
+                  {errors.departureText ? <p className="mt-1 text-xs text-coral">{msgs[errors.departureText.message ?? ""] ?? errors.departureText.message}</p> : null}
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.destination")}</span>
+                  <input
+                    className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                    {...destinationField}
+                    onChange={(event) => {
+                      destinationField.onChange(event);
+                      const value = event.target.value.trim();
+                      setDestinationKeyword(value);
+                      setSelectedDestinationPoint(null);
+                    }}
+                  />
+                  {errors.destinationText ? <p className="mt-1 text-xs text-coral">{msgs[errors.destinationText.message ?? ""] ?? errors.destinationText.message}</p> : null}
+                  {destinationSearchActive ? (
+                    <div className="mt-2 rounded-2xl border border-ink/10 bg-white p-3">
+                      <p className="text-xs font-medium text-ink/60">{t("trip.destinationSearchHint")}</p>
+                      {isDestinationSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.destinationSearching")}</p> : null}
+                      {!isDestinationSearching && destinationSuggestions.length === 0 ? (
+                        <p className="mt-2 text-xs text-ink/55">{t("trip.destinationNoMatch")}</p>
+                      ) : null}
+                      {destinationSuggestions.length > 0 ? (
+                        <div className="mt-2 grid gap-2">
+                          {destinationSuggestions.map((place) => (
+                            <button
+                              className="rounded-xl border border-ink/10 px-3 py-2 text-left text-sm text-ink transition hover:border-ink/20 hover:bg-sand/60"
+                              key={place.providerPlaceId}
+                              onClick={() => {
+                                form.setValue("destinationText", `${place.name}${place.address ? `, ${place.address}` : ""}`, { shouldDirty: true, shouldValidate: true });
+                                setDestinationKeyword(place.name);
+                                setSelectedDestinationPoint({ lat: place.lat, lng: place.lng });
+                              }}
+                              type="button"
+                            >
+                              <p className="font-medium">{place.name}</p>
+                              <p className="text-xs text-ink/60">{place.address || "-"}</p>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 rounded-xl border border-ink/10 bg-sand/60 p-3">
+                        <p className="text-xs text-ink/65">{t("trip.destinationExternalHelp")}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <a
+                            className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationValue.trim())}`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            {t("trip.openGoogleMaps")}
+                          </a>
+                          <a
+                            className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                            href="https://gemini.google.com/app"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            {t("trip.openGemini")}
+                          </a>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
-                  {destinationSuggestions.length > 0 ? (
-                    <div className="mt-2 grid gap-2">
-                      {destinationSuggestions.map((place) => (
+                  {selectedDestinationPoint ? (
+                    <p className="mt-2 text-xs text-ink/60">
+                      {t("trip.destinationCoord")
+                        .replace("{lat}", selectedDestinationPoint.lat.toFixed(6))
+                        .replace("{lng}", selectedDestinationPoint.lng.toFixed(6))}
+                    </p>
+                  ) : null}
+                </label>
+              </>
+            ) : null}
+
+            {wizardStep === 2 ? (
+              <>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.startDate")}</span>
+                  <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" type="date" {...form.register("startDate")} />
+                  {errors.startDate ? <p className="mt-1 text-xs text-coral">{msgs[errors.startDate.message ?? ""] ?? errors.startDate.message}</p> : null}
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.endDate")}</span>
+                  <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" type="date" {...form.register("endDate")} />
+                  {errors.endDate ? <p className="mt-1 text-xs text-coral">{msgs[errors.endDate.message ?? ""] ?? errors.endDate.message}</p> : null}
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.timezone")}</span>
+                  <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("timezone")}>
+                    {timezoneOptions.map((timezone: string) => (
+                      <option key={timezone} value={timezone}>
+                        {timezone}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-ink/55">{t("trip.timezoneHint")}</p>
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.travelers")}</span>
+                  <input
+                    className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                    min={1}
+                    type="number"
+                    {...form.register("travelersCount", { valueAsNumber: true })}
+                  />
+                  {errors.travelersCount ? <p className="mt-1 text-xs text-coral">{msgs[errors.travelersCount.message ?? ""] ?? errors.travelersCount.message}</p> : null}
+                </label>
+              </>
+            ) : null}
+
+            {wizardStep === 3 ? (
+              <>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.currency")}</span>
+                  <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("currency")}>
+                    {currencyOptions.map((currency) => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.currency ? <p className="mt-1 text-xs text-coral">{msgs[errors.currency.message ?? ""] ?? errors.currency.message}</p> : null}
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("budget.totalBudget")}</span>
+                  <input
+                    className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                    min={0}
+                    placeholder="0"
+                    step="1"
+                    type="number"
+                    {...form.register("totalBudget", {
+                      setValueAs: (value) => (value === "" ? undefined : Number(value))
+                    })}
+                  />
+                  {errors.totalBudget ? <p className="mt-1 text-xs text-coral">{msgs[errors.totalBudget.message ?? ""] ?? errors.totalBudget.message}</p> : null}
+                </label>
+                <div className="md:col-span-2">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.pace")}</span>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {(["relaxed", "balanced", "packed"] as const).map((pace) => {
+                      const selected = paceValue === pace;
+                      return (
                         <button
-                          className="rounded-xl border border-ink/10 px-3 py-2 text-left text-sm text-ink transition hover:border-ink/20 hover:bg-sand/60"
-                          key={place.providerPlaceId}
-                          onClick={() => {
-                            form.setValue("destinationText", `${place.name}${place.address ? `, ${place.address}` : ""}`, { shouldDirty: true, shouldValidate: true });
-                            setDestinationKeyword(place.name);
-                            setSelectedDestinationPoint({ lat: place.lat, lng: place.lng });
-                          }}
+                          className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${selected ? "border-coral bg-coral/10 text-ink" : "border-ink/10 bg-white text-ink/70 hover:border-ink/20"}`}
+                          key={pace}
+                          onClick={() => form.setValue("pace", pace, { shouldDirty: true, shouldValidate: true })}
                           type="button"
                         >
-                          <p className="font-medium">{place.name}</p>
-                          <p className="text-xs text-ink/60">{place.address || "-"}</p>
+                          <p className="font-semibold">{t(`settings.${pace}`)}</p>
                         </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="mt-3 rounded-xl border border-ink/10 bg-sand/60 p-3">
-                    <p className="text-xs text-ink/65">{t("trip.destinationExternalHelp")}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <a
-                        className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationValue.trim())}`}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        {t("trip.openGoogleMaps")}
-                      </a>
-                      <a
-                        className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
-                        href="https://gemini.google.com/app"
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        {t("trip.openGemini")}
-                      </a>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
-              ) : null}
-              {selectedDestinationPoint ? (
-                <p className="mt-2 text-xs text-ink/60">
-                  {t("trip.destinationCoord")
-                    .replace("{lat}", selectedDestinationPoint.lat.toFixed(6))
-                    .replace("{lng}", selectedDestinationPoint.lng.toFixed(6))}
-                </p>
-              ) : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.startDate")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" type="date" {...form.register("startDate")} />
-              {errors.startDate ? <p className="mt-1 text-xs text-coral">{msgs[errors.startDate.message ?? ""] ?? errors.startDate.message}</p> : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.endDate")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" type="date" {...form.register("endDate")} />
-              {errors.endDate ? <p className="mt-1 text-xs text-coral">{msgs[errors.endDate.message ?? ""] ?? errors.endDate.message}</p> : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.timezone")}</span>
-              <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("timezone")}>
-                {timezoneOptions.map((timezone: string) => (
-                  <option key={timezone} value={timezone}>
-                    {timezone}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-ink/55">{t("trip.timezoneHint")}</p>
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.currency")}</span>
-              <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("currency")}>
-                {currencyOptions.map((currency) => (
-                  <option key={currency.code} value={currency.code}>
-                    {currency.label}
-                  </option>
-                ))}
-              </select>
-              {errors.currency ? <p className="mt-1 text-xs text-coral">{msgs[errors.currency.message ?? ""] ?? errors.currency.message}</p> : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("budget.totalBudget")}</span>
-              <input
-                className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
-                min={0}
-                placeholder="0"
-                step="1"
-                type="number"
-                {...form.register("totalBudget", {
-                  setValueAs: (value) => (value === "" ? undefined : Number(value))
-                })}
-              />
-              {errors.totalBudget ? <p className="mt-1 text-xs text-coral">{msgs[errors.totalBudget.message ?? ""] ?? errors.totalBudget.message}</p> : null}
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.travelers")}</span>
-              <input
-                className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
-                type="number"
-                min={1}
-                {...form.register("travelersCount", { valueAsNumber: true })}
-              />
-              {errors.travelersCount ? <p className="mt-1 text-xs text-coral">{msgs[errors.travelersCount.message ?? ""] ?? errors.travelersCount.message}</p> : null}
-            </label>
-            <div className="flex items-end">
-              <button className="rounded-full bg-coral px-5 py-3 text-sm font-medium text-white" disabled={createTrip.isPending} type="submit">
-                {createTrip.isPending ? t("common.creating") : t("common.submit")}
+              </>
+            ) : null}
+
+            <div className="md:col-span-2 flex items-center justify-between pt-2">
+              <button
+                className="rounded-full border border-ink/15 bg-white px-5 py-2.5 text-sm font-medium text-ink disabled:opacity-40"
+                disabled={wizardStep === 1}
+                onClick={previousWizardStep}
+                type="button"
+              >
+                {t("common.back")}
               </button>
+              {wizardStep < 3 ? (
+                <button
+                  className="rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white"
+                  key="wizard-next"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void nextWizardStep();
+                  }}
+                  type="button"
+                >
+                  {t("common.next")}
+                </button>
+              ) : (
+                <button
+                  className="rounded-full bg-coral px-5 py-2.5 text-sm font-medium text-white"
+                  disabled={createTrip.isPending}
+                  key="wizard-submit"
+                  type="submit"
+                >
+                  {createTrip.isPending ? t("common.creating") : t("common.submit")}
+                </button>
+              )}
             </div>
           </form>
         ) : null}

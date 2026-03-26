@@ -16,14 +16,20 @@ test("trip create -> itinerary edit -> budget setup flow", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: /Create trip|建立旅程/i }).click();
+
   await page.locator('input[name="name"]').fill("E2E Kyoto Trip");
   await page.locator('input[name="departureText"]').fill("Taipei");
   await page.locator('input[name="destinationText"]').fill("Kyoto");
+  await page.getByRole("button", { name: /Next|下一步/i }).click();
+
   await page.locator('input[name="startDate"]').fill("2026-07-01");
   await page.locator('input[name="endDate"]').fill("2026-07-03");
   await page.locator('select[name="timezone"]').selectOption("Asia/Tokyo");
-  await page.locator('select[name="currency"]').selectOption("JPY");
   await page.locator('input[name="travelersCount"]').fill("2");
+  await page.getByRole("button", { name: /Next|下一步/i }).click();
+
+  await page.locator('select[name="currency"]').selectOption("JPY");
+  await page.locator('input[name="totalBudget"]').fill("120000");
   await page.getByRole("button", { name: /Submit|送出/i }).click();
 
   await expect(page).toHaveURL(/\/trips\/trip-e2e$/);
@@ -33,7 +39,7 @@ test("trip create -> itinerary edit -> budget setup flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Edit|編輯/i }).first()).toBeVisible();
 
   await page.goto("/trips/trip-e2e/budget");
-  await page.locator('input[name="totalBudget"]').fill("120000");
+  await page.locator('input[name="totalBudget"]').fill("100000");
   await page.getByRole("button", { name: /Save budget|儲存預算/i }).click();
 
   await page.locator('input[name="amount"]').fill("3200");

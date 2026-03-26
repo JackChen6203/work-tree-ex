@@ -87,8 +87,6 @@
 - [x] Timezone 跨夏令時間 → 正確計算
 - [x] 修改 trip 版本衝突 → 提示重新整理
 
-註記：建立旅程流程已補齊「出發地點」、「總預算」欄位，目的地支援地點搜尋候選與座標顯示，時區與幣別改為下拉選單。
-
 ---
 
 ## FE-05｜Itinerary
@@ -332,3 +330,17 @@
 - [x] Offline → online 同步 E2E
 - [x] 推播通知 E2E（mock FCM）
 - [x] 跨裝置 responsive 截圖測試
+
+---
+
+# Phase 3：真實對接 + 生產打磨（進行中）
+
+## FE-P3-05｜Trip Wizard 強化
+
+- [x] 步驟式 wizard UI（Step indicator）
+- [x] Step 1：名稱 + 目的地 + 出發地
+- [x] Step 2：日期 + 時區 + 人數
+- [x] Step 3：幣別 + 預算 + 風格
+- [x] 風格（pace）視覺選擇卡片
+- [ ] 封面圖片上傳（或生成）
+- [x] Wizard 完成後自動導向 trip overview

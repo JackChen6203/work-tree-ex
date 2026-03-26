@@ -11,6 +11,7 @@ export const createTripSchema = z.object({
   timezone: z.string().min(1, "required"),
   currency: z.string().length(3, "currency3"),
   totalBudget: z.number({ coerce: true }).min(0, "amountNonNegative").optional(),
+  pace: z.enum(["relaxed", "balanced", "packed"]).optional(),
   travelersCount: z.number({ coerce: true }).int().min(1, "min1").max(50, "max50")
 }).refine((data) => data.endDate >= data.startDate, {
   message: "endDateBeforeStart",

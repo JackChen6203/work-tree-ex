@@ -289,6 +289,23 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
       return;
     }
 
+    if (method === "GET" && path === "/api/v1/maps/search") {
+      const q = url.searchParams.get("q") ?? "Kyoto";
+      await route.fulfill(
+        json([
+          {
+            providerPlaceId: "place-1",
+            name: q,
+            address: `${q} Station`,
+            lat: 35.0116,
+            lng: 135.7681,
+            categories: ["city"]
+          }
+        ])
+      );
+      return;
+    }
+
     if (method === "GET" && path === "/api/v1/notifications") {
       const unreadOnly = url.searchParams.get("unreadOnly") === "true";
       const filtered = unreadOnly ? notifications.filter((item) => !item.readAt) : notifications;
@@ -327,23 +344,6 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
 
     if (method === "POST" && path === "/api/v1/fcm-tokens") {
       await route.fulfill(json(null, 201));
-      return;
-    }
-
-    if (method === "GET" && path === "/api/v1/maps/search") {
-      const q = url.searchParams.get("q") ?? "Kyoto";
-      await route.fulfill(
-        json([
-          {
-            providerPlaceId: "place-1",
-            name: q,
-            address: `${q} Station`,
-            lat: 35.0116,
-            lng: 135.7681,
-            categories: ["city"]
-          }
-        ])
-      );
       return;
     }
 

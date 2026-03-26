@@ -33,6 +33,7 @@ export interface CreateTripInput {
   endDate: string;
   timezone: string;
   currency: string;
+  pace?: "relaxed" | "balanced" | "packed";
   travelersCount: number;
 }
 
