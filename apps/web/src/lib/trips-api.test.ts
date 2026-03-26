@@ -96,6 +96,30 @@ describe("trips api mapping", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, "http://localhost:8080/api/v1/trips/trip-1", expect.anything());
   });
 
+  it("supports create-trip payloads that return data.trip envelope", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "11111111-1111-1111-1111-111111111111" } as unknown as Crypto);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { trip: apiTrip, days: [] } })
+      })
+    );
+
+    const created = await createTrip({
+      name: "Kyoto",
+      destinationText: "Kyoto, Japan",
+      startDate: "2026-04-14",
+      endDate: "2026-04-19",
+      timezone: "Asia/Tokyo",
+      currency: "JPY",
+      travelersCount: 3
+    });
+
+    expect(created.id).toBe("trip-1");
+    expect(created.name).toBe("Kyoto");
+  });
+
   it("builds member list query with role filter", async () => {
     const fetchMock = vi
       .fn()

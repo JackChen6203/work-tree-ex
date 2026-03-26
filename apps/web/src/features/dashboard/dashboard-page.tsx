@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateTripMutation, useNotificationsQuery, useTripsQuery } from "../../lib/queries";
+import { useCreateTripMutation, useMapPlacesQuery, useNotificationsQuery, useTripsQuery } from "../../lib/queries";
 import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
 import { createTripSchema, validationMessages } from "../../lib/schemas";
 import type { CreateTripFormValues } from "../../lib/schemas";
 import type { Locale } from "../../lib/translations";
+import { upsertBudgetProfile } from "../../lib/budget-api";
+import { budgetSeedCategories, currencyOptions, timezoneOptions } from "../../lib/trip-form-options";
 
 export function DashboardPage() {
   const { t, locale } = useI18n();
@@ -18,21 +20,30 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
+  const [destinationKeyword, setDestinationKeyword] = useState("");
+  const [selectedDestinationPoint, setSelectedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
+  const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
     resolver: zodResolver(createTripSchema),
     defaultValues: {
       name: "",
+      departureText: "",
       destinationText: "",
       startDate: "",
       endDate: "",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       currency: "TWD",
+      totalBudget: undefined,
       travelersCount: 2
     }
   });
+  const destinationValue = form.watch("destinationText");
+  const destinationSuggestions = useMemo(() => destinationCandidates.slice(0, 6), [destinationCandidates]);
+  const destinationSearchActive = destinationValue.trim().length > 0;
+  const destinationField = form.register("destinationText");
   const { formState: { errors } } = form;
   const recentActivities = notifications.slice(0, 4);
 
@@ -54,10 +65,48 @@ export function DashboardPage() {
     : trips.slice(0, 3)) as typeof trips;
 
   const onSubmit = form.handleSubmit(async (values) => {
-    const trip = await createTrip.mutateAsync(values);
+    const departureText = values.departureText.trim();
+    const destinationText = values.destinationText.trim();
+    const trip = await createTrip.mutateAsync({
+      name: values.name.trim(),
+      departureText,
+      destinationText,
+      destinations: [departureText, destinationText],
+      startDate: values.startDate,
+      endDate: values.endDate,
+      timezone: values.timezone,
+      currency: values.currency,
+      travelersCount: values.travelersCount
+    });
+
+    if (typeof values.totalBudget === "number") {
+      try {
+        await upsertBudgetProfile(trip.id, {
+          totalBudget: values.totalBudget,
+          currency: values.currency,
+          categories: budgetSeedCategories.map((category) => ({ category, plannedAmount: 0 }))
+        });
+      } catch {
+        pushToast({ type: "warning", message: t("dashboard.budgetSetupFailed") });
+      }
+    }
+
     trackEvent({ name: analyticsEventNames.tripCreated, context: { trip_id: trip.id } });
     pushToast(t("trip.created"));
     setShowForm(false);
+    form.reset({
+      name: "",
+      departureText: "",
+      destinationText: "",
+      startDate: "",
+      endDate: "",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      currency: "TWD",
+      totalBudget: undefined,
+      travelersCount: 2
+    });
+    setDestinationKeyword("");
+    setSelectedDestinationPoint(null);
     navigate(`/trips/${trip.id}`);
   });
 
@@ -84,9 +133,79 @@ export function DashboardPage() {
               {errors.name ? <p className="mt-1 text-xs text-coral">{msgs[errors.name.message ?? ""] ?? errors.name.message}</p> : null}
             </label>
             <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">{t("trip.departure")}</span>
+              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("departureText")} />
+              {errors.departureText ? <p className="mt-1 text-xs text-coral">{msgs[errors.departureText.message ?? ""] ?? errors.departureText.message}</p> : null}
+            </label>
+            <label className="block md:col-span-2">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.destination")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("destinationText")} />
+              <input
+                className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                {...destinationField}
+                onChange={(event) => {
+                  destinationField.onChange(event);
+                  const value = event.target.value.trim();
+                  setDestinationKeyword(value);
+                  setSelectedDestinationPoint(null);
+                }}
+              />
               {errors.destinationText ? <p className="mt-1 text-xs text-coral">{msgs[errors.destinationText.message ?? ""] ?? errors.destinationText.message}</p> : null}
+              {destinationSearchActive ? (
+                <div className="mt-2 rounded-2xl border border-ink/10 bg-white p-3">
+                  <p className="text-xs font-medium text-ink/60">{t("trip.destinationSearchHint")}</p>
+                  {isDestinationSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.destinationSearching")}</p> : null}
+                  {!isDestinationSearching && destinationSuggestions.length === 0 ? (
+                    <p className="mt-2 text-xs text-ink/55">{t("trip.destinationNoMatch")}</p>
+                  ) : null}
+                  {destinationSuggestions.length > 0 ? (
+                    <div className="mt-2 grid gap-2">
+                      {destinationSuggestions.map((place) => (
+                        <button
+                          className="rounded-xl border border-ink/10 px-3 py-2 text-left text-sm text-ink transition hover:border-ink/20 hover:bg-sand/60"
+                          key={place.providerPlaceId}
+                          onClick={() => {
+                            form.setValue("destinationText", `${place.name}${place.address ? `, ${place.address}` : ""}`, { shouldDirty: true, shouldValidate: true });
+                            setDestinationKeyword(place.name);
+                            setSelectedDestinationPoint({ lat: place.lat, lng: place.lng });
+                          }}
+                          type="button"
+                        >
+                          <p className="font-medium">{place.name}</p>
+                          <p className="text-xs text-ink/60">{place.address || "-"}</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-3 rounded-xl border border-ink/10 bg-sand/60 p-3">
+                    <p className="text-xs text-ink/65">{t("trip.destinationExternalHelp")}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <a
+                        className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationValue.trim())}`}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        {t("trip.openGoogleMaps")}
+                      </a>
+                      <a
+                        className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                        href="https://gemini.google.com/app"
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        {t("trip.openGemini")}
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {selectedDestinationPoint ? (
+                <p className="mt-2 text-xs text-ink/60">
+                  {t("trip.destinationCoord")
+                    .replace("{lat}", selectedDestinationPoint.lat.toFixed(6))
+                    .replace("{lng}", selectedDestinationPoint.lng.toFixed(6))}
+                </p>
+              ) : null}
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.startDate")}</span>
@@ -100,11 +219,39 @@ export function DashboardPage() {
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.timezone")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("timezone")} />
+              <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("timezone")}>
+                {timezoneOptions.map((timezone: string) => (
+                  <option key={timezone} value={timezone}>
+                    {timezone}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-ink/55">{t("trip.timezoneHint")}</p>
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.currency")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("currency")} />
+              <select className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("currency")}>
+                {currencyOptions.map((currency) => (
+                  <option key={currency.code} value={currency.code}>
+                    {currency.label}
+                  </option>
+                ))}
+              </select>
+              {errors.currency ? <p className="mt-1 text-xs text-coral">{msgs[errors.currency.message ?? ""] ?? errors.currency.message}</p> : null}
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-ink">{t("budget.totalBudget")}</span>
+              <input
+                className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                min={0}
+                placeholder="0"
+                step="1"
+                type="number"
+                {...form.register("totalBudget", {
+                  setValueAs: (value) => (value === "" ? undefined : Number(value))
+                })}
+              />
+              {errors.totalBudget ? <p className="mt-1 text-xs text-coral">{msgs[errors.totalBudget.message ?? ""] ?? errors.totalBudget.message}</p> : null}
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.travelers")}</span>
@@ -163,11 +310,8 @@ export function DashboardPage() {
         <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.upcomingTrip")}>
           {(() => {
             const today = new Date().toISOString().slice(0, 10);
-            const upcomingTrip = trips.find((trip) => trip.dateRange && trip.dateRange > today);
-            const currentTrip = trips.find((trip) => {
-              const parts = (trip.dateRange ?? "").split(" – ");
-              return parts.length === 2 && parts[0] <= today && parts[1] >= today;
-            });
+            const upcomingTrip = trips.find((trip) => trip.startDate > today);
+            const currentTrip = trips.find((trip) => trip.startDate <= today && trip.endDate >= today);
             if (currentTrip) {
               return (
                 <div className="rounded-[24px] bg-gradient-to-br from-pine/10 to-pine/5 p-5">
@@ -178,7 +322,7 @@ export function DashboardPage() {
               );
             }
             if (upcomingTrip) {
-              const diffMs = new Date(upcomingTrip.dateRange.split(" – ")[0] ?? "").getTime() - Date.now();
+              const diffMs = new Date(upcomingTrip.startDate).getTime() - Date.now();
               const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
               return (
                 <div className="rounded-[24px] bg-gradient-to-br from-coral/10 to-coral/5 p-5">

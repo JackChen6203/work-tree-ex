@@ -1,5 +1,6 @@
 import { useI18n } from "../lib/i18n";
 import { useTripsQuery } from "../lib/queries";
+import { useLocation } from "react-router-dom";
 
 export interface ShellNavItem {
   id: string;
@@ -9,8 +10,10 @@ export interface ShellNavItem {
 
 export function useShellNavItems(): ShellNavItem[] {
   const { t } = useI18n();
+  const location = useLocation();
   const { data: trips = [] } = useTripsQuery();
-  const activeTripId = trips[0]?.id;
+  const routeTripId = location.pathname.match(/^\/trips\/([^/]+)/)?.[1];
+  const activeTripId = routeTripId || trips[0]?.id;
   const tripBase = activeTripId ? `/trips/${activeTripId}` : undefined;
 
   return [

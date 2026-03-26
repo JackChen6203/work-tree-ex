@@ -4,11 +4,13 @@ import { z } from "zod";
 
 export const createTripSchema = z.object({
   name: z.string().min(1, "required").max(200, "max200"),
+  departureText: z.string().min(1, "required"),
   destinationText: z.string().min(1, "required"),
   startDate: z.string().min(1, "required"),
   endDate: z.string().min(1, "required"),
   timezone: z.string().min(1, "required"),
   currency: z.string().length(3, "currency3"),
+  totalBudget: z.number({ coerce: true }).min(0, "amountNonNegative").optional(),
   travelersCount: z.number({ coerce: true }).int().min(1, "min1").max(50, "max50")
 }).refine((data) => data.endDate >= data.startDate, {
   message: "endDateBeforeStart",
@@ -91,6 +93,7 @@ export const validationMessages: Record<string, Record<string, string>> = {
     endDateBeforeStart: "結束日期不可早於開始日期",
     amountPositive: "金額需大於 0",
     amountNonNegative: "金額不可為負數",
+    requiredDestinationChoice: "請先選擇目的地",
     invalidEmail: "Email 格式不正確",
     apiKeyMin16: "API 金鑰至少 16 字元"
   },
@@ -104,6 +107,7 @@ export const validationMessages: Record<string, Record<string, string>> = {
     endDateBeforeStart: "End date must be on or after start date",
     amountPositive: "Amount must be positive",
     amountNonNegative: "Amount cannot be negative",
+    requiredDestinationChoice: "Select a destination first",
     invalidEmail: "Invalid email format",
     apiKeyMin16: "API key must be at least 16 characters"
   }
