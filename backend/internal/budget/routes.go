@@ -1,6 +1,7 @@
 package budget
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -74,6 +75,7 @@ var (
 	budgetIdempotency  = map[string]string{}
 	expenseIdempotency = map[string]string{}
 	expenseByID        = map[string]expense{}
+	expenseVersionByID = map[string]int{}
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
@@ -88,6 +90,46 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 
 func getBudget(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
+	if getPool() != nil {
+		profile, ok, err := getBudgetProfilePostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load budget profile", nil)
+			return
+		}
+		if !ok {
+			response.JSON(c, http.StatusOK, gin.H{
+				"tripId":      tripID,
+				"currency":    "JPY",
+				"categories":  []categoryPlan{},
+				"version":     0,
+				"actualSpend": 0,
+				"overBudget":  false,
+			})
+			return
+		}
+
+		actual, err := getActualSpendPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load expenses", nil)
+			return
+		}
+		overBudget := profile.TotalBudget != nil && actual > (*profile.TotalBudget*1.1)
+		response.JSON(c, http.StatusOK, gin.H{
+			"tripId":          profile.TripID,
+			"totalBudget":     profile.TotalBudget,
+			"perPersonBudget": profile.PerPersonBudget,
+			"perDayBudget":    profile.PerDayBudget,
+			"currency":        profile.Currency,
+			"categories":      profile.Categories,
+			"version":         profile.Version,
+			"actualSpend":     actual,
+			"overBudget":      overBudget,
+			"createdAt":       profile.CreatedAt,
+			"updatedAt":       profile.UpdatedAt,
+		})
+		return
+	}
+
 	budgetMu.RLock()
 	profile, ok := profilesByTrip[tripID]
 	items := expensesByTrip[tripID]
@@ -145,6 +187,34 @@ func upsertBudget(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		budgetMu.Lock()
+		existingTrip, replay := budgetIdempotency[idempotencyKey]
+		budgetMu.Unlock()
+		if replay {
+			existing, ok, err := getBudgetProfilePostgres(c.Request.Context(), existingTrip)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load budget profile", nil)
+				return
+			}
+			if ok {
+				response.JSON(c, http.StatusOK, existing)
+				return
+			}
+		}
+
+		profile, err := upsertBudgetPostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to upsert budget profile", nil)
+			return
+		}
+		budgetMu.Lock()
+		budgetIdempotency[idempotencyKey] = tripID
+		budgetMu.Unlock()
+		response.JSON(c, http.StatusOK, profile)
+		return
+	}
+
 	budgetMu.Lock()
 	if existingTrip, ok := budgetIdempotency[idempotencyKey]; ok {
 		existing := profilesByTrip[existingTrip]
@@ -176,6 +246,16 @@ func upsertBudget(c *gin.Context) {
 
 func listExpenses(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
+	if getPool() != nil {
+		copyItems, err := listExpensesPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list expenses", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, copyItems)
+		return
+	}
+
 	budgetMu.RLock()
 	items := expensesByTrip[tripID]
 	copyItems := make([]expense, len(items))
@@ -213,6 +293,34 @@ func createExpense(c *gin.Context) {
 	}
 	if len(strings.TrimSpace(in.Currency)) != 3 {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBudgetCurrency, "currency must be ISO-4217 code", nil)
+		return
+	}
+
+	if getPool() != nil {
+		budgetMu.Lock()
+		existingID, replay := expenseIdempotency[idempotencyKey]
+		budgetMu.Unlock()
+		if replay {
+			existing, err := getExpensePostgres(c.Request.Context(), tripID, existingID)
+			if err == nil {
+				response.JSON(c, http.StatusCreated, existing)
+				return
+			}
+		}
+
+		item, err := createExpensePostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			if strings.Contains(err.Error(), "expenseAt") {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create expense", nil)
+			return
+		}
+		budgetMu.Lock()
+		expenseIdempotency[idempotencyKey] = item.ID
+		budgetMu.Unlock()
+		response.JSON(c, http.StatusCreated, item)
 		return
 	}
 
@@ -268,6 +376,23 @@ func patchExpense(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		item, err := patchExpensePostgres(c.Request.Context(), tripID, expenseID, in)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrExpenseNotFound):
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "expense not found", gin.H{"expenseId": expenseID})
+			case strings.Contains(err.Error(), "expenseAt"):
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+			default:
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch expense", nil)
+			}
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
+	}
+
 	budgetMu.Lock()
 	defer budgetMu.Unlock()
 
@@ -310,6 +435,19 @@ func deleteExpense(c *gin.Context) {
 	expenseID := strings.TrimSpace(c.Param("expenseId"))
 	if expenseID == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "expenseId is required", nil)
+		return
+	}
+
+	if getPool() != nil {
+		if err := deleteExpensePostgres(c.Request.Context(), tripID, expenseID); err != nil {
+			if errors.Is(err, ErrExpenseNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "expense not found", gin.H{"expenseId": expenseID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete expense", nil)
+			return
+		}
+		response.NoContent(c)
 		return
 	}
 

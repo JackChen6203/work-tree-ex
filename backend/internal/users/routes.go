@@ -1,6 +1,7 @@
 package users
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -251,6 +252,15 @@ func putMyNotificationPreferences(c *gin.Context) {
 
 func listMyProviders(c *gin.Context) {
 	providerFilter := strings.TrimSpace(c.Query("provider"))
+	if getPool() != nil {
+		items, err := listProvidersPostgres(c.Request.Context(), providerFilter)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list providers", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
+	}
 
 	usersMu.RLock()
 	items := make([]llmProvider, 0, len(providerList))
@@ -284,6 +294,16 @@ func createMyProvider(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		item, err := createProviderPostgres(c.Request.Context(), in)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create provider", nil)
+			return
+		}
+		response.JSON(c, http.StatusCreated, item)
+		return
+	}
+
 	masked := "****"
 	if len(in.EncryptedAPIKeyEnvelope) > 4 {
 		masked = "****" + in.EncryptedAPIKeyEnvelope[len(in.EncryptedAPIKeyEnvelope)-4:]
@@ -312,6 +332,19 @@ func deleteMyProvider(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		if err := deleteProviderPostgres(c.Request.Context(), providerID); err != nil {
+			if errors.Is(err, ErrProviderNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider not found", gin.H{"providerId": providerID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete provider", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
 	usersMu.Lock()
 	defer usersMu.Unlock()
 
@@ -328,6 +361,13 @@ func deleteMyProvider(c *gin.Context) {
 }
 
 func deleteMe(c *gin.Context) {
+	if getPool() != nil {
+		if err := clearProvidersPostgres(c.Request.Context()); err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to clear provider configs", nil)
+			return
+		}
+	}
+
 	usersMu.Lock()
 	// Clear preferences and LLM providers
 	myPreference = preference{

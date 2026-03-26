@@ -12,6 +12,7 @@ import (
 
 func newUsersRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	usersMu.Lock()
 	myNotificationPreference = notificationPreference{
 		PushEnabled:       true,

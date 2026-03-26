@@ -12,6 +12,7 @@ import (
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	syncMu.Lock()
 	entityVersions = map[string]int{}
 	flushIdempotencyStore = map[string]gin.H{}

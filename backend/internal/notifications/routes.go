@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -78,6 +79,20 @@ func listNotifications(c *gin.Context) {
 		limit = parsed
 	}
 
+	if getPool() != nil {
+		copyItems, err := listNotificationsPostgres(c.Request.Context(), unreadOnly, cursor, limit)
+		if err != nil {
+			if errors.Is(err, ErrCursorNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "cursor not found", gin.H{"cursor": cursor})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list notifications", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, copyItems)
+		return
+	}
+
 	notificationsMu.RLock()
 	defer notificationsMu.RUnlock()
 
@@ -118,6 +133,19 @@ func markRead(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		if err := markReadPostgres(c.Request.Context(), notificationID); err != nil {
+			if errors.Is(err, ErrNotificationNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark notification read", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
 	notificationsMu.Lock()
 	defer notificationsMu.Unlock()
 
@@ -141,6 +169,19 @@ func markUnread(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		if err := markUnreadPostgres(c.Request.Context(), notificationID); err != nil {
+			if errors.Is(err, ErrNotificationNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark notification unread", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
 	notificationsMu.Lock()
 	defer notificationsMu.Unlock()
 
@@ -157,6 +198,15 @@ func markUnread(c *gin.Context) {
 }
 
 func markAllRead(c *gin.Context) {
+	if getPool() != nil {
+		if err := markAllReadPostgres(c.Request.Context()); err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark all notifications read", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
 	now := time.Now().UTC()
 
 	notificationsMu.Lock()
@@ -169,6 +219,16 @@ func markAllRead(c *gin.Context) {
 }
 
 func cleanupRead(c *gin.Context) {
+	if getPool() != nil {
+		deletedCount, err := cleanupReadPostgres(c.Request.Context())
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to cleanup read notifications", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, gin.H{"deletedCount": deletedCount})
+		return
+	}
+
 	notificationsMu.Lock()
 	defer notificationsMu.Unlock()
 
@@ -190,6 +250,19 @@ func deleteNotification(c *gin.Context) {
 	notificationID := strings.TrimSpace(c.Param("notificationId"))
 	if notificationID == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "notificationId is required", nil)
+		return
+	}
+
+	if getPool() != nil {
+		if err := deleteNotificationPostgres(c.Request.Context(), notificationID); err != nil {
+			if errors.Is(err, ErrNotificationNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete notification", nil)
+			return
+		}
+		response.NoContent(c)
 		return
 	}
 
@@ -232,13 +305,12 @@ func triggerNotification(c *gin.Context) {
 	}
 
 	notificationsMu.Lock()
-	defer notificationsMu.Unlock()
-
 	// Dedupe check: same eventType + resourceID within window → skip
 	dedupeKey := in.EventType + ":" + in.ResourceID
 	now := time.Now().UTC()
 	if lastTime, exists := dedupeStore[dedupeKey]; exists {
 		if now.Sub(lastTime) < dedupeWindow {
+			notificationsMu.Unlock()
 			response.JSON(c, http.StatusOK, gin.H{
 				"skipped": true,
 				"reason":  "dedupe: same event triggered within " + dedupeWindow.String(),
@@ -250,26 +322,43 @@ func triggerNotification(c *gin.Context) {
 
 	// Check delivery preferences
 	prefs := defaultDeliveryPrefs
+	notificationsMu.Unlock()
 	channels := []string{}
 
-	notifID := "n-" + strconv.Itoa(len(items)+1)
-	notif := notification{
-		ID:        notifID,
-		Type:      in.EventType,
-		Title:     in.Title,
-		Body:      in.Body,
-		Link:      in.Link,
-		CreatedAt: now,
-	}
+	notifID := ""
 
 	// In-app delivery
 	if prefs.InApp {
-		items = append(items, notif)
+		if getPool() != nil {
+			id, err := createNotificationPostgres(c.Request.Context(), in, now)
+			if err != nil {
+				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create notification", nil)
+				return
+			}
+			notifID = id
+		} else {
+			notificationsMu.Lock()
+			notifID = "n-" + strconv.Itoa(len(items)+1)
+			notif := notification{
+				ID:        notifID,
+				Type:      in.EventType,
+				Title:     in.Title,
+				Body:      in.Body,
+				Link:      in.Link,
+				CreatedAt: now,
+			}
+			items = append(items, notif)
+			notificationsMu.Unlock()
+		}
 		channels = append(channels, "in_app")
+	}
+	if notifID == "" {
+		notifID = "evt-" + strconv.FormatInt(now.UnixNano(), 10)
 	}
 
 	// Push delivery (simulated)
 	if prefs.Push {
+		notificationsMu.Lock()
 		pd := &pushDelivery{
 			NotificationID: notifID,
 			Status:         "sent",
@@ -277,6 +366,7 @@ func triggerNotification(c *gin.Context) {
 			LastAttemptAt:  now,
 		}
 		pushDeliveries[notifID] = pd
+		notificationsMu.Unlock()
 		channels = append(channels, "push")
 	}
 

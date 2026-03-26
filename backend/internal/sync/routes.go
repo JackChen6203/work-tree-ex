@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -201,9 +202,15 @@ func flushMutations(c *gin.Context) {
 				AvailableAt:   now,
 				CreatedAt:     now,
 			}
-			outboxEvents = append(outboxEvents, evt)
-			outboxByID[evt.ID] = &outboxEvents[len(outboxEvents)-1]
-			outboxDedupeKeys[dedupeKey] = true
+			if getPool() != nil {
+				if err := createOutboxEventPostgres(c.Request.Context(), evt); err == nil {
+					outboxDedupeKeys[dedupeKey] = true
+				}
+			} else {
+				outboxEvents = append(outboxEvents, evt)
+				outboxByID[evt.ID] = &outboxEvents[len(outboxEvents)-1]
+				outboxDedupeKeys[dedupeKey] = true
+			}
 		}
 	}
 	nextVersion := latestSyncVersion
@@ -225,6 +232,16 @@ func listOutboxEvents(c *gin.Context) {
 	statusFilter := strings.TrimSpace(c.Query("status"))
 	if statusFilter == "" {
 		statusFilter = "pending"
+	}
+
+	if getPool() != nil {
+		items, err := listOutboxEventsPostgres(c.Request.Context(), statusFilter)
+		if err != nil {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list outbox events", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
 	}
 
 	syncMu.RLock()
@@ -250,6 +267,20 @@ func ackOutboxEvent(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if getPool() != nil {
+		evt, err := ackOutboxEventPostgres(c.Request.Context(), eventID, body.Success)
+		if err != nil {
+			if errors.Is(err, ErrOutboxEventNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "outbox event not found", gin.H{"eventId": eventID})
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to ack outbox event", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, evt)
 		return
 	}
 

@@ -12,12 +12,14 @@ import (
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	budgetMu.Lock()
 	profilesByTrip = map[string]budgetProfile{}
 	expensesByTrip = map[string][]expense{}
 	budgetIdempotency = map[string]string{}
 	expenseIdempotency = map[string]string{}
 	expenseByID = map[string]expense{}
+	expenseVersionByID = map[string]int{}
 	budgetMu.Unlock()
 
 	r := gin.New()

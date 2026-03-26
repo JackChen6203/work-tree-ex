@@ -277,13 +277,13 @@
 - [x] Invitations：in-memory map → PostgreSQL `trip_invitations` table
 - [x] Share links：in-memory map → PostgreSQL `share_links` table
 - [ ] Itinerary days/items：in-memory → PostgreSQL `itinerary_days` + `itinerary_items`
-- [ ] Budget profiles/expenses：in-memory → PostgreSQL `budget_profiles` + `expenses`
-- [ ] Notifications：in-memory → PostgreSQL `notifications` table
+- [x] Budget profiles/expenses：in-memory → PostgreSQL `budget_profiles` + `expenses`
+- [x] Notifications：in-memory → PostgreSQL `notifications` table
 - [ ] AI plan requests/drafts/validations：in-memory → PostgreSQL 三表
 - [ ] Users/preferences：in-memory → PostgreSQL `users` + `user_preferences`
-- [ ] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
+- [x] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
 - [ ] Sessions：in-memory → PostgreSQL `sessions` table
-- [ ] Outbox events：in-memory → PostgreSQL `outbox_events`
+- [x] Outbox events：in-memory → PostgreSQL `outbox_events`
 - [ ] Audit logs：in-memory → PostgreSQL `audit_logs`
 - [ ] FCM tokens：in-memory → PostgreSQL `fcm_tokens`
 - [x] Idempotency keys：in-memory → PostgreSQL `trip_idempotency_keys`
