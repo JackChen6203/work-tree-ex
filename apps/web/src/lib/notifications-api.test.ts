@@ -5,7 +5,8 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  markNotificationUnread
+  markNotificationUnread,
+  registerFcmToken
 } from "./notifications-api";
 
 describe("notifications api", () => {
@@ -42,6 +43,7 @@ describe("notifications api", () => {
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { deletedCount: 2 } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: null }) })
       .mockResolvedValueOnce({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -50,6 +52,7 @@ describe("notifications api", () => {
     await markNotificationUnread("n-1");
     await markAllNotificationsRead();
     await cleanupReadNotifications();
+    await registerFcmToken({ token: "token_1", platform: "web" });
     await deleteNotification("n-1");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -74,6 +77,11 @@ describe("notifications api", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
+      "http://localhost:8080/api/v1/fcm-tokens",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
       "http://localhost:8080/api/v1/notifications/n-1",
       expect.objectContaining({ method: "DELETE" })
     );

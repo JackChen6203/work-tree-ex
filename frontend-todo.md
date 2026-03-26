@@ -212,26 +212,26 @@
 
 ## FE-P2-01｜真實拖拉排序（Drag & Drop）
 
-- [ ] 導入 `@dnd-kit/core` 拖拉排序套件
-- [ ] Itinerary items 支援拖拉重新排列
-- [ ] 支援跨日拖拉（從 Day 1 拖到 Day 2）
-- [ ] 拖拉過程中視覺 feedback（ghost card, drop indicator）
-- [ ] 拖拉完成後呼叫 reorder API + optimistic UI
-- [ ] 行動裝置觸控拖拉支援
-- [ ] 不支援 drag 時顯示上/下排序按鈕 fallback
+- [x] 導入 `@dnd-kit/core` 拖拉排序套件
+- [x] Itinerary items 支援拖拉重新排列
+- [x] 支援跨日拖拉（從 Day 1 拖到 Day 2）
+- [x] 拖拉過程中視覺 feedback（ghost card, drop indicator）
+- [x] 拖拉完成後呼叫 reorder API + optimistic UI
+- [x] 行動裝置觸控拖拉支援
+- [x] 不支援 drag 時顯示上/下排序按鈕 fallback
 
 ---
 
 ## FE-P2-02｜真實地圖 SDK 整合
 
-- [ ] 整合 Mapbox GL JS 或 Google Maps JS SDK
-- [ ] `MapProviderAdapter` 實作連接真實 SDK
-- [ ] 地圖元件渲染 itinerary POI markers
-- [ ] 點擊 marker 聚焦對應 itinerary item
-- [ ] 點擊 itinerary item 平移地圖至該點
-- [ ] 路線 polyline 繪製
-- [ ] 大量點位 marker clustering（真實 SDK 層級）
-- [ ] SDK 載入失敗 → fallback 地址清單
+- [x] 整合 Mapbox GL JS 或 Google Maps JS SDK
+- [x] `MapProviderAdapter` 實作連接真實 SDK
+- [x] 地圖元件渲染 itinerary POI markers
+- [x] 點擊 marker 聚焦對應 itinerary item
+- [x] 點擊 itinerary item 平移地圖至該點
+- [x] 路線 polyline 繪製
+- [x] 大量點位 marker clustering（真實 SDK 層級）
+- [x] SDK 載入失敗 → fallback 地址清單
 
 ---
 
@@ -241,8 +241,8 @@
 - [x] Trip name ≤200 字即時驗證 + 錯誤訊息
 - [x] Date range 驗證（endDate ≥ startDate）
 - [x] Email 格式驗證（invite member）
-- [ ] Budget amount 非負數驗證
-- [ ] Expense 表單 Zod 驗證
+- [x] Budget amount 非負數驗證
+- [x] Expense 表單 Zod 驗證
 - [x] LLM API key 格式驗證（`enc_` 前綴 + 最少 16 字）
 - [x] 表單錯誤訊息 i18n 化
 
@@ -250,24 +250,24 @@
 
 ## FE-P2-04｜真實 IndexedDB 離線持久化
 
-- [ ] 導入 `idb` 套件（IndexedDB wrapper）
-- [ ] 離線時 trip 資料寫入 IndexedDB 快取
-- [ ] Mutation queue 持久化到 IndexedDB（非純記憶體）
-- [ ] App 重啟後從 IndexedDB 恢復 pending mutations
-- [ ] IndexedDB 資料過期清理（>7 天）
-- [ ] API key 絕不寫入 IndexedDB
+- [x] 導入 `idb` 套件（IndexedDB wrapper）
+- [x] 離線時 trip 資料寫入 IndexedDB 快取
+- [x] Mutation queue 持久化到 IndexedDB（非純記憶體）
+- [x] App 重啟後從 IndexedDB 恢復 pending mutations
+- [x] IndexedDB 資料過期清理（>7 天）
+- [x] API key 絕不寫入 IndexedDB
 
 ---
 
 ## FE-P2-05｜真實 FCM Push 註冊
 
-- [ ] Firebase SDK 初始化（`firebase/messaging`）
-- [ ] 請求推播權限 dialog
-- [ ] 取得 FCM token 並上傳至 backend `POST /fcm-tokens`
-- [ ] Token 過期時靜默刷新上傳
-- [ ] 前景推播處理（顯示 toast）
-- [ ] 背景推播處理（Service Worker notification）
-- [ ] 使用者拒絕推播 → 僅 in-app 通知
+- [x] Firebase SDK 初始化（`firebase/messaging`）
+- [x] 請求推播權限 dialog
+- [x] 取得 FCM token 並上傳至 backend `POST /fcm-tokens`
+- [x] Token 過期時靜默刷新上傳
+- [x] 前景推播處理（顯示 toast）
+- [x] 背景推播處理（Service Worker notification）
+- [x] 使用者拒絕推播 → 僅 in-app 通知
 
 ---
 
@@ -276,7 +276,7 @@
 - [x] 分類花費條狀圖（CSS bar chart 或 SVG）
 - [x] 估算 vs 實際百分比對照圖
 - [x] Per-person 分攤計算顯示
-- [ ] Per-day 花費趨勢折線圖
+- [x] Per-day 花費趨勢折線圖
 - [x] 匯率來源與快照日期顯示
 - [x] Over-budget 紅色警告動畫
 
@@ -286,9 +286,9 @@
 
 - [x] 移除 "Frontend foundation" 佔位 SurfaceCard
 - [x] Trip 列表空狀態 → 大型「建立旅程」CTA + 插圖
-- [ ] 最近活動 feed（近期 trip 變更、通知摘要）
+- [x] 最近活動 feed（近期 trip 變更、通知摘要）
 - [x] 即將出發 trip countdown
-- [ ] 快速存取 widget（最近編輯的 trip）
+- [x] 快速存取 widget（最近編輯的 trip）
 
 ---
 
@@ -296,9 +296,9 @@
 
 - [x] 條件輸入從 hardcoded → 真實表單（連接 user preferences）
 - [x] Budget 從 trip budget profile 自動帶入
-- [ ] Must-visit / avoid 支援 tag input（新增/刪除 chips）
-- [ ] Wake pattern / POI density 滑桿選擇器
-- [ ] 提交後顯示真實 planning job 進度輪詢
+- [x] Must-visit / avoid 支援 tag input（新增/刪除 chips）
+- [x] Wake pattern / POI density 滑桿選擇器
+- [x] 提交後顯示真實 planning job 進度輪詢
 - [x] Draft 比較 side-by-side diff 視圖
 - [x] Adopt 確認 dialog 使用 `openAdoptDraftModal`
 
@@ -309,15 +309,15 @@
 - [x] App Shell header 新增鈴鐺圖示
 - [x] 鈴鐺上方 unread count badge
 - [x] 點擊鈴鐺 → 下拉通知面板（或跳轉 /notifications）
-- [ ] 通知 deep-link → 正確導航到 trip/itinerary/budget
-- [ ] 通知刪除的 trip → 顯示「旅程已刪除」提示
+- [x] 通知 deep-link → 正確導航到 trip/itinerary/budget
+- [x] 通知刪除的 trip → 顯示「旅程已刪除」提示
 
 ---
 
 ## FE-P2-10｜Settings 頁面打磨
 
 - [x] 帳號刪除功能（含二次確認 confirm dialog）
-- [ ] Password / 社交帳號綁定管理（若啟用）
+- [x] Password / 社交帳號綁定管理（若啟用）
 - [x] 語言切換即時生效（i18n locale 切換）
 - [x] LLM provider key 儲存前先做連線測試
 
@@ -325,9 +325,8 @@
 
 ## FE-P2-11｜E2E 測試（Playwright）
 
-- [ ] Login magic link 流程 E2E
-- [ ] Trip 建立 → itinerary 編輯 → budget 設定 完整流程 E2E
-- [ ] Offline → online 同步 E2E
-- [ ] 推播通知 E2E（mock FCM）
-- [ ] 跨裝置 responsive 截圖測試
-
+- [x] Login magic link 流程 E2E
+- [x] Trip 建立 → itinerary 編輯 → budget 設定 完整流程 E2E
+- [x] Offline → online 同步 E2E
+- [x] 推播通知 E2E（mock FCM）
+- [x] 跨裝置 responsive 截圖測試

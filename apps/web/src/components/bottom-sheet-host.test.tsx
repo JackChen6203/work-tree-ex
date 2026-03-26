@@ -57,7 +57,7 @@ describe("BottomSheetHost", () => {
     renderBottomSheetHost("/trips/trip-1");
 
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("Navigation")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Navigation" })).toBeTruthy();
     fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]!);
     expect(screen.queryByRole("dialog")).toBeNull();
   });

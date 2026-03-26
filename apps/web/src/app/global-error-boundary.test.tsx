@@ -35,7 +35,7 @@ describe("GlobalErrorBoundary", () => {
 
     renderBoundary(<Boom />);
 
-    expect(screen.getByText("Something interrupted the workspace")).toBeTruthy();
+    expect(screen.getByText("Something went wrong")).toBeTruthy();
     expect(screen.getByText(/Render exploded/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });

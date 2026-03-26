@@ -13,11 +13,21 @@ export function GlobalModalHost() {
     return null;
   }
 
-  if (activeModal.type !== "confirm") {
+  if (activeModal.type === "invite") {
     return null;
   }
 
-  const { payload } = activeModal;
+  const payload =
+    activeModal.type === "confirm"
+      ? activeModal.payload
+      : {
+          title: t("ai.adoptConfirmTitle"),
+          description: t("ai.adoptConfirmDescription"),
+          confirmLabel: t("ai.adopt"),
+          cancelLabel: t("common.cancel"),
+          tone: activeModal.payload.hasWarnings ? "danger" : "neutral",
+          onConfirm: () => activeModal.payload.onConfirm(activeModal.payload.hasWarnings)
+        };
 
   const onConfirm = async () => {
     setIsSubmitting(true);
@@ -44,6 +54,7 @@ export function GlobalModalHost() {
       >
         <p className={`text-xs uppercase tracking-[0.24em] ${payload.tone === "danger" ? "text-coral" : "text-pine"}`}>{t("common.confirm")}</p>
         <h2 className="mt-3 font-display text-3xl font-bold text-ink">{payload.title}</h2>
+        {activeModal.type === "adopt_draft" ? <p className="mt-2 text-sm font-medium text-ink/80">{activeModal.payload.draftTitle}</p> : null}
         <p className="mt-3 text-sm leading-7 text-ink/70" id="global-confirm-description">
           {payload.description}
         </p>

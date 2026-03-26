@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { SurfaceCard } from "../../components/surface-card";
 import { useEstimateRouteMutation, useMapPlacesQuery } from "../../lib/queries";
 import { useUiStore } from "../../store/ui-store";
 import { useI18n } from "../../lib/i18n";
+import { MapboxAdapter, isValidCoordinate, type MapInstance } from "../../lib/map-provider-adapter";
 
 interface EstimatedRouteCard {
   id: string;
@@ -15,6 +17,9 @@ interface EstimatedRouteCard {
   estimatedCostCurrency?: string;
 }
 
+const MAP_CONTAINER_ID = "trip-map-canvas";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined;
+
 export function MapPage() {
   const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
@@ -23,38 +28,124 @@ export function MapPage() {
   const [originId, setOriginId] = useState("");
   const [destinationId, setDestinationId] = useState("");
   const [travelMode, setTravelMode] = useState<"walk" | "transit" | "drive" | "taxi">("transit");
+  const [selectedPointId, setSelectedPointId] = useState("");
+  const [mapState, setMapState] = useState<"initializing" | "ready" | "fallback">("initializing");
+  const [estimatedRoutes, setEstimatedRoutes] = useState<EstimatedRouteCard[]>([]);
   const { data: places = [], isLoading } = useMapPlacesQuery(searchKeyword);
   const estimateRoute = useEstimateRouteMutation();
-  const [estimatedRoutes, setEstimatedRoutes] = useState<EstimatedRouteCard[]>([]);
+  const mapRef = useRef<MapInstance | null>(null);
+  const markerPointIdsRef = useRef<string[]>([]);
 
   const points = useMemo(
     () =>
-      places.map((place, index) => ({
+      places.map((place) => ({
         id: place.providerPlaceId,
         title: place.name,
         location: place.address,
         transit: place.categories.join(" / "),
         lat: place.lat,
-        lng: place.lng,
-        index
+        lng: place.lng
       })),
     [places]
+  );
+
+  const validPoints = useMemo(
+    () => points.filter((point) => isValidCoordinate(point.lat, point.lng)),
+    [points]
   );
 
   const originPoint = useMemo(() => points.find((point) => point.id === originId), [points, originId]);
   const destinationPoint = useMemo(() => points.find((point) => point.id === destinationId), [points, destinationId]);
 
   useEffect(() => {
+    if (!MAPBOX_TOKEN) {
+      setMapState("fallback");
+      return;
+    }
+
+    let cancelled = false;
+
+    const initMap = async () => {
+      try {
+        const adapter = await MapboxAdapter.create(MAPBOX_TOKEN);
+        if (cancelled) {
+          return;
+        }
+
+        mapRef.current = adapter.renderMap(MAP_CONTAINER_ID, {
+          center: { lat: 35.0116, lng: 135.7681 },
+          zoom: 11,
+          markers: validPoints.map((point, index) => ({
+            lat: point.lat,
+            lng: point.lng,
+            label: `${index + 1}`
+          })),
+          enableClustering: true,
+          onMarkerClick: (markerIndex) => {
+            const pointId = markerPointIdsRef.current[markerIndex];
+            if (!pointId) {
+              return;
+            }
+            setSelectedPointId(pointId);
+          }
+        });
+        setMapState("ready");
+      } catch {
+        setMapState("fallback");
+      }
+    };
+
+    void initMap();
+
+    return () => {
+      cancelled = true;
+      mapRef.current?.destroy();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (points.length === 0) {
       setOriginId("");
       setDestinationId("");
+      setSelectedPointId("");
       return;
     }
+
     setOriginId((current) => current || points[0].id);
     setDestinationId((current) => current || points[Math.min(1, points.length - 1)].id);
+    setSelectedPointId((current) => current || points[0].id);
   }, [points]);
 
+  useEffect(() => {
+    if (mapState !== "ready" || !mapRef.current) {
+      return;
+    }
+
+    markerPointIdsRef.current = validPoints.map((point) => point.id);
+    mapRef.current.setMarkers(
+      validPoints.map((point, index) => ({
+        lat: point.lat,
+        lng: point.lng,
+        label: `${index + 1}`
+      }))
+    );
+    mapRef.current.fitBounds(validPoints);
+  }, [mapState, validPoints]);
+
   const canEstimate = Boolean(originPoint && destinationPoint && originPoint.id !== destinationPoint.id);
+
+  const focusPoint = (pointId: string) => {
+    setSelectedPointId(pointId);
+
+    const point = points.find((item) => item.id === pointId);
+    if (!point || !isValidCoordinate(point.lat, point.lng) || !mapRef.current) {
+      return;
+    }
+
+    mapRef.current.setCenter({ lat: point.lat, lng: point.lng });
+    mapRef.current.setZoom(13);
+  };
 
   const runEstimate = async () => {
     if (!originPoint || !destinationPoint || originPoint.id === destinationPoint.id) {
@@ -66,6 +157,13 @@ export function MapPage() {
       destination: { lat: destinationPoint.lat, lng: destinationPoint.lng },
       mode: travelMode
     });
+
+    if (isValidCoordinate(originPoint.lat, originPoint.lng) && isValidCoordinate(destinationPoint.lat, destinationPoint.lng)) {
+      mapRef.current?.setRoutePath([
+        { lat: originPoint.lat, lng: originPoint.lng },
+        { lat: destinationPoint.lat, lng: destinationPoint.lng }
+      ]);
+    }
 
     setEstimatedRoutes((prev) => [
       {
@@ -137,27 +235,32 @@ export function MapPage() {
           </div>
         </form>
 
-        <div className="relative min-h-[380px] overflow-hidden rounded-[28px] bg-ink">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(218,106,78,0.55),transparent_20%),radial-gradient(circle_at_80%_25%,rgba(244,239,230,0.18),transparent_15%),radial-gradient(circle_at_55%_70%,rgba(45,90,74,0.55),transparent_20%),linear-gradient(180deg,#12202d_0%,#1a2f2c_100%)]" />
-          {points.slice(0, 5).map((item, index) => (
-            <div
-              key={item.id}
-              className="absolute flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/15 text-xs font-bold text-white"
-              style={{
-                left: `${18 + index * 14}%`,
-                top: `${18 + (index % 3) * 18}%`
-              }}
-            >
-              {index + 1}
+        <div className="relative min-h-[420px] overflow-hidden rounded-[28px] border border-ink/15 bg-ink">
+          {mapState === "ready" ? (
+            <div className="absolute inset-0">
+              <div className="h-full w-full" id={MAP_CONTAINER_ID} />
             </div>
-          ))}
-          <div className="absolute bottom-5 left-5 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white backdrop-blur">
-            {t("map.sdkFailed")} — {t("map.fallbackList")}
-          </div>
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(218,106,78,0.55),transparent_20%),radial-gradient(circle_at_80%_25%,rgba(244,239,230,0.18),transparent_15%),radial-gradient(circle_at_55%_70%,rgba(45,90,74,0.55),transparent_20%),linear-gradient(180deg,#12202d_0%,#1a2f2c_100%)]" />
+          )}
+
+          {mapState === "fallback" ? (
+            <div className="absolute bottom-5 left-5 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white backdrop-blur">
+              {t("map.sdkFailed")} — {t("map.fallbackList")}
+            </div>
+          ) : null}
+
+          {mapState === "initializing" ? (
+            <div className="absolute bottom-5 left-5 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white backdrop-blur">
+              {t("common.loading")}
+            </div>
+          ) : null}
         </div>
       </SurfaceCard>
+
       <SurfaceCard eyebrow={t("map.linkedPois")} title={t("map.dailyPois")}>
         {isLoading ? <div className="mb-3 rounded-[20px] bg-sand p-3 text-sm text-ink/65">{t("map.searching")}</div> : null}
+
         {points.length >= 2 ? (
           <div className="mb-4 grid gap-3 rounded-[20px] border border-ink/10 bg-white p-3 md:grid-cols-2">
             <label>
@@ -190,13 +293,23 @@ export function MapPage() {
             </label>
           </div>
         ) : null}
+
         <div className="space-y-3">
           {points.map((item) => (
-            <div key={item.id} className="rounded-[24px] bg-sand p-4">
+            <button
+              className={`w-full rounded-[24px] p-4 text-left transition ${
+                selectedPointId === item.id ? "bg-pine/10 ring-1 ring-pine/30" : "bg-sand hover:bg-sand/70"
+              }`}
+              key={item.id}
+              onClick={() => {
+                focusPoint(item.id);
+              }}
+              type="button"
+            >
               <p className="font-medium text-ink">{item.title}</p>
               <p className="mt-1 text-sm text-ink/60">{item.location}</p>
               <p className="mt-2 text-sm text-pine">{item.transit}</p>
-            </div>
+            </button>
           ))}
           {!isLoading && points.length === 0 ? <div className="rounded-[24px] bg-sand p-4 text-sm text-ink/65">{t("map.noResults")}</div> : null}
         </div>
@@ -219,9 +332,19 @@ export function MapPage() {
           <div className="space-y-3">
             {estimatedRoutes.map((route) => (
               <div className="rounded-[20px] border border-ink/10 bg-white p-3" key={route.id}>
-                <p className="text-sm font-medium text-ink">{route.originTitle}{" → "}{route.destinationTitle}</p>
-                <p className="mt-1 text-xs text-ink/65">{route.distanceKm} km / {route.durationMin} min</p>
-                {route.estimatedCostAmount ? <p className="mt-1 text-xs text-ink/65">{route.estimatedCostCurrency} {route.estimatedCostAmount.toLocaleString()}</p> : null}
+                <p className="text-sm font-medium text-ink">
+                  {route.originTitle}
+                  {" → "}
+                  {route.destinationTitle}
+                </p>
+                <p className="mt-1 text-xs text-ink/65">
+                  {route.distanceKm} km / {route.durationMin} min · {route.provider}
+                </p>
+                {route.estimatedCostAmount ? (
+                  <p className="mt-1 text-xs text-ink/65">
+                    {route.estimatedCostCurrency} {route.estimatedCostAmount.toLocaleString()}
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>

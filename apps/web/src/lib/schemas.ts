@@ -21,13 +21,28 @@ export type CreateTripFormValues = z.infer<typeof createTripSchema>;
 
 export const addExpenseSchema = z.object({
   category: z.string().min(1, "required"),
-  amount: z.number({ coerce: true }).positive("amountPositive"),
+  amount: z.number({ coerce: true }).min(0, "amountNonNegative"),
   currency: z.string().min(1, "required"),
   note: z.string().max(1000).optional(),
   expenseAt: z.string().optional()
 });
 
 export type AddExpenseFormValues = z.infer<typeof addExpenseSchema>;
+
+export const budgetProfileSchema = z.object({
+  totalBudget: z.number({ coerce: true }).min(0, "amountNonNegative").optional(),
+  perPersonBudget: z.number({ coerce: true }).min(0, "amountNonNegative").optional(),
+  perDayBudget: z.number({ coerce: true }).min(0, "amountNonNegative").optional(),
+  currency: z.string().length(3, "currency3"),
+  categories: z.array(
+    z.object({
+      category: z.string().min(1, "required"),
+      plannedAmount: z.number({ coerce: true }).min(0, "amountNonNegative")
+    })
+  )
+});
+
+export type BudgetProfileFormValues = z.infer<typeof budgetProfileSchema>;
 
 // ── Member ──────────────────────────────────────────
 
@@ -75,6 +90,7 @@ export const validationMessages: Record<string, Record<string, string>> = {
     max50: "最多 50 人",
     endDateBeforeStart: "結束日期不可早於開始日期",
     amountPositive: "金額需大於 0",
+    amountNonNegative: "金額不可為負數",
     invalidEmail: "Email 格式不正確",
     apiKeyMin16: "API 金鑰至少 16 字元"
   },
@@ -87,6 +103,7 @@ export const validationMessages: Record<string, Record<string, string>> = {
     max50: "Max 50 travelers",
     endDateBeforeStart: "End date must be on or after start date",
     amountPositive: "Amount must be positive",
+    amountNonNegative: "Amount cannot be negative",
     invalidEmail: "Invalid email format",
     apiKeyMin16: "API key must be at least 16 characters"
   }

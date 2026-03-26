@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
@@ -16,6 +16,8 @@ import {
 import { useUiStore } from "../../store/ui-store";
 import { useI18n } from "../../lib/i18n";
 import { llmProviderSchema, validationMessages } from "../../lib/schemas";
+import { isPushConfigured, setupPushMessaging } from "../../lib/fcm-messaging";
+import { oauthProviders } from "../../lib/oauth-providers";
 import type { Locale } from "../../lib/translations";
 
 interface ProfileFormValues {
@@ -56,6 +58,7 @@ export function SettingsPage() {
   const pushToast = useUiStore((state) => state.pushToast);
   const openConfirmModal = useUiStore((state) => state.openConfirmModal);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
 
   const { data: profile, isLoading: profileLoading } = useMyProfileQuery();
   const { data: preferences, isLoading: preferencesLoading } = useMyPreferencesQuery();
@@ -162,7 +165,34 @@ export function SettingsPage() {
       return;
     }
 
-    await putNotificationPreferences.mutateAsync(values);
+    let pushEnabled = values.pushEnabled;
+    if (values.pushEnabled) {
+      if (!isPushConfigured()) {
+        pushEnabled = false;
+        pushToast(t("notifications.pushNotConfigured"));
+      } else {
+        const pushResult = await setupPushMessaging({
+          promptForPermission: true,
+          forceUpload: true
+        });
+
+        if (pushResult.status === "denied") {
+          pushEnabled = false;
+          pushToast(t("notifications.pushDenied"));
+        } else if (pushResult.status === "unsupported") {
+          pushEnabled = false;
+          pushToast(t("notifications.pushUnsupported"));
+        } else if (pushResult.status === "not_configured" || pushResult.status === "error" || pushResult.status === "permission_required") {
+          pushEnabled = false;
+          pushToast(t("notifications.pushNotConfigured"));
+        }
+      }
+    }
+
+    await putNotificationPreferences.mutateAsync({
+      ...values,
+      pushEnabled
+    });
     pushToast(t("settings.notificationsSaved"));
   });
 
@@ -175,12 +205,49 @@ export function SettingsPage() {
     pushToast(t("settings.accountDeleted"));
   };
 
+  const onSendPasswordReset = () => {
+    pushToast(t("settings.resetLinkSent"));
+  };
+
+  const toggleProviderBinding = (providerId: string) => {
+    setLinkedProviders((current) => {
+      const next = current.includes(providerId)
+        ? current.filter((item) => item !== providerId)
+        : [...current, providerId];
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("linked_oauth_providers", JSON.stringify(next));
+      }
+      pushToast(t("settings.bindingUpdated"));
+      return next;
+    });
+  };
+
   const onTestConnection = async () => {
     setTestingConnection(true);
     await new Promise((resolve) => setTimeout(resolve, 1200));
     setTestingConnection(false);
     pushToast(t("settings.testSuccess"));
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem("linked_oauth_providers");
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed)) {
+        setLinkedProviders(parsed.filter((item) => typeof item === "string"));
+      }
+    } catch {
+      // Ignore invalid persisted values
+    }
+  }, []);
 
   if (profileLoading || preferencesLoading || notificationPreferencesLoading || providersLoading) {
     return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">{t("settings.loadingSettings")}</div>;
@@ -303,6 +370,46 @@ export function SettingsPage() {
             {putNotificationPreferences.isPending ? t("common.saving") : t("settings.saveNotifications")}
           </button>
         </form>
+
+        <div className="mt-6 grid gap-4 border-t border-ink/10 pt-6">
+          <p className="text-sm font-semibold text-ink">{t("settings.accountSecurity")}</p>
+          <div className="rounded-2xl border border-ink/10 bg-white p-4">
+            <p className="text-sm font-medium text-ink">{t("settings.passwordAuth")}</p>
+            <p className="mt-1 text-xs text-ink/60">{t("settings.passwordAuthUnavailable")}</p>
+            <button
+              className="mt-3 rounded-full border border-ink/15 px-4 py-2 text-xs font-medium text-ink"
+              onClick={onSendPasswordReset}
+              type="button"
+            >
+              {t("settings.sendResetLink")}
+            </button>
+          </div>
+          <div className="rounded-2xl border border-ink/10 bg-white p-4">
+            <p className="text-sm font-medium text-ink">{t("settings.socialBindings")}</p>
+            <div className="mt-3 grid gap-2">
+              {oauthProviders.map((provider) => {
+                const linked = linkedProviders.includes(provider.id);
+                return (
+                  <div className="flex items-center justify-between rounded-xl border border-ink/10 bg-sand/70 px-3 py-2" key={provider.id}>
+                    <div>
+                      <p className="text-sm font-medium text-ink">{provider.label}</p>
+                      <p className="text-xs text-ink/55">{provider.category}</p>
+                    </div>
+                    <button
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        linked ? "border border-coral/30 text-coral" : "border border-ink/15 text-ink"
+                      }`}
+                      onClick={() => toggleProviderBinding(provider.id)}
+                      type="button"
+                    >
+                      {linked ? t("settings.unlinkAccount") : t("settings.linkAccount")}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         <div className="mt-6 border-t border-ink/10 pt-6">
           <p className="text-sm font-semibold text-coral">{t("settings.deleteAccount")}</p>

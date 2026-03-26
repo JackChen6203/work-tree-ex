@@ -14,6 +14,14 @@ export interface CleanupReadNotificationsResponse {
   deletedCount: number;
 }
 
+export interface FcmTokenInput {
+  token: string;
+  platform: "web";
+  locale?: string;
+  timezone?: string;
+  userAgent?: string;
+}
+
 export interface ListNotificationsOptions {
   unreadOnly?: boolean;
   cursor?: string;
@@ -83,4 +91,14 @@ export async function deleteNotification(notificationId: string) {
   if (!response.ok) {
     throw new Error(`Delete notification failed with status ${response.status}`);
   }
+}
+
+export function registerFcmToken(input: FcmTokenInput) {
+  return apiRequest<void>("/api/v1/fcm-tokens", {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": crypto.randomUUID()
+    },
+    body: JSON.stringify(input)
+  });
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { SurfaceCard } from "../../components/surface-card";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
@@ -9,31 +9,80 @@ import {
   useMarkAllNotificationsReadMutation,
   useMarkNotificationReadMutation,
   useMarkNotificationUnreadMutation,
-  useNotificationsQuery
+  useNotificationsQuery,
+  useTripsQuery
 } from "../../lib/queries";
+
+function resolveNotificationHref(
+  input: { link?: string; type?: string },
+  fallbackTripId: string | null
+) {
+  const raw = (input.link ?? "").trim();
+
+  if (raw.startsWith("/trips/")) {
+    return raw;
+  }
+
+  if (raw === "/dashboard") {
+    return "/";
+  }
+
+  if (raw === "/trips" && fallbackTripId) {
+    return `/trips/${fallbackTripId}`;
+  }
+
+  if (raw.length > 0) {
+    return raw;
+  }
+
+  if (!fallbackTripId) {
+    return "/notifications";
+  }
+
+  if (input.type?.includes("budget")) {
+    return `/trips/${fallbackTripId}/budget`;
+  }
+  if (input.type?.includes("itinerary")) {
+    return `/trips/${fallbackTripId}/itinerary`;
+  }
+  if (input.type?.includes("ai")) {
+    return `/trips/${fallbackTripId}/ai-planner`;
+  }
+  return `/trips/${fallbackTripId}`;
+}
+
+function extractTripIdFromPath(path: string) {
+  const match = path.match(/^\/trips\/([^/]+)/);
+  return match?.[1] ?? null;
+}
 
 export function NotificationsPage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const pushToast = useUiStore((state) => state.pushToast);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const { data: notifications = [], isLoading } = useNotificationsQuery(unreadOnly);
+  const { data: trips = [] } = useTripsQuery();
   const markReadMutation = useMarkNotificationReadMutation();
   const markUnreadMutation = useMarkNotificationUnreadMutation();
   const markAllReadMutation = useMarkAllNotificationsReadMutation();
   const cleanupReadMutation = useCleanupReadNotificationsMutation();
   const deleteMutation = useDeleteNotificationMutation();
+  const fallbackTripId = trips[0]?.id ?? null;
+  const activeTripIds = useMemo(() => new Set(trips.map((trip) => trip.id)), [trips]);
 
   const items = useMemo(
     () =>
       notifications.map((item) => ({
         id: item.id,
+        type: item.type,
         title: item.title,
         detail: item.body,
-        href: item.link,
+        href: resolveNotificationHref({ link: item.link, type: item.type }, fallbackTripId),
         unread: !item.readAt,
         time: item.createdAt ? new Date(item.createdAt).toLocaleString() : ""
       })),
-    [notifications]
+    [fallbackTripId, notifications]
   );
 
   const markAllRead = () => {
@@ -55,6 +104,19 @@ export function NotificationsPage() {
   const cleanupRead = () => {
     void cleanupReadMutation.mutateAsync().then((result) => {
       pushToast(`${t("notifications.cleanupReadDone")}: ${result.deletedCount}`);
+    });
+  };
+
+  const openNotification = (item: (typeof items)[number]) => {
+    const targetTripId = extractTripIdFromPath(item.href);
+    if (targetTripId && !activeTripIds.has(targetTripId)) {
+      pushToast(t("notifications.tripDeleted"));
+      void markReadMutation.mutateAsync(item.id);
+      return;
+    }
+
+    void markReadMutation.mutateAsync(item.id).finally(() => {
+      navigate(item.href);
     });
   };
 
@@ -94,9 +156,15 @@ export function NotificationsPage() {
           <div key={item.id} className={`rounded-[24px] p-4 transition ${item.unread ? "bg-[#fff1ed]" : "bg-sand"}`}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <Link className="font-medium text-ink underline-offset-4 hover:underline" onClick={() => markRead(item.id)} to={item.href}>
+                <button
+                  className="font-medium text-ink underline-offset-4 hover:underline"
+                  onClick={() => {
+                    openNotification(item);
+                  }}
+                  type="button"
+                >
                   {item.title}
-                </Link>
+                </button>
                 <p className="mt-2 text-sm text-ink/65">{item.detail}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.2em] text-ink/45">{item.unread ? t("notifications.unread") : t("notifications.read")}</p>
               </div>

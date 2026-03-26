@@ -142,6 +142,8 @@ export function useCreateAiPlanMutation(tripId: string) {
         currency: string;
         pace: "relaxed" | "balanced" | "packed";
         transportPreference: "walk" | "transit" | "taxi" | "mixed";
+        wakePattern?: "early" | "normal" | "late";
+        poiDensity?: "sparse" | "medium" | "dense";
         mustVisit: string[];
         avoid: string[];
       };

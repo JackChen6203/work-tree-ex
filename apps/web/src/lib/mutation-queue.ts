@@ -1,4 +1,11 @@
 import { useSessionStore } from "../store/session-store";
+import { apiBaseUrl } from "./api";
+import {
+  clearOfflineExpiredData,
+  deletePersistedMutation,
+  listPersistedMutations,
+  savePersistedMutation
+} from "./offline-db";
 
 export interface MutationQueueItem {
   id: string;
@@ -13,24 +20,54 @@ export interface MutationQueueItem {
   failureReason?: string;
 }
 
-// ---------- In-memory queue (IndexedDB persistence hook point) ----------
+// ---------- In-memory queue + IndexedDB persistence ----------
 const mutationQueue: MutationQueueItem[] = [];
+let queueHydrationPromise: Promise<void> | null = null;
 
 // API keys must never enter persistent cache
 const SENSITIVE_KEYS = ["apiKey", "secretKey", "token", "password", "accessToken", "refreshToken"];
 
 function sanitizePayload(payload: unknown): unknown {
-  if (!payload || typeof payload !== "object") return payload;
-  const sanitized = { ...(payload as Record<string, unknown>) };
-  for (const key of SENSITIVE_KEYS) {
-    if (key in sanitized) {
-      delete sanitized[key];
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return payload.map((item) => sanitizePayload(item));
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+    if (SENSITIVE_KEYS.some((sensitiveKey) => key.toLowerCase().includes(sensitiveKey.toLowerCase()))) {
+      continue;
     }
+    sanitized[key] = sanitizePayload(value);
   }
   return sanitized;
 }
 
+async function hydrateQueueFromIndexedDb() {
+  if (queueHydrationPromise) {
+    return queueHydrationPromise;
+  }
+
+  queueHydrationPromise = (async () => {
+    try {
+      await clearOfflineExpiredData();
+      const persisted = await listPersistedMutations();
+      mutationQueue.splice(0, mutationQueue.length, ...persisted);
+      syncPendingCount();
+    } catch {
+      // Keep queue in-memory only when IndexedDB is unavailable.
+    }
+  })();
+
+  return queueHydrationPromise;
+}
+
 export function enqueueMutation(item: Omit<MutationQueueItem, "id" | "enqueuedAt" | "retryCount" | "status">): string {
+  void hydrateQueueFromIndexedDb();
+
   const entry: MutationQueueItem = {
     ...item,
     id: crypto.randomUUID(),
@@ -40,6 +77,7 @@ export function enqueueMutation(item: Omit<MutationQueueItem, "id" | "enqueuedAt
     status: "pending"
   };
   mutationQueue.push(entry);
+  void savePersistedMutation(entry);
   syncPendingCount();
   return entry.id;
 }
@@ -56,6 +94,7 @@ export function resolveMutation(id: string) {
   const index = mutationQueue.findIndex((m) => m.id === id);
   if (index >= 0) {
     mutationQueue.splice(index, 1);
+    void deletePersistedMutation(id);
   }
   syncPendingCount();
 }
@@ -66,6 +105,7 @@ export function markMutationFailed(id: string, reason: string) {
     item.status = "failed";
     item.failureReason = reason;
     item.retryCount++;
+    void savePersistedMutation(item);
   }
   syncPendingCount();
 }
@@ -81,14 +121,17 @@ function syncPendingCount() {
 
 // ---------- Sequential replay on reconnect ----------
 export async function replayPendingMutations(
-  executor: (item: MutationQueueItem) => Promise<void>
+  executor: (item: MutationQueueItem) => Promise<void> = executeQueuedMutation
 ): Promise<{ succeeded: number; failed: number }> {
+  await hydrateQueueFromIndexedDb();
+
   let succeeded = 0;
   let failed = 0;
 
   const pending = getPendingMutations();
   for (const item of pending) {
     item.status = "syncing";
+    void savePersistedMutation(item);
     try {
       await executor(item);
       resolveMutation(item.id);
@@ -101,6 +144,27 @@ export async function replayPendingMutations(
   }
 
   return { succeeded, failed };
+}
+
+async function executeQueuedMutation(item: MutationQueueItem) {
+  const url = item.endpoint.startsWith("http://") || item.endpoint.startsWith("https://")
+    ? item.endpoint
+    : `${apiBaseUrl}${item.endpoint}`;
+
+  const response = await fetch(url, {
+    method: item.method,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": item.idempotencyKey,
+      ...(typeof item.version === "number" ? { "If-Match-Version": String(item.version) } : {})
+    },
+    body: item.method === "DELETE" ? undefined : JSON.stringify(item.payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Queued mutation failed with status ${response.status}`);
+  }
 }
 
 // ---------- Original simple wrapper (backward compat) ----------
@@ -117,11 +181,9 @@ export async function trackQueuedMutation<T>(scope: string, run: () => Promise<T
 
 // Listen for online → auto-replay
 if (typeof window !== "undefined") {
+  void hydrateQueueFromIndexedDb();
+
   window.addEventListener("online", () => {
-    const pending = getPendingMutations();
-    if (pending.length > 0) {
-      console.info(`[mutation-queue] Online detected, ${pending.length} mutations pending replay`);
-    }
+    void replayPendingMutations();
   });
 }
-

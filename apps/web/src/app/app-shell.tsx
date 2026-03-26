@@ -9,6 +9,7 @@ import { ShellNav } from "../components/shell-nav";
 import { SyncStatusBar } from "../components/sync-status-bar";
 import { ToastRegion } from "../components/toast-region";
 import { OfflineBanner } from "../features/offline/offline-banner";
+import { useFcmPush } from "../features/notifications/use-fcm-push";
 import { analyticsEventNames, trackEvent } from "../lib/analytics";
 import { logout } from "../lib/auth-api";
 import { useI18n } from "../lib/i18n";
@@ -26,6 +27,7 @@ export function AppShell() {
   const showLoadingOverlay = useUiStore((state) => state.showLoadingOverlay);
   const hideLoadingOverlay = useUiStore((state) => state.hideLoadingOverlay);
   const { t } = useI18n();
+  useFcmPush();
 
   const onLogout = async () => {
     showLoadingOverlay(t("auth.loggingOut"));

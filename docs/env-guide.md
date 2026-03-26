@@ -103,6 +103,14 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `VITE_API_BASE_URL` | Optional | `apps/web` | Needed when Vite dev server should call a backend origin directly, for example `http://localhost:8080` |
 | `VITE_ENABLE_MAGIC_LINK_AUTH` | Dev only | `apps/web` | Defaults to enabled in `npm run dev`, should stay `false` in production builds |
 | `VITE_OAUTH_PROVIDERS` | Recommended | `apps/web` | Comma-separated provider ids to show in the frontend, for example `google` |
+| `VITE_MAPBOX_ACCESS_TOKEN` | Optional | `apps/web` map module | Required only when enabling real Mapbox SDK rendering; when empty, map page falls back to address list mode |
+| `VITE_FIREBASE_API_KEY` | Optional | `apps/web` push module | Firebase Web config for FCM push |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Optional | `apps/web` push module | Firebase auth domain (web app config) |
+| `VITE_FIREBASE_PROJECT_ID` | Optional | `apps/web` push module | Firebase project id |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Optional | `apps/web` push module | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Optional | `apps/web` push module | FCM sender id |
+| `VITE_FIREBASE_APP_ID` | Optional | `apps/web` push module | Firebase app id |
+| `VITE_FIREBASE_VAPID_KEY` | Optional | `apps/web` push module | Required for browser push token issuance with Firebase messaging |
 
 ### GitHub Actions secrets
 

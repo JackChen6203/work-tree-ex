@@ -1,5 +1,12 @@
 import type { TripSummary } from "../types/domain";
 import { apiRequest } from "./api";
+import {
+  clearOfflineExpiredData,
+  getCachedTrip,
+  listCachedTrips,
+  saveTripToCache,
+  saveTripsToCache
+} from "./offline-db";
 
 interface TripApiModel {
   id: string;
@@ -69,6 +76,17 @@ function toDisplayRange(startDate: string, endDate: string) {
   return `${startDate.replace(/-/g, "/")} - ${endDate.replace(/-/g, "/")}`;
 }
 
+let offlineCacheReady = false;
+
+async function ensureOfflineCacheReady() {
+  if (offlineCacheReady) {
+    return;
+  }
+
+  offlineCacheReady = true;
+  await clearOfflineExpiredData();
+}
+
 export function mapTrip(apiTrip: TripApiModel, index = 0): TripSummary {
   return {
     id: apiTrip.id,
@@ -90,13 +108,37 @@ export function mapTrip(apiTrip: TripApiModel, index = 0): TripSummary {
 }
 
 export async function listTrips() {
-  const data = (await apiRequest<TripApiModel[] | null>("/api/v1/trips")) ?? [];
-  return data.map((trip, index) => mapTrip(trip, index));
+  await ensureOfflineCacheReady();
+
+  try {
+    const data = (await apiRequest<TripApiModel[] | null>("/api/v1/trips")) ?? [];
+    const mapped = data.map((trip, index) => mapTrip(trip, index));
+    await saveTripsToCache(mapped);
+    return mapped;
+  } catch (error) {
+    const cached = await listCachedTrips();
+    if (cached.length > 0) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function getTrip(tripId: string) {
-  const data = await apiRequest<TripApiModel>(`/api/v1/trips/${tripId}`);
-  return mapTrip(data);
+  await ensureOfflineCacheReady();
+
+  try {
+    const data = await apiRequest<TripApiModel>(`/api/v1/trips/${tripId}`);
+    const mapped = mapTrip(data);
+    await saveTripToCache(mapped);
+    return mapped;
+  } catch (error) {
+    const cached = await getCachedTrip(tripId);
+    if (cached) {
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function createTrip(input: CreateTripInput) {

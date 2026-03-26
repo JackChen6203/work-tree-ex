@@ -4,15 +4,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateTripMutation, useTripsQuery } from "../../lib/queries";
+import { useCreateTripMutation, useNotificationsQuery, useTripsQuery } from "../../lib/queries";
 import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
 import { createTripSchema, validationMessages } from "../../lib/schemas";
 import type { CreateTripFormValues } from "../../lib/schemas";
 import type { Locale } from "../../lib/translations";
-
-
 
 export function DashboardPage() {
   const { t, locale } = useI18n();
@@ -21,6 +19,7 @@ export function DashboardPage() {
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
   const { data: trips = [], isLoading, error } = useTripsQuery();
+  const { data: notifications = [] } = useNotificationsQuery();
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
     resolver: zodResolver(createTripSchema),
@@ -35,6 +34,24 @@ export function DashboardPage() {
     }
   });
   const { formState: { errors } } = form;
+  const recentActivities = notifications.slice(0, 4);
+
+  const recentTripIds = Array.from(
+    new Set(
+      notifications
+        .map((item) => {
+          const match = item.link?.match(/\/trips\/([^/]+)/);
+          return match?.[1];
+        })
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const quickAccessTrips = (recentTripIds.length > 0
+    ? recentTripIds
+      .map((id) => trips.find((trip) => trip.id === id))
+      .filter(Boolean)
+    : trips.slice(0, 3)) as typeof trips;
 
   const onSubmit = form.handleSubmit(async (values) => {
     const trip = await createTrip.mutateAsync(values);
@@ -173,6 +190,32 @@ export function DashboardPage() {
             }
             return <p className="text-sm text-ink/60">{t("dashboard.noUpcoming")}</p>;
           })()}
+        </SurfaceCard>
+
+        <SurfaceCard eyebrow={t("nav.inbox")} title={t("dashboard.recentActivity")}>
+          {recentActivities.length === 0 ? <p className="text-sm text-ink/60">{t("notifications.empty")}</p> : null}
+          <div className="space-y-3">
+            {recentActivities.map((activity) => (
+              <Link className="block rounded-[18px] border border-ink/10 bg-sand/70 px-4 py-3" key={activity.id} to={activity.link || "/notifications"}>
+                <p className="text-sm font-medium text-ink">{activity.title}</p>
+                <p className="mt-1 text-xs text-ink/60">{activity.body}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-ink/45">{activity.createdAt ? new Date(activity.createdAt).toLocaleString() : "-"}</p>
+              </Link>
+            ))}
+          </div>
+        </SurfaceCard>
+
+        <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.quickAccess")}>
+          {quickAccessTrips.length === 0 ? <p className="text-sm text-ink/60">{t("dashboard.noTrips")}</p> : null}
+          <div className="space-y-3">
+            {quickAccessTrips.slice(0, 3).map((trip) => (
+              <Link className="block rounded-[18px] border border-ink/10 bg-white px-4 py-3 transition hover:bg-sand/80" key={trip.id} to={`/trips/${trip.id}/itinerary`}>
+                <p className="text-sm font-semibold text-ink">{trip.name}</p>
+                <p className="mt-1 text-xs text-ink/60">{trip.destination}</p>
+                <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-ink/45">{trip.dateRange}</p>
+              </Link>
+            ))}
+          </div>
         </SurfaceCard>
       </div>
     </div>

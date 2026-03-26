@@ -140,6 +140,8 @@ export const dictionaries = {
     "dashboard.daysUntil": "距離出發還有 {n} 天",
     "dashboard.tripInProgress": "旅程進行中",
     "dashboard.noUpcoming": "目前沒有即將出發的旅程",
+    "dashboard.recentActivity": "近期活動",
+    "dashboard.quickAccess": "快速存取",
 
     // Trip form
     "trip.name": "旅程名稱",
@@ -195,6 +197,8 @@ export const dictionaries = {
     "itinerary.free": "自由時間",
     "itinerary.sortUp": "上移",
     "itinerary.sortDown": "下移",
+    "itinerary.dragHandle": "拖拉排序",
+    "itinerary.dropHere": "可拖拉行程卡到此區塊",
     "itinerary.deleteConfirm": "確定要刪除此行程項目？",
 
     // Budget
@@ -293,6 +297,11 @@ export const dictionaries = {
     "notifications.read": "已讀",
     "notifications.noNotifications": "暫無通知",
     "notifications.empty": "一切安好，暫時沒有新通知。",
+    "notifications.tripDeleted": "旅程已刪除",
+    "notifications.pushDenied": "已拒絕推播權限，將僅使用站內通知。",
+    "notifications.pushUnsupported": "此裝置不支援推播通知。",
+    "notifications.pushNotConfigured": "尚未設定 Firebase 推播參數，僅使用站內通知。",
+    "notifications.pushForeground": "收到新通知",
 
     // Settings
     "settings.title": "帳號與設定",
@@ -360,6 +369,15 @@ export const dictionaries = {
     "settings.weekly": "每週",
     "settings.quietHoursFormat": "勿擾時間格式需為 HH:MM",
     "settings.emailNoInstant": "Email 通知不支援即時頻率",
+    "settings.accountSecurity": "帳號安全",
+    "settings.passwordAuth": "密碼登入",
+    "settings.passwordAuthUnavailable": "目前帳號採用 Magic Link / OAuth，密碼綁定功能可選擇啟用。",
+    "settings.sendResetLink": "寄送重設連結",
+    "settings.socialBindings": "社交帳號綁定",
+    "settings.linkAccount": "綁定",
+    "settings.unlinkAccount": "解除綁定",
+    "settings.bindingUpdated": "綁定設定已更新",
+    "settings.resetLinkSent": "已寄送重設連結（模擬）",
 
     // Error boundary
     "errorBoundary.label": "系統防護",
@@ -510,6 +528,8 @@ export const dictionaries = {
     "dashboard.daysUntil": "{n} days until departure",
     "dashboard.tripInProgress": "Trip in progress",
     "dashboard.noUpcoming": "No upcoming trips",
+    "dashboard.recentActivity": "Recent activity",
+    "dashboard.quickAccess": "Quick access",
 
     // Trip form
     "trip.name": "Trip name",
@@ -565,6 +585,8 @@ export const dictionaries = {
     "itinerary.free": "Free time",
     "itinerary.sortUp": "Move up",
     "itinerary.sortDown": "Move down",
+    "itinerary.dragHandle": "Drag to reorder",
+    "itinerary.dropHere": "Drag an item into this day",
     "itinerary.deleteConfirm": "Delete this item?",
 
     // Budget
@@ -663,6 +685,11 @@ export const dictionaries = {
     "notifications.read": "Read",
     "notifications.noNotifications": "No notifications",
     "notifications.empty": "All caught up, no new notifications.",
+    "notifications.tripDeleted": "Trip was deleted",
+    "notifications.pushDenied": "Push permission denied. In-app notifications will be used.",
+    "notifications.pushUnsupported": "Push notifications are not supported on this device.",
+    "notifications.pushNotConfigured": "Firebase push is not configured. In-app notifications will be used.",
+    "notifications.pushForeground": "New notification received",
 
     // Settings
     "settings.title": "Account & Settings",
@@ -730,6 +757,15 @@ export const dictionaries = {
     "settings.weekly": "Weekly",
     "settings.quietHoursFormat": "Quiet hours must use HH:MM format",
     "settings.emailNoInstant": "Email doesn't support instant digest",
+    "settings.accountSecurity": "Account security",
+    "settings.passwordAuth": "Password auth",
+    "settings.passwordAuthUnavailable": "This account currently uses Magic Link/OAuth. Password binding can be enabled if needed.",
+    "settings.sendResetLink": "Send reset link",
+    "settings.socialBindings": "Social account bindings",
+    "settings.linkAccount": "Link",
+    "settings.unlinkAccount": "Unlink",
+    "settings.bindingUpdated": "Binding updated",
+    "settings.resetLinkSent": "Reset link sent (mock)",
 
     // Error boundary
     "errorBoundary.label": "System guard",
