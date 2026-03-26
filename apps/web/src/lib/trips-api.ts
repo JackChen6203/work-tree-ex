@@ -11,6 +11,7 @@ import {
 interface TripApiModel {
   id: string;
   name: string;
+  destination?: string;
   destinationText?: string;
   startDate: string;
   endDate: string;
@@ -25,7 +26,9 @@ interface TripApiModel {
 
 export interface CreateTripInput {
   name: string;
+  departureText?: string;
   destinationText: string;
+  destinations?: string[];
   startDate: string;
   endDate: string;
   timezone: string;
@@ -76,6 +79,13 @@ function toDisplayRange(startDate: string, endDate: string) {
   return `${startDate.replace(/-/g, "/")} - ${endDate.replace(/-/g, "/")}`;
 }
 
+function unwrapTripPayload(payload: TripApiModel | { trip?: TripApiModel }) {
+  if (payload && typeof payload === "object" && "trip" in payload && payload.trip) {
+    return payload.trip;
+  }
+  return payload as TripApiModel;
+}
+
 let offlineCacheReady = false;
 
 async function ensureOfflineCacheReady() {
@@ -88,10 +98,11 @@ async function ensureOfflineCacheReady() {
 }
 
 export function mapTrip(apiTrip: TripApiModel, index = 0): TripSummary {
+  const destination = apiTrip.destinationText || apiTrip.destination || "Destination TBD";
   return {
     id: apiTrip.id,
     name: apiTrip.name,
-    destination: apiTrip.destinationText || "Destination TBD",
+    destination,
     dateRange: toDisplayRange(apiTrip.startDate, apiTrip.endDate),
     timezone: apiTrip.timezone,
     coverGradient: gradients[index % gradients.length],
@@ -142,14 +153,14 @@ export async function getTrip(tripId: string) {
 }
 
 export async function createTrip(input: CreateTripInput) {
-  const data = await apiRequest<TripApiModel>("/api/v1/trips", {
+  const data = await apiRequest<TripApiModel | { trip?: TripApiModel }>("/api/v1/trips", {
     method: "POST",
     headers: {
       "Idempotency-Key": crypto.randomUUID()
     },
     body: JSON.stringify(input)
   });
-  return mapTrip(data);
+  return mapTrip(unwrapTripPayload(data));
 }
 
 export async function patchTrip(tripId: string, version: number, input: PatchTripInput) {

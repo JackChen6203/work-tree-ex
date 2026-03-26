@@ -11,6 +11,7 @@ import { useI18n } from "../../lib/i18n";
 import { addMemberSchema, validationMessages } from "../../lib/schemas";
 import type { AddMemberFormValues } from "../../lib/schemas";
 import type { Locale } from "../../lib/translations";
+import { currencyOptions, timezoneOptions } from "../../lib/trip-form-options";
 
 interface TripPatchValues {
   name: string;
@@ -63,6 +64,10 @@ export function TripOverviewPage() {
     }
   });
   const { formState: { errors: memberErrors } } = memberForm;
+  const timezoneSelectOptions = Array.from(new Set([trip?.timezone, ...timezoneOptions].filter(Boolean) as string[]));
+  const currencySelectOptions = Array.from(
+    new Set([trip?.currency, ...currencyOptions.map((item) => item.code)].filter(Boolean) as string[])
+  );
 
   if (isLoading) {
     return <div className="rounded-[28px] bg-white/80 p-6 text-sm text-ink/65">{t("common.loading")}</div>;
@@ -212,11 +217,23 @@ export function TripOverviewPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.timezone")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("timezone")} />
+              <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("timezone")}>
+                {timezoneSelectOptions.map((timezone) => (
+                  <option key={timezone} value={timezone}>
+                    {timezone}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-ink">{t("trip.currency")}</span>
-              <input className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("currency")} />
+              <select className="w-full rounded-2xl border border-ink/10 bg-sand px-4 py-3" {...form.register("currency")}>
+                {currencySelectOptions.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
