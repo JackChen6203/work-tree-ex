@@ -378,7 +378,7 @@
 - [ ] 確認後端 Users/Preferences PostgreSQL 遷移完成
 - [ ] Settings 頁 profile CRUD 切換至真實 API
 - [ ] Settings 頁偏好設定切換至真實 API
-- [ ] 帳號刪除 → 真實 API（目前僅 toast）
+- [x] 帳號刪除 → 真實 API（目前僅 toast）
 
 ### Map / Place API 對接
 - [ ] 確認後端 Map Provider 真實呼叫（Google Maps / Mapbox）

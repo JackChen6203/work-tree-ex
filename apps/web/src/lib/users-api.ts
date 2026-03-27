@@ -125,3 +125,9 @@ export function deleteMyLlmProvider(providerId: string) {
     method: "DELETE"
   });
 }
+
+export function deleteMyAccount() {
+  return apiRequest<void>("/api/v1/users/me", {
+    method: "DELETE"
+  });
+}

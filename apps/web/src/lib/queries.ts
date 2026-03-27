@@ -16,6 +16,7 @@ import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItine
 import { estimateRoute, searchPlaces } from "./maps-api";
 import {
   createMyLlmProvider,
+  deleteMyAccount,
   deleteMyLlmProvider,
   getMyNotificationPreferences,
   getMyPreferences,
@@ -531,6 +532,17 @@ export function usePatchMyProfileMutation() {
     mutationFn: patchMyProfile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", "me"] });
+    }
+  });
+}
+
+export function useDeleteMyAccountMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteMyAccount,
+    onSuccess: () => {
+      queryClient.clear();
     }
   });
 }
