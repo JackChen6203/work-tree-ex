@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	platformdb "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 )
 
 var (
@@ -101,56 +102,73 @@ func addTripMemberPostgres(ctx context.Context, tripID string, in addTripMemberI
 		return tripMember{}, errors.New("postgres collaboration store not configured")
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return tripMember{}, err
-	}
-	defer rollbackTx(ctx, tx)
+	for attempt := 1; ; attempt++ {
+		item, err := func() (tripMember, error) {
+			tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return tripMember{}, err
+			}
+			defer rollbackTx(ctx, tx)
 
-	userID, email, displayName, err := resolveOrCreateMemberUserTx(ctx, tx, strings.TrimSpace(in.UserID), strings.TrimSpace(in.Email), strings.TrimSpace(in.DisplayName))
-	if err != nil {
-		return tripMember{}, err
-	}
+			userID, email, displayName, err := resolveOrCreateMemberUserTx(ctx, tx, strings.TrimSpace(in.UserID), strings.TrimSpace(in.Email), strings.TrimSpace(in.DisplayName))
+			if err != nil {
+				return tripMember{}, err
+			}
 
-	var existingID string
-	err = tx.QueryRow(ctx, `
-		SELECT id::text
-		FROM trip_memberships
-		WHERE trip_id = $1::uuid
-		  AND user_id = $2::uuid
-		  AND status = 'active'
-	`, tripID, userID).Scan(&existingID)
-	if err == nil {
-		return tripMember{}, ErrMemberAlreadyExists
-	}
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return tripMember{}, err
-	}
+			var existingID string
+			err = tx.QueryRow(ctx, `
+				SELECT id::text
+				FROM trip_memberships
+				WHERE trip_id = $1::uuid
+				  AND user_id = $2::uuid
+				  AND status = 'active'
+			`, tripID, userID).Scan(&existingID)
+			if err == nil {
+				return tripMember{}, ErrMemberAlreadyExists
+			}
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return tripMember{}, err
+			}
 
-	now := time.Now().UTC()
-	var item tripMember
-	item.UserID = userID
-	item.Email = email
-	item.DisplayName = displayName
-	err = tx.QueryRow(ctx, `
-		INSERT INTO trip_memberships (trip_id, user_id, role, status, joined_at, created_at, updated_at)
-		VALUES ($1::uuid, $2::uuid, $3, 'active', $4, $4, $4)
-		RETURNING id::text, role, status, joined_at, created_at
-	`, tripID, userID, strings.TrimSpace(in.Role), now).Scan(
-		&item.ID,
-		&item.Role,
-		&item.Status,
-		&item.JoinedAt,
-		&item.CreatedAt,
-	)
-	if err != nil {
-		return tripMember{}, err
-	}
+			now := time.Now().UTC()
+			var item tripMember
+			item.UserID = userID
+			item.Email = email
+			item.DisplayName = displayName
+			err = tx.QueryRow(ctx, `
+				INSERT INTO trip_memberships (trip_id, user_id, role, status, joined_at, created_at, updated_at)
+				VALUES ($1::uuid, $2::uuid, $3, 'active', $4, $4, $4)
+				RETURNING id::text, role, status, joined_at, created_at
+			`, tripID, userID, strings.TrimSpace(in.Role), now).Scan(
+				&item.ID,
+				&item.Role,
+				&item.Status,
+				&item.JoinedAt,
+				&item.CreatedAt,
+			)
+			if err != nil {
+				return tripMember{}, err
+			}
 
-	if err := tx.Commit(ctx); err != nil {
+			if err := tx.Commit(ctx); err != nil {
+				return tripMember{}, err
+			}
+			return item, nil
+		}()
+		if err == nil {
+			return item, nil
+		}
+
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
+		}
+		if platformdb.IsDeadlock(err) {
+			return tripMember{}, platformdb.DeadlockRetryExhaustedError(err)
+		}
 		return tripMember{}, err
 	}
-	return item, nil
 }
 
 func patchTripMemberPostgres(ctx context.Context, tripID, memberID, role string) (tripMember, error) {
@@ -159,75 +177,92 @@ func patchTripMemberPostgres(ctx context.Context, tripID, memberID, role string)
 		return tripMember{}, errors.New("postgres collaboration store not configured")
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return tripMember{}, err
-	}
-	defer rollbackTx(ctx, tx)
+	for attempt := 1; ; attempt++ {
+		item, err := func() (tripMember, error) {
+			tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return tripMember{}, err
+			}
+			defer rollbackTx(ctx, tx)
 
-	var item tripMember
-	err = tx.QueryRow(ctx, `
-		SELECT tm.id::text,
-		       tm.user_id::text,
-		       COALESCE(u.email::text, ''),
-		       COALESCE(u.display_name, ''),
-		       tm.role,
-		       tm.status,
-		       COALESCE(tm.joined_at, tm.created_at),
-		       tm.created_at
-		FROM trip_memberships tm
-		LEFT JOIN users u ON u.id = tm.user_id
-		WHERE tm.trip_id = $1::uuid
-		  AND tm.id = $2::uuid
-		  AND tm.status = 'active'
-		FOR UPDATE
-	`, tripID, memberID).Scan(
-		&item.ID,
-		&item.UserID,
-		&item.Email,
-		&item.DisplayName,
-		&item.Role,
-		&item.Status,
-		&item.JoinedAt,
-		&item.CreatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return tripMember{}, ErrMemberNotFound
-	}
-	if err != nil {
-		return tripMember{}, err
-	}
+			var item tripMember
+			err = tx.QueryRow(ctx, `
+				SELECT tm.id::text,
+				       tm.user_id::text,
+				       COALESCE(u.email::text, ''),
+				       COALESCE(u.display_name, ''),
+				       tm.role,
+				       tm.status,
+				       COALESCE(tm.joined_at, tm.created_at),
+				       tm.created_at
+				FROM trip_memberships tm
+				LEFT JOIN users u ON u.id = tm.user_id
+				WHERE tm.trip_id = $1::uuid
+				  AND tm.id = $2::uuid
+				  AND tm.status = 'active'
+				FOR UPDATE
+			`, tripID, memberID).Scan(
+				&item.ID,
+				&item.UserID,
+				&item.Email,
+				&item.DisplayName,
+				&item.Role,
+				&item.Status,
+				&item.JoinedAt,
+				&item.CreatedAt,
+			)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return tripMember{}, ErrMemberNotFound
+			}
+			if err != nil {
+				return tripMember{}, err
+			}
 
-	if item.Role == "owner" && role != "owner" {
-		var ownerCount int
-		if err := tx.QueryRow(ctx, `
-			SELECT COUNT(1)
-			FROM trip_memberships
-			WHERE trip_id = $1::uuid
-			  AND status = 'active'
-			  AND role = 'owner'
-		`, tripID).Scan(&ownerCount); err != nil {
-			return tripMember{}, err
+			if item.Role == "owner" && role != "owner" {
+				var ownerCount int
+				if err := tx.QueryRow(ctx, `
+					SELECT COUNT(1)
+					FROM trip_memberships
+					WHERE trip_id = $1::uuid
+					  AND status = 'active'
+					  AND role = 'owner'
+				`, tripID).Scan(&ownerCount); err != nil {
+					return tripMember{}, err
+				}
+				if ownerCount <= 1 {
+					return tripMember{}, ErrLastOwner
+				}
+			}
+
+			if _, err := tx.Exec(ctx, `
+				UPDATE trip_memberships
+				SET role = $3, updated_at = $4
+				WHERE trip_id = $1::uuid
+				  AND id = $2::uuid
+			`, tripID, memberID, role, time.Now().UTC()); err != nil {
+				return tripMember{}, err
+			}
+			item.Role = role
+
+			if err := tx.Commit(ctx); err != nil {
+				return tripMember{}, err
+			}
+			return item, nil
+		}()
+		if err == nil {
+			return item, nil
 		}
-		if ownerCount <= 1 {
-			return tripMember{}, ErrLastOwner
+
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
 		}
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE trip_memberships
-		SET role = $3, updated_at = $4
-		WHERE trip_id = $1::uuid
-		  AND id = $2::uuid
-	`, tripID, memberID, role, time.Now().UTC()); err != nil {
+		if platformdb.IsDeadlock(err) {
+			return tripMember{}, platformdb.DeadlockRetryExhaustedError(err)
+		}
 		return tripMember{}, err
 	}
-	item.Role = role
-
-	if err := tx.Commit(ctx); err != nil {
-		return tripMember{}, err
-	}
-	return item, nil
 }
 
 func removeTripMemberPostgres(ctx context.Context, tripID, memberID string) error {
@@ -236,55 +271,72 @@ func removeTripMemberPostgres(ctx context.Context, tripID, memberID string) erro
 		return errors.New("postgres collaboration store not configured")
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer rollbackTx(ctx, tx)
+	for attempt := 1; ; attempt++ {
+		err := func() error {
+			tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return err
+			}
+			defer rollbackTx(ctx, tx)
 
-	var role string
-	err = tx.QueryRow(ctx, `
-		SELECT role
-		FROM trip_memberships
-		WHERE trip_id = $1::uuid
-		  AND id = $2::uuid
-		  AND status = 'active'
-		FOR UPDATE
-	`, tripID, memberID).Scan(&role)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrMemberNotFound
-	}
-	if err != nil {
-		return err
-	}
+			var role string
+			err = tx.QueryRow(ctx, `
+				SELECT role
+				FROM trip_memberships
+				WHERE trip_id = $1::uuid
+				  AND id = $2::uuid
+				  AND status = 'active'
+				FOR UPDATE
+			`, tripID, memberID).Scan(&role)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrMemberNotFound
+			}
+			if err != nil {
+				return err
+			}
 
-	if role == "owner" {
-		var ownerCount int
-		if err := tx.QueryRow(ctx, `
-			SELECT COUNT(1)
-			FROM trip_memberships
-			WHERE trip_id = $1::uuid
-			  AND status = 'active'
-			  AND role = 'owner'
-		`, tripID).Scan(&ownerCount); err != nil {
-			return err
+			if role == "owner" {
+				var ownerCount int
+				if err := tx.QueryRow(ctx, `
+					SELECT COUNT(1)
+					FROM trip_memberships
+					WHERE trip_id = $1::uuid
+					  AND status = 'active'
+					  AND role = 'owner'
+				`, tripID).Scan(&ownerCount); err != nil {
+					return err
+				}
+				if ownerCount <= 1 {
+					return ErrLastOwner
+				}
+			}
+
+			if _, err := tx.Exec(ctx, `
+				UPDATE trip_memberships
+				SET status = 'removed',
+				    updated_at = $3
+				WHERE trip_id = $1::uuid
+				  AND id = $2::uuid
+			`, tripID, memberID, time.Now().UTC()); err != nil {
+				return err
+			}
+
+			return tx.Commit(ctx)
+		}()
+		if err == nil {
+			return nil
 		}
-		if ownerCount <= 1 {
-			return ErrLastOwner
-		}
-	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE trip_memberships
-		SET status = 'removed',
-		    updated_at = $3
-		WHERE trip_id = $1::uuid
-		  AND id = $2::uuid
-	`, tripID, memberID, time.Now().UTC()); err != nil {
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
+		}
+		if platformdb.IsDeadlock(err) {
+			return platformdb.DeadlockRetryExhaustedError(err)
+		}
 		return err
 	}
-
-	return tx.Commit(ctx)
 }
 
 func createInvitationPostgres(ctx context.Context, tripID string, in createInvitationInput) (invitation, bool, error) {
@@ -480,99 +532,116 @@ func acceptInvitationPostgres(ctx context.Context, tripID, invitationID string) 
 		return invitation{}, tripMember{}, errors.New("postgres collaboration store not configured")
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return invitation{}, tripMember{}, err
-	}
-	defer rollbackTx(ctx, tx)
-
-	var inv invitation
-	err = tx.QueryRow(ctx, `
-		SELECT id::text, trip_id::text, invited_by_user_id::text, invitee_email::text, role, token_hash, status, expires_at, accepted_at, created_at
-		FROM trip_invitations
-		WHERE trip_id = $1::uuid
-		  AND id = $2::uuid
-		FOR UPDATE
-	`, tripID, invitationID).Scan(
-		&inv.ID,
-		&inv.TripID,
-		&inv.InvitedBy,
-		&inv.Email,
-		&inv.Role,
-		&inv.TokenHash,
-		&inv.Status,
-		&inv.ExpiresAt,
-		&inv.AcceptedAt,
-		&inv.CreatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return invitation{}, tripMember{}, ErrInvitationNotFound
-	}
-	if err != nil {
-		return invitation{}, tripMember{}, err
-	}
-
-	now := time.Now().UTC()
-	if inv.Status == "expired" || inv.ExpiresAt.Before(now) {
-		if inv.Status == "pending" {
-			if _, err := tx.Exec(ctx, `
-				UPDATE trip_invitations
-				SET status = 'expired'
-				WHERE id = $1::uuid
-			`, invitationID); err != nil {
+	for attempt := 1; ; attempt++ {
+		inv, member, err := func() (invitation, tripMember, error) {
+			tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
 				return invitation{}, tripMember{}, err
 			}
+			defer rollbackTx(ctx, tx)
+
+			var inv invitation
+			err = tx.QueryRow(ctx, `
+				SELECT id::text, trip_id::text, invited_by_user_id::text, invitee_email::text, role, token_hash, status, expires_at, accepted_at, created_at
+				FROM trip_invitations
+				WHERE trip_id = $1::uuid
+				  AND id = $2::uuid
+				FOR UPDATE
+			`, tripID, invitationID).Scan(
+				&inv.ID,
+				&inv.TripID,
+				&inv.InvitedBy,
+				&inv.Email,
+				&inv.Role,
+				&inv.TokenHash,
+				&inv.Status,
+				&inv.ExpiresAt,
+				&inv.AcceptedAt,
+				&inv.CreatedAt,
+			)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return invitation{}, tripMember{}, ErrInvitationNotFound
+			}
+			if err != nil {
+				return invitation{}, tripMember{}, err
+			}
+
+			now := time.Now().UTC()
+			if inv.Status == "expired" || inv.ExpiresAt.Before(now) {
+				if inv.Status == "pending" {
+					if _, err := tx.Exec(ctx, `
+						UPDATE trip_invitations
+						SET status = 'expired'
+						WHERE id = $1::uuid
+					`, invitationID); err != nil {
+						return invitation{}, tripMember{}, err
+					}
+				}
+				return invitation{}, tripMember{}, ErrInvitationExpired
+			}
+
+			if inv.Status != "pending" {
+				return invitation{}, tripMember{}, ErrInvitationNotPending
+			}
+
+			if _, err := tx.Exec(ctx, `
+				UPDATE trip_invitations
+				SET status = 'accepted',
+				    accepted_at = $2
+				WHERE id = $1::uuid
+			`, invitationID, now); err != nil {
+				return invitation{}, tripMember{}, err
+			}
+			inv.Status = "accepted"
+			inv.AcceptedAt = &now
+
+			userID, email, displayName, err := resolveOrCreateMemberUserTx(ctx, tx, "", inv.Email, inv.Email)
+			if err != nil {
+				return invitation{}, tripMember{}, err
+			}
+
+			member, err := getActiveMembershipByUserIDTx(ctx, tx, tripID, userID)
+			if err != nil && !errors.Is(err, ErrMemberNotFound) {
+				return invitation{}, tripMember{}, err
+			}
+			if errors.Is(err, ErrMemberNotFound) {
+				member.UserID = userID
+				member.Email = email
+				member.DisplayName = displayName
+				if err := tx.QueryRow(ctx, `
+					INSERT INTO trip_memberships (trip_id, user_id, role, status, joined_at, created_at, updated_at)
+					VALUES ($1::uuid, $2::uuid, $3, 'active', $4, $4, $4)
+					RETURNING id::text, role, status, joined_at, created_at
+				`, tripID, userID, inv.Role, now).Scan(
+					&member.ID,
+					&member.Role,
+					&member.Status,
+					&member.JoinedAt,
+					&member.CreatedAt,
+				); err != nil {
+					return invitation{}, tripMember{}, err
+				}
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				return invitation{}, tripMember{}, err
+			}
+			return inv, member, nil
+		}()
+		if err == nil {
+			return inv, member, nil
 		}
-		return invitation{}, tripMember{}, ErrInvitationExpired
-	}
 
-	if inv.Status != "pending" {
-		return invitation{}, tripMember{}, ErrInvitationNotPending
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE trip_invitations
-		SET status = 'accepted',
-		    accepted_at = $2
-		WHERE id = $1::uuid
-	`, invitationID, now); err != nil {
-		return invitation{}, tripMember{}, err
-	}
-	inv.Status = "accepted"
-	inv.AcceptedAt = &now
-
-	userID, email, displayName, err := resolveOrCreateMemberUserTx(ctx, tx, "", inv.Email, inv.Email)
-	if err != nil {
-		return invitation{}, tripMember{}, err
-	}
-
-	member, err := getActiveMembershipByUserIDTx(ctx, tx, tripID, userID)
-	if err != nil && !errors.Is(err, ErrMemberNotFound) {
-		return invitation{}, tripMember{}, err
-	}
-	if errors.Is(err, ErrMemberNotFound) {
-		member.UserID = userID
-		member.Email = email
-		member.DisplayName = displayName
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO trip_memberships (trip_id, user_id, role, status, joined_at, created_at, updated_at)
-			VALUES ($1::uuid, $2::uuid, $3, 'active', $4, $4, $4)
-			RETURNING id::text, role, status, joined_at, created_at
-		`, tripID, userID, inv.Role, now).Scan(
-			&member.ID,
-			&member.Role,
-			&member.Status,
-			&member.JoinedAt,
-			&member.CreatedAt,
-		); err != nil {
-			return invitation{}, tripMember{}, err
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
 		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
+		if platformdb.IsDeadlock(err) {
+			return invitation{}, tripMember{}, platformdb.DeadlockRetryExhaustedError(err)
+		}
 		return invitation{}, tripMember{}, err
 	}
-	return inv, member, nil
 }
 
 func createShareLinkPostgres(ctx context.Context, tripID string) (shareLink, error) {

@@ -128,6 +128,13 @@ function buildPointFeatureCollection(
 }
 
 function buildLineFeatureCollection(points: LatLng[]): FeatureCollection<LineString> {
+  if (points.length < 2) {
+    return {
+      type: "FeatureCollection",
+      features: []
+    };
+  }
+
   return {
     type: "FeatureCollection",
     features: [
@@ -357,10 +364,6 @@ export class MapboxAdapter implements MapProviderAdapter {
         map.fitBounds(bounds, { padding: 48, duration: 450, maxZoom: 14 });
       },
       setRoutePath: (points) => {
-        if (points.length < 2) {
-          return;
-        }
-
         if (map.isStyleLoaded()) {
           setRoutePath(points);
           return;

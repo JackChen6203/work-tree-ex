@@ -25,9 +25,16 @@ interface MockItineraryDay {
     title: string;
     itemType: string;
     allDay: boolean;
+    startAt?: string;
+    endAt?: string;
     sortOrder: number;
     version: number;
     note?: string;
+    placeId?: string;
+    lat?: number;
+    lng?: number;
+    estimatedCostAmount?: number;
+    estimatedCostCurrency?: string;
   }>;
 }
 
@@ -53,7 +60,17 @@ interface MockExpense {
   currency: string;
   expenseAt?: string;
   note?: string;
+  linkedItemId?: string;
   createdAt: string;
+}
+
+interface MockRate {
+  from: string;
+  to: string;
+  rate: number;
+  source: string;
+  fetchedAt: string;
+  staleAt?: string;
 }
 
 interface MockNotification {
@@ -64,6 +81,26 @@ interface MockNotification {
   link: string;
   createdAt: string;
   readAt?: string;
+}
+
+interface MockShareLink {
+  id: string;
+  tripId: string;
+  token?: string;
+  accessScope: string;
+  createdAt: string;
+  revokedAt?: string;
+}
+
+interface MockInvitation {
+  id: string;
+  tripId: string;
+  invitedByUserId: string;
+  inviteeEmail: string;
+  role: "editor" | "commenter" | "viewer";
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expiresAt: string;
+  createdAt: string;
 }
 
 interface InstallApiMocksOptions {
@@ -111,6 +148,40 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
       createdAt: now
     }
   ];
+  const shareLinksByTrip = new Map<string, MockShareLink[]>();
+  const invitationsByTrip = new Map<string, MockInvitation[]>();
+  const rates = new Map<string, MockRate>([
+    [
+      "USD:JPY",
+      {
+        from: "USD",
+        to: "JPY",
+        rate: 150,
+        source: "mock-e2e",
+        fetchedAt: now
+      }
+    ],
+    [
+      "TWD:JPY",
+      {
+        from: "TWD",
+        to: "JPY",
+        rate: 4.7,
+        source: "mock-e2e",
+        fetchedAt: now
+      }
+    ],
+    [
+      "EUR:JPY",
+      {
+        from: "EUR",
+        to: "JPY",
+        rate: 163,
+        source: "mock-e2e",
+        fetchedAt: now
+      }
+    ]
+  ]);
 
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
@@ -162,6 +233,8 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
           items: []
         }
       ]);
+      shareLinksByTrip.set(created.id, []);
+      invitationsByTrip.set(created.id, []);
       budgetByTrip.set(created.id, {
         tripId: created.id,
         totalBudget: 0,
@@ -198,6 +271,82 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
       return;
     }
 
+    if (method === "GET" && /^\/api\/v1\/trips\/[^/]+\/share-links$/.test(path)) {
+      const tripId = path.split("/")[4];
+      await route.fulfill(json(shareLinksByTrip.get(tripId) ?? []));
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/share-links$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const list = shareLinksByTrip.get(tripId) ?? [];
+      const created: MockShareLink = {
+        id: `sl-${list.length + 1}`,
+        tripId,
+        token: `token-${list.length + 1}`,
+        accessScope: "read_only",
+        createdAt: new Date().toISOString()
+      };
+      list.unshift(created);
+      shareLinksByTrip.set(tripId, list);
+      await route.fulfill(json(created, 201));
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/share-links\/[^/]+\/revoke$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const linkId = path.split("/")[6];
+      const list = shareLinksByTrip.get(tripId) ?? [];
+      const item = list.find((entry) => entry.id === linkId);
+      if (!item) {
+        await route.fulfill(json({ message: "not found" }, 404));
+        return;
+      }
+      item.revokedAt = new Date().toISOString();
+      await route.fulfill(json(item));
+      return;
+    }
+
+    if (method === "GET" && /^\/api\/v1\/trips\/[^/]+\/invitations$/.test(path)) {
+      const tripId = path.split("/")[4];
+      await route.fulfill(json(invitationsByTrip.get(tripId) ?? []));
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/invitations$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const body = await parseBody(route);
+      const list = invitationsByTrip.get(tripId) ?? [];
+      const created: MockInvitation = {
+        id: `inv-${list.length + 1}`,
+        tripId,
+        invitedByUserId: "u-e2e",
+        inviteeEmail: String(body.inviteeEmail ?? "invitee@example.com"),
+        role: (body.role as "editor" | "commenter" | "viewer") ?? "viewer",
+        status: "pending",
+        expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
+        createdAt: new Date().toISOString()
+      };
+      list.unshift(created);
+      invitationsByTrip.set(tripId, list);
+      await route.fulfill(json(created, 201));
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/invitations\/[^/]+\/revoke$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const invitationId = path.split("/")[6];
+      const list = invitationsByTrip.get(tripId) ?? [];
+      const item = list.find((entry) => entry.id === invitationId);
+      if (!item) {
+        await route.fulfill(json({ message: "not found" }, 404));
+        return;
+      }
+      item.status = "revoked";
+      await route.fulfill(json(item));
+      return;
+    }
+
     if (method === "GET" && /^\/api\/v1\/trips\/[^/]+\/days$/.test(path)) {
       const tripId = path.split("/")[4];
       await route.fulfill(json(itineraryByTrip.get(tripId) ?? []));
@@ -221,9 +370,16 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
         title: String(body.title ?? "New item"),
         itemType: String(body.itemType ?? "custom"),
         allDay: Boolean(body.allDay ?? false),
+        startAt: body.startAt ? String(body.startAt) : undefined,
+        endAt: body.endAt ? String(body.endAt) : undefined,
         sortOrder: targetDay.items.length + 1,
         version: 1,
-        note: String(body.note ?? "")
+        note: String(body.note ?? ""),
+        placeId: body.placeId ? String(body.placeId) : undefined,
+        lat: typeof body.lat === "number" ? body.lat : undefined,
+        lng: typeof body.lng === "number" ? body.lng : undefined,
+        estimatedCostAmount: typeof body.estimatedCostAmount === "number" ? body.estimatedCostAmount : undefined,
+        estimatedCostCurrency: body.estimatedCostCurrency ? String(body.estimatedCostCurrency) : undefined
       };
       targetDay.items.push(createdItem);
       await route.fulfill(json(createdItem, 201));
@@ -281,11 +437,46 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
         currency: String(body.currency ?? "JPY"),
         note: String(body.note ?? ""),
         expenseAt: body.expenseAt ? String(body.expenseAt) : undefined,
+        linkedItemId: body.linkedItemId ? String(body.linkedItemId) : undefined,
         createdAt: new Date().toISOString()
       };
       expenses.push(created);
       expensesByTrip.set(tripId, expenses);
       await route.fulfill(json(created, 201));
+      return;
+    }
+
+    if (method === "GET" && /^\/api\/v1\/trips\/[^/]+\/budget\/rates$/.test(path)) {
+      const from = (url.searchParams.get("from") ?? "").toUpperCase();
+      const to = (url.searchParams.get("to") ?? "").toUpperCase();
+      if (from && to) {
+        const found = rates.get(`${from}:${to}`);
+        if (!found) {
+          await route.fulfill(json({ message: "rate unavailable" }, 404));
+          return;
+        }
+        await route.fulfill(json(found));
+        return;
+      }
+
+      await route.fulfill(json(Array.from(rates.values())));
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/budget\/rates\/refresh$/.test(path)) {
+      const from = (url.searchParams.get("from") ?? "USD").toUpperCase();
+      const to = (url.searchParams.get("to") ?? "JPY").toUpperCase();
+      const key = `${from}:${to}`;
+      const existing = rates.get(key);
+      const next: MockRate = {
+        from,
+        to,
+        rate: existing ? existing.rate * 1.001 : 1,
+        source: "mock-e2e-refresh",
+        fetchedAt: new Date().toISOString()
+      };
+      rates.set(key, next);
+      await route.fulfill(json(next));
       return;
     }
 
@@ -302,6 +493,36 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
             categories: ["city"]
           }
         ])
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/api/v1/maps/routes") {
+      await route.fulfill(
+        json({
+          mode: "transit",
+          distanceMeters: 2800,
+          durationSeconds: 720,
+          estimatedCostAmount: 560,
+          estimatedCostCurrency: "JPY",
+          provider: "mock-e2e-map"
+        })
+      );
+      return;
+    }
+
+    if (method === "GET" && /^\/api\/v1\/maps\/places\/[^/]+$/.test(path)) {
+      const placeId = path.split("/")[5];
+      await route.fulfill(
+        json({
+          providerPlaceId: placeId,
+          name: placeId,
+          address: "Kyoto",
+          lat: 35.0116,
+          lng: 135.7681,
+          categories: ["poi"],
+          openingHours: "09:00-18:00"
+        })
       );
       return;
     }

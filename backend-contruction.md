@@ -2,6 +2,14 @@
 
 ---
 
+## Runtime Topology（單主機優先）
+
+- 預設 `RUNTIME_MODE=single`：以單主機為主，使用本地 in-memory 行為。
+- 設定 `RUNTIME_MODE=distributed` 才啟用 Redis-backed 分佈式能力（Rate Limit、AI planning lock、部分快取）。
+- 此設計為「先單機、後擴展」：保留分佈式能力但不影響目前單主機部署。
+
+---
+
 ## BE-01｜API Gateway / HTTP Layer
 
 **模式**：REST 入口、中介軟體層、統一請求/回應處理
@@ -883,11 +891,14 @@ Step 3: 旅行風格偏好（可跳過）
 **模式**：替換 mock adapter 為真實 HTTP client
 
 ### 細部功能
-- 從 `llm_provider_configs.encrypted_key` 解密取得真實 API key
-- 組裝 system/context/user 三層 prompt 發送到真實 API
-- 解析 structured JSON output
-- Token 用量與 cost 寫入 `ai_plan_requests`
+- 從 `llm_provider_configs.encrypted_key` 解密取得真實 API key（`encv1:<nonce>:<ciphertext>`，AES-256-GCM）
+- OpenAI Chat Completions（`gpt-4.1-mini` / `gpt-4.1`）JSON mode
+- Anthropic Messages API（`claude-sonnet-4-20250514`）結構化 JSON 輸出解析
+- Google Gemini Generate Content JSON mode（`responseMimeType=application/json`）
+- Token 用量與 cost 寫入 `ai_plan_requests`（`prompt_tokens` / `completion_tokens` / `estimated_cost`）
+- Provider error mapping（timeout / auth / quota / upstream）統一錯誤碼
 - 30s timeout + context cancellation
+- Circuit breaker（連續失敗暫停接單）
 
 ---
 
@@ -896,20 +907,36 @@ Step 3: 旅行風格偏好（可跳過）
 **模式**：替換 mock map adapter 為 Google Maps / Mapbox
 
 ### 細部功能
-- Place Search → 真實 API 呼叫，response normalize 為 `PlaceSnapshot`
-- Route Estimation → 真實 API 呼叫，response normalize 為 `RouteSnapshot`
-- Geocode / Reverse Geocode → 真實 API
-- Quota 監控 + 每日用量上限
+- Google Maps：Places / Geocoding / Directions 真實 API 呼叫
+- Mapbox：Geocoding / Directions 作為備援 provider
+- Place Search / Detail / Geocode / Reverse Geocode / Route 統一 normalize 為 `NormalizedPlace` / `NormalizedRoute`
+- API key 由環境變數注入（`GOOGLE_MAPS_API_KEY`, `MAPBOX_API_KEY`）
+- 主備 provider fallback（`MAP_PRIMARY_PROVIDER` + 自動備援）
+- Quota 監控（`MAP_DAILY_QUOTA`）+ 每秒 rate limit（`MAP_RPS_LIMIT`）
 
 ---
 
 ## BE-P2-06｜真實 FCM / Email
 
-**模式**：替換 mock notification delivery 為 Firebase + Email provider
+**模式**：先完成 FCM 真實推播與失敗處理；Email provider 續作
 
 ### 細部功能
-- Firebase Admin SDK 初始化
-- `messaging.Send()` 真實推播
-- SendGrid / Resend API 真實發信
-- Email template rendering（Go `html/template`）
+- FCM token 寫入 PostgreSQL（`POST /fcm-tokens` upsert）
+- Trigger notification 時組裝 push payload（title/body/data/click_action）
+- 可選 FCM HTTP gateway（`FCM_SERVER_KEY` + `FCM_SEND_ENDPOINT`）啟用真實發送
+- Push 失敗重試（指數退避）與重試超限標記 `dlq`
+- FCM invalid token 自動標記 `is_active=false`
+- Email provider（SendGrid / SES / Resend）與 template rendering 待續作
 
+---
+
+## BE-P2-08｜Outbox Worker 真實消費
+
+**模式**：背景 worker 輪詢 PostgreSQL outbox，成功 ack，失敗 retry / DLQ
+
+### 細部功能
+- Worker 以 `WORKER_POLL_INTERVAL_SEC` 週期輪詢 pending outbox（`available_at <= now()`）
+- 每輪最多處理 `WORKER_BATCH_SIZE` 筆事件
+- 消費後寫入 in-app notification，並觸發 FCM push（若可用）
+- 消費失敗時 nack：`retry_count + 1` + 指數退避；超過上限進入 `dlq`
+- SIGTERM/SIGINT graceful shutdown（完成當前 cycle 後退出）

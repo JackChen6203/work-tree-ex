@@ -2,10 +2,12 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,6 +51,9 @@ const sessionCookieName = "tt_session"
 
 // accessTokenTTL is the default JWT access token duration.
 const accessTokenTTL = 15 * time.Minute
+
+// webSessionTTL is cookie session duration for browser session hydration.
+const webSessionTTL = 24 * time.Hour
 
 // refreshTokenTTL is the default refresh token duration.
 const refreshTokenTTL = 7 * 24 * time.Hour
@@ -128,7 +133,7 @@ var oauthProviders = map[string]oauthProviderConfig{
 }
 
 var (
-	authStateMu     sync.Mutex
+	authStateMu     sync.RWMutex
 	pendingCodes    = map[string]codeEntry{}
 	oauthStates     = map[string]oauthStateEntry{}
 	sessions        = map[string]*sessionUser{}
@@ -163,6 +168,9 @@ func startOAuth(c *gin.Context) {
 
 	state, err := generateOpaqueToken(32)
 	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate oauth state", nil)
 		return
 	}
@@ -278,12 +286,17 @@ func callbackOAuth(c *gin.Context) {
 		c.Redirect(http.StatusFound, redirectURL)
 		return
 	}
-	if err := upsertSessionLocked(c, user); err != nil {
+	sessionID, err := upsertSessionLocked(c, user)
+	if err != nil {
 		authStateMu.Unlock()
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create session", nil)
 		return
 	}
 	authStateMu.Unlock()
+	setCachedWebSession(c.Request.Context(), sessionID, user, webSessionTTL)
 
 	frontendURL := buildFrontendBaseURL(c)
 	redirectURL := frontendURL + "/login?oauth=success&provider=" + url.QueryEscape(provider)
@@ -314,6 +327,9 @@ func requestMagicLink(c *gin.Context) {
 
 	code, err := generateCode(6)
 	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate magic-link code", nil)
 		return
 	}
@@ -384,12 +400,17 @@ func verifyMagicLink(c *gin.Context) {
 		Email:  email,
 		Avatar: avatarFromEmail(email),
 	}
-	if err := upsertSessionLocked(c, user); err != nil {
+	sessionID, err := upsertSessionLocked(c, user)
+	if err != nil {
 		authStateMu.Unlock()
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create session", nil)
 		return
 	}
 	authStateMu.Unlock()
+	setCachedWebSession(c.Request.Context(), sessionID, user, webSessionTTL)
 
 	response.JSON(c, http.StatusOK, gin.H{
 		"user":  user,
@@ -398,16 +419,24 @@ func verifyMagicLink(c *gin.Context) {
 }
 
 func getSession(c *gin.Context) {
-	authStateMu.Lock()
-	defer authStateMu.Unlock()
-
 	sessionID, err := c.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(sessionID) == "" {
 		response.JSON(c, http.StatusOK, gin.H{"user": nil, "roles": []string{}})
 		return
 	}
 
+	authStateMu.RLock()
 	user, ok := sessions[sessionID]
+	authStateMu.RUnlock()
+	if !ok {
+		if cachedUser, cacheOK := getCachedWebSession(c.Request.Context(), sessionID); cacheOK {
+			user = cachedUser
+			ok = true
+			authStateMu.Lock()
+			sessions[sessionID] = cachedUser
+			authStateMu.Unlock()
+		}
+	}
 	if !ok {
 		response.JSON(c, http.StatusOK, gin.H{"user": nil, "roles": []string{}})
 		return
@@ -417,11 +446,16 @@ func getSession(c *gin.Context) {
 }
 
 func logout(c *gin.Context) {
-	authStateMu.Lock()
-	if sessionID, err := c.Cookie(sessionCookieName); err == nil {
-		delete(sessions, sessionID)
+	sessionID := ""
+	if rawSessionID, err := c.Cookie(sessionCookieName); err == nil {
+		sessionID = strings.TrimSpace(rawSessionID)
 	}
-	authStateMu.Unlock()
+	if sessionID != "" {
+		authStateMu.Lock()
+		delete(sessions, sessionID)
+		authStateMu.Unlock()
+		deleteCachedWebSession(c.Request.Context(), sessionID)
+	}
 
 	clearSessionCookie(c)
 
@@ -493,15 +527,15 @@ func buildFrontendBaseURL(c *gin.Context) string {
 	return "http://localhost:5173"
 }
 
-func upsertSessionLocked(c *gin.Context, user *sessionUser) error {
+func upsertSessionLocked(c *gin.Context, user *sessionUser) (string, error) {
 	sessionID, err := generateOpaqueToken(48)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	sessions[sessionID] = user
 	setSessionCookie(c, sessionID)
-	return nil
+	return sessionID, nil
 }
 
 func setSessionCookie(c *gin.Context, sessionID string) {
@@ -513,7 +547,7 @@ func setSessionCookie(c *gin.Context, sessionID string) {
 		HttpOnly: true,
 		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int((24 * time.Hour).Seconds()),
+		MaxAge:   int(webSessionTTL.Seconds()),
 	})
 }
 
@@ -710,6 +744,61 @@ func refreshToken(c *gin.Context) {
 		return
 	}
 
+	if getPool() != nil {
+		newRefreshRaw, err := generateOpaqueToken(48)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate refresh token", nil)
+			return
+		}
+
+		user, err := rotateRefreshTokenPostgres(c.Request.Context(), token, newRefreshRaw, refreshTokenTTL)
+		if err != nil {
+			if errors.Is(err, ErrRefreshSessionReuse) {
+				response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "refresh token reuse detected, session family revoked", nil)
+				return
+			}
+			if errors.Is(err, ErrRefreshSessionExpired) {
+				response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "refresh token has expired", nil)
+				return
+			}
+			if errors.Is(err, ErrRefreshSessionInvalid) {
+				response.Error(c, http.StatusUnauthorized, perrors.CodeUnauthorized, "invalid or expired refresh token", nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to rotate refresh token", nil)
+			return
+		}
+
+		accessToken, err := generateJWTForUser(user)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate access token", nil)
+			return
+		}
+
+		if sessionID, cookieErr := c.Cookie(sessionCookieName); cookieErr == nil && strings.TrimSpace(sessionID) != "" {
+			authStateMu.Lock()
+			sessions[sessionID] = user
+			authStateMu.Unlock()
+			setCachedWebSession(c.Request.Context(), sessionID, user, webSessionTTL)
+		}
+
+		response.JSON(c, http.StatusOK, gin.H{
+			"accessToken":  accessToken,
+			"refreshToken": newRefreshRaw,
+			"expiresIn":    int(accessTokenTTL.Seconds()),
+		})
+		return
+	}
+
 	tokenHash := sha256.Sum256([]byte(token))
 	hashHex := fmt.Sprintf("%x", tokenHash)
 
@@ -749,6 +838,9 @@ func refreshToken(c *gin.Context) {
 	newRefreshRaw, err := generateOpaqueToken(48)
 	if err != nil {
 		authStateMu.Unlock()
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate refresh token", nil)
 		return
 	}
@@ -764,9 +856,18 @@ func refreshToken(c *gin.Context) {
 	}
 	user := entry.User
 	authStateMu.Unlock()
+	if sessionID, cookieErr := c.Cookie(sessionCookieName); cookieErr == nil && strings.TrimSpace(sessionID) != "" {
+		authStateMu.Lock()
+		sessions[sessionID] = user
+		authStateMu.Unlock()
+		setCachedWebSession(c.Request.Context(), sessionID, user, webSessionTTL)
+	}
 
 	accessToken, err := generateJWTForUser(user)
 	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to generate access token", nil)
 		return
 	}
@@ -792,6 +893,13 @@ func issueTokenPairWithFamily(user *sessionUser, familyID string) (accessToken, 
 	refreshRaw, err = generateOpaqueToken(48)
 	if err != nil {
 		return "", "", familyID, err
+	}
+
+	if getPool() != nil {
+		if err := persistRefreshSessionPostgres(context.Background(), user, familyID, refreshRaw, refreshTokenTTL); err != nil {
+			return "", "", familyID, err
+		}
+		return accessToken, refreshRaw, familyID, nil
 	}
 
 	tokenHash := sha256.Sum256([]byte(refreshRaw))

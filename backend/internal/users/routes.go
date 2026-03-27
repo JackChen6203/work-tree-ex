@@ -113,6 +113,19 @@ func RegisterRoutes(group *gin.RouterGroup) {
 }
 
 func getMe(c *gin.Context) {
+	if getPool() != nil {
+		item, err := getProfilePostgres(c.Request.Context())
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load profile", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
+	}
+
 	usersMu.RLock()
 	item := me
 	usersMu.RUnlock()
@@ -123,6 +136,28 @@ func patchMe(c *gin.Context) {
 	var in profilePatchInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if in.Currency != nil {
+		currency := strings.ToUpper(strings.TrimSpace(*in.Currency))
+		if len(currency) != 3 {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBudgetCurrency, "currency must be ISO-4217 code", nil)
+			return
+		}
+		in.Currency = &currency
+	}
+
+	if getPool() != nil {
+		updated, err := patchProfilePostgres(c.Request.Context(), in)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch profile", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, updated)
 		return
 	}
 
@@ -137,13 +172,7 @@ func patchMe(c *gin.Context) {
 		me.Timezone = strings.TrimSpace(*in.Timezone)
 	}
 	if in.Currency != nil {
-		currency := strings.ToUpper(strings.TrimSpace(*in.Currency))
-		if len(currency) != 3 {
-			usersMu.Unlock()
-			response.Error(c, http.StatusBadRequest, perrors.CodeBudgetCurrency, "currency must be ISO-4217 code", nil)
-			return
-		}
-		me.Currency = currency
+		me.Currency = *in.Currency
 	}
 	updated := me
 	usersMu.Unlock()
@@ -152,6 +181,19 @@ func patchMe(c *gin.Context) {
 }
 
 func getMyPreferences(c *gin.Context) {
+	if getPool() != nil {
+		item, err := getPreferencePostgres(c.Request.Context())
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load preferences", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
+	}
+
 	usersMu.RLock()
 	item := myPreference
 	usersMu.RUnlock()
@@ -169,6 +211,38 @@ func putMyPreferences(c *gin.Context) {
 
 	if strings.TrimSpace(in.TripPace) == "" || strings.TrimSpace(in.WakePattern) == "" || strings.TrimSpace(in.TransportPreference) == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "tripPace, wakePattern, and transportPreference are required", nil)
+		return
+	}
+
+	if getPool() != nil {
+		var expectedVersion *int
+		if ifMatch != "" {
+			expected, err := strconv.Atoi(ifMatch)
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "If-Match-Version must be an integer", nil)
+				return
+			}
+			expectedVersion = &expected
+		}
+
+		updated, err := putPreferencePostgres(c.Request.Context(), in, expectedVersion)
+		if err != nil {
+			if errors.Is(err, ErrPreferenceVersionConflict) {
+				current, loadErr := getPreferencePostgres(c.Request.Context())
+				if loadErr != nil {
+					response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "preference version conflict", nil)
+					return
+				}
+				response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "preference version conflict", gin.H{"currentVersion": current.Version})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to update preferences", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, updated)
 		return
 	}
 
@@ -255,6 +329,9 @@ func listMyProviders(c *gin.Context) {
 	if getPool() != nil {
 		items, err := listProvidersPostgres(c.Request.Context(), providerFilter)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list providers", nil)
 			return
 		}
@@ -288,7 +365,7 @@ func createMyProvider(c *gin.Context) {
 
 	// BE-02 edge case: LLM key encryption failure → 500 alert
 	envelope := strings.TrimSpace(in.EncryptedAPIKeyEnvelope)
-	if !strings.HasPrefix(envelope, "enc_") || len(envelope) < 16 {
+	if !isSupportedProviderEnvelope(envelope) {
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError,
 			"encryption envelope validation failed, key not stored", nil)
 		return
@@ -297,6 +374,9 @@ func createMyProvider(c *gin.Context) {
 	if getPool() != nil {
 		item, err := createProviderPostgres(c.Request.Context(), in)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create provider", nil)
 			return
 		}
@@ -338,6 +418,9 @@ func deleteMyProvider(c *gin.Context) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider not found", gin.H{"providerId": providerID})
 				return
 			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete provider", nil)
 			return
 		}
@@ -362,8 +445,11 @@ func deleteMyProvider(c *gin.Context) {
 
 func deleteMe(c *gin.Context) {
 	if getPool() != nil {
-		if err := clearProvidersPostgres(c.Request.Context()); err != nil {
-			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to clear provider configs", nil)
+		if err := clearUserDataPostgres(c.Request.Context()); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to clear account data", nil)
 			return
 		}
 	}
@@ -406,4 +492,13 @@ func isHHMM(v string) bool {
 		return false
 	}
 	return !(hour > "23")
+}
+
+func isSupportedProviderEnvelope(envelope string) bool {
+	value := strings.TrimSpace(envelope)
+	if strings.HasPrefix(value, "encv1:") {
+		parts := strings.SplitN(value, ":", 3)
+		return len(parts) == 3 && strings.TrimSpace(parts[1]) != "" && strings.TrimSpace(parts[2]) != ""
+	}
+	return strings.HasPrefix(value, "enc_") && len(value) >= 16
 }

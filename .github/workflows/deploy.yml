@@ -63,14 +63,7 @@ jobs:
           MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
         run: |
           test -n "$MIGRATE_DATABASE_URL"
-          set +e
-          output=$(migrate -path backend/migrations -database "$MIGRATE_DATABASE_URL" up 2>&1)
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          if [ "$status" -ne 0 ] && [[ "$output" != *"no change"* ]]; then
-            exit "$status"
-          fi
+          ./scripts/migrate.sh up
 
   deploy:
     name: Deploy To Oracle VPS

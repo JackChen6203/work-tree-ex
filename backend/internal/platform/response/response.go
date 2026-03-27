@@ -1,9 +1,11 @@
 package response
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	platformdb "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 )
 
@@ -40,6 +42,15 @@ func Error(c *gin.Context, status int, code, message string, details any) {
 
 func NotImplemented(c *gin.Context, feature string) {
 	Error(c, http.StatusNotImplemented, perrors.CodeNotImplemented, "feature is not implemented yet", gin.H{"feature": feature})
+}
+
+func DatabaseUnavailable(c *gin.Context, err error) bool {
+	if !platformdb.IsPoolExhausted(err) && !errors.Is(err, platformdb.ErrDeadlockRetryExhausted) {
+		return false
+	}
+	c.Writer.Header().Set("Retry-After", "1")
+	Error(c, http.StatusServiceUnavailable, perrors.CodeServiceUnavailable, "database temporarily unavailable, please retry", nil)
+	return true
 }
 
 func toString(v any) string {

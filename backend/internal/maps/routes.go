@@ -1,9 +1,12 @@
 package maps
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,37 +30,68 @@ type routeEstimateInput struct {
 	Mode string `json:"mode"`
 }
 
-// --- Quota / Circuit Breaker ---
-
 var (
 	quotaCounter atomic.Int64
-	quotaLimit   int64 = 1000
+	quotaLimit   int64 = 10000
 	quotaResetAt time.Time
 	quotaMu      sync.Mutex
-	circuitOpen  bool
+
+	rpsLimit  int64 = 20
+	rpsWindow time.Time
+	rpsCount  int64
+	rpsMu     sync.Mutex
+
+	limitsOnce sync.Once
 )
 
-func checkQuota() bool {
-	quotaMu.Lock()
-	defer quotaMu.Unlock()
-	now := time.Now().UTC()
-	if now.After(quotaResetAt) {
-		quotaCounter.Store(0)
-		quotaResetAt = now.Add(1 * time.Hour)
-		circuitOpen = false
-	}
-	if circuitOpen {
-		return false
-	}
-	current := quotaCounter.Add(1)
-	if current > quotaLimit {
-		circuitOpen = true
-		return false
-	}
-	return true
+func initProviderLimits() {
+	limitsOnce.Do(func() {
+		quotaLimit = int64(getEnvInt("MAP_DAILY_QUOTA", 10000))
+		rpsLimit = int64(getEnvInt("MAP_RPS_LIMIT", 20))
+		if quotaLimit <= 0 {
+			quotaLimit = 10000
+		}
+		if rpsLimit <= 0 {
+			rpsLimit = 20
+		}
+	})
 }
 
-// --- Place store for detail lookups ---
+func enforceProviderLimits() (allowed bool, reason string) {
+	initProviderLimits()
+	now := time.Now().UTC()
+
+	rpsMu.Lock()
+	currentWindow := now.Truncate(time.Second)
+	if rpsWindow.IsZero() || !rpsWindow.Equal(currentWindow) {
+		rpsWindow = currentWindow
+		rpsCount = 0
+	}
+	if rpsCount >= rpsLimit {
+		rpsMu.Unlock()
+		return false, "rps"
+	}
+	rpsCount++
+	rpsMu.Unlock()
+
+	quotaMu.Lock()
+	if quotaResetAt.IsZero() || !now.Before(quotaResetAt) {
+		quotaCounter.Store(0)
+		quotaResetAt = nextUTCMidnight(now)
+	}
+	quotaMu.Unlock()
+
+	current := quotaCounter.Add(1)
+	if current > quotaLimit {
+		return false, "quota"
+	}
+	return true, ""
+}
+
+func nextUTCMidnight(now time.Time) time.Time {
+	year, month, day := now.Date()
+	return time.Date(year, month, day+1, 0, 0, 0, 0, time.UTC)
+}
 
 var placeStore = map[string]NormalizedPlace{
 	"poi_kiyomizu":  {ProviderPlaceID: "poi_kiyomizu", Name: "Kiyomizu-dera", Address: "Kyoto Higashiyama Ward", Lat: 34.9949, Lng: 135.7850, Categories: []string{"temple", "landmark"}},
@@ -74,9 +108,8 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 }
 
 func searchPlaces(c *gin.Context) {
-	if !checkQuota() {
-		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
-			"map provider quota exceeded, try again later", nil)
+	if ok, reason := enforceProviderLimits(); !ok {
+		respondLimitError(c, reason)
 		return
 	}
 
@@ -99,6 +132,283 @@ func searchPlaces(c *gin.Context) {
 	lat := parseFloatWithDefault(c.Query("lat"), 35.0116)
 	lng := parseFloatWithDefault(c.Query("lng"), 135.7681)
 
+	providers := loadProviderChainFromEnv()
+	if len(providers) == 0 {
+		response.JSON(c, http.StatusOK, mockSearchPlaces(q, limit, lat, lng))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), defaultProviderTimeout)
+	defer cancel()
+
+	items, err := searchPlacesWithFallback(ctx, providers, PlaceSearchRequest{
+		Query: q,
+		Lat:   lat,
+		Lng:   lng,
+		Limit: limit,
+	})
+	if err != nil {
+		respondProviderError(c, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, items)
+}
+
+func estimateRoute(c *gin.Context) {
+	if ok, reason := enforceProviderLimits(); !ok {
+		respondLimitError(c, reason)
+		return
+	}
+
+	var in routeEstimateInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	providers := loadProviderChainFromEnv()
+	if len(providers) == 0 {
+		response.JSON(c, http.StatusOK, mockEstimateRoute(in))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), defaultProviderTimeout)
+	defer cancel()
+
+	route, err := estimateRouteWithFallback(ctx, providers, RouteEstimateRequest{
+		OriginLat:      in.Origin.Lat,
+		OriginLng:      in.Origin.Lng,
+		DestinationLat: in.Destination.Lat,
+		DestinationLng: in.Destination.Lng,
+		Mode:           in.Mode,
+	})
+	if err != nil {
+		respondProviderError(c, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, route)
+}
+
+func geocode(c *gin.Context) {
+	if ok, reason := enforceProviderLimits(); !ok {
+		respondLimitError(c, reason)
+		return
+	}
+
+	address := strings.TrimSpace(c.Query("address"))
+	if address == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "address query is required", nil)
+		return
+	}
+
+	providers := loadProviderChainFromEnv()
+	if len(providers) == 0 {
+		response.JSON(c, http.StatusOK, mockGeocode(address))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), defaultProviderTimeout)
+	defer cancel()
+
+	item, err := geocodeWithFallback(ctx, providers, address)
+	if err != nil {
+		respondProviderError(c, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, item)
+}
+
+func reverseGeocode(c *gin.Context) {
+	if ok, reason := enforceProviderLimits(); !ok {
+		respondLimitError(c, reason)
+		return
+	}
+
+	latStr := strings.TrimSpace(c.Query("lat"))
+	lngStr := strings.TrimSpace(c.Query("lng"))
+	if latStr == "" || lngStr == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "lat and lng query params are required", nil)
+		return
+	}
+
+	lat := parseFloatWithDefault(latStr, 0)
+	lng := parseFloatWithDefault(lngStr, 0)
+
+	providers := loadProviderChainFromEnv()
+	if len(providers) == 0 {
+		response.JSON(c, http.StatusOK, mockReverseGeocode(lat, lng))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), defaultProviderTimeout)
+	defer cancel()
+
+	item, err := reverseGeocodeWithFallback(ctx, providers, lat, lng)
+	if err != nil {
+		respondProviderError(c, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, item)
+}
+
+func getPlaceDetail(c *gin.Context) {
+	if ok, reason := enforceProviderLimits(); !ok {
+		respondLimitError(c, reason)
+		return
+	}
+
+	placeID := strings.TrimSpace(c.Param("placeId"))
+	if placeID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "placeId is required", nil)
+		return
+	}
+
+	providers := loadProviderChainFromEnv()
+	if len(providers) == 0 {
+		response.JSON(c, http.StatusOK, mockGetPlaceDetail(placeID))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), defaultProviderTimeout)
+	defer cancel()
+
+	item, err := placeDetailWithFallback(ctx, providers, placeID)
+	if err != nil {
+		respondProviderError(c, err)
+		return
+	}
+	response.JSON(c, http.StatusOK, item)
+}
+
+func searchPlacesWithFallback(ctx context.Context, providers []MapProvider, req PlaceSearchRequest) ([]NormalizedPlace, error) {
+	var lastErr error
+	for _, provider := range providers {
+		items, err := provider.SearchPlaces(ctx, req)
+		if err == nil {
+			return items, nil
+		}
+		lastErr = err
+		if !shouldFallback(err) {
+			break
+		}
+	}
+	if lastErr == nil {
+		return nil, errors.New("no provider available")
+	}
+	return nil, lastErr
+}
+
+func placeDetailWithFallback(ctx context.Context, providers []MapProvider, placeID string) (*NormalizedPlace, error) {
+	var lastErr error
+	for _, provider := range providers {
+		item, err := provider.GetPlaceDetail(ctx, placeID)
+		if err == nil {
+			return item, nil
+		}
+		lastErr = err
+		if !shouldFallback(err) {
+			break
+		}
+	}
+	if lastErr == nil {
+		return nil, errors.New("no provider available")
+	}
+	return nil, lastErr
+}
+
+func estimateRouteWithFallback(ctx context.Context, providers []MapProvider, req RouteEstimateRequest) (*NormalizedRoute, error) {
+	var lastErr error
+	for _, provider := range providers {
+		item, err := provider.EstimateRoute(ctx, req)
+		if err == nil {
+			return item, nil
+		}
+		lastErr = err
+		if !shouldFallback(err) {
+			break
+		}
+	}
+	if lastErr == nil {
+		return nil, errors.New("no provider available")
+	}
+	return nil, lastErr
+}
+
+func geocodeWithFallback(ctx context.Context, providers []MapProvider, address string) (*NormalizedPlace, error) {
+	var lastErr error
+	for _, provider := range providers {
+		item, err := provider.Geocode(ctx, address)
+		if err == nil {
+			return item, nil
+		}
+		lastErr = err
+		if !shouldFallback(err) {
+			break
+		}
+	}
+	if lastErr == nil {
+		return nil, errors.New("no provider available")
+	}
+	return nil, lastErr
+}
+
+func reverseGeocodeWithFallback(ctx context.Context, providers []MapProvider, lat, lng float64) (*NormalizedPlace, error) {
+	var lastErr error
+	for _, provider := range providers {
+		item, err := provider.ReverseGeocode(ctx, lat, lng)
+		if err == nil {
+			return item, nil
+		}
+		lastErr = err
+		if !shouldFallback(err) {
+			break
+		}
+	}
+	if lastErr == nil {
+		return nil, errors.New("no provider available")
+	}
+	return nil, lastErr
+}
+
+func shouldFallback(err error) bool {
+	var timeoutErr ProviderTimeoutError
+	var quotaErr ProviderQuotaError
+	var apiErr ProviderAPIError
+	return errors.As(err, &timeoutErr) || errors.As(err, &quotaErr) || errors.As(err, &apiErr)
+}
+
+func respondLimitError(c *gin.Context, reason string) {
+	switch reason {
+	case "quota":
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed, "map provider quota exceeded, try again later", nil)
+	default:
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeRateLimitExceeded, "map provider rate limit exceeded, try again later", nil)
+	}
+}
+
+func respondProviderError(c *gin.Context, err error) {
+	var timeoutErr ProviderTimeoutError
+	if errors.As(err, &timeoutErr) {
+		response.Error(c, http.StatusGatewayTimeout, perrors.CodeMapProviderTimeout, "map provider timed out", gin.H{"provider": timeoutErr.Provider})
+		return
+	}
+
+	var quotaErr ProviderQuotaError
+	if errors.As(err, &quotaErr) {
+		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed, "map provider quota exceeded", gin.H{"provider": quotaErr.Provider})
+		return
+	}
+
+	var apiErr ProviderAPIError
+	if errors.As(err, &apiErr) {
+		response.Error(c, http.StatusBadGateway, perrors.CodeInternalError, "map provider error", gin.H{"provider": apiErr.Provider})
+		return
+	}
+
+	response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "map provider error", nil)
+}
+
+func mockSearchPlaces(q string, limit int, lat, lng float64) []NormalizedPlace {
 	items := []NormalizedPlace{
 		{ProviderPlaceID: "poi_kiyomizu", Name: "Kiyomizu-dera", Address: "Kyoto Higashiyama Ward", Lat: lat + 0.004, Lng: lng + 0.005, Categories: []string{"temple", "landmark"}},
 		{ProviderPlaceID: "poi_ninenzaka", Name: "Ninenzaka", Address: "Kyoto Higashiyama Ward", Lat: lat + 0.006, Lng: lng + 0.003, Categories: []string{"shopping", "street"}},
@@ -116,23 +426,10 @@ func searchPlaces(c *gin.Context) {
 			}
 		}
 	}
-
-	response.JSON(c, http.StatusOK, filtered)
+	return filtered
 }
 
-func estimateRoute(c *gin.Context) {
-	if !checkQuota() {
-		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
-			"map provider quota exceeded, try again later", nil)
-		return
-	}
-
-	var in routeEstimateInput
-	if err := c.ShouldBindJSON(&in); err != nil {
-		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
-		return
-	}
-
+func mockEstimateRoute(in routeEstimateInput) NormalizedRoute {
 	mode := strings.ToLower(strings.TrimSpace(in.Mode))
 	if mode == "" {
 		mode = "transit"
@@ -162,31 +459,17 @@ func estimateRoute(c *gin.Context) {
 		costCurrency = &currency
 	}
 
-	route := NormalizedRoute{
+	return NormalizedRoute{
 		Mode:                  mode,
 		DistanceMeters:        distanceMeters,
 		DurationSeconds:       durationSeconds,
 		EstimatedCostAmount:   costAmount,
 		EstimatedCostCurrency: costCurrency,
 	}
-
-	response.JSON(c, http.StatusOK, route)
 }
 
-func geocode(c *gin.Context) {
-	if !checkQuota() {
-		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
-			"map provider quota exceeded, try again later", nil)
-		return
-	}
-
-	address := strings.TrimSpace(c.Query("address"))
-	if address == "" {
-		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "address query is required", nil)
-		return
-	}
-
-	result := NormalizedPlace{
+func mockGeocode(address string) NormalizedPlace {
+	return NormalizedPlace{
 		ProviderPlaceID: fmt.Sprintf("geocoded_%d", time.Now().UnixNano()%10000),
 		Name:            address,
 		Address:         address,
@@ -194,28 +477,10 @@ func geocode(c *gin.Context) {
 		Lng:             135.7681,
 		Categories:      []string{},
 	}
-
-	response.JSON(c, http.StatusOK, result)
 }
 
-func reverseGeocode(c *gin.Context) {
-	if !checkQuota() {
-		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
-			"map provider quota exceeded, try again later", nil)
-		return
-	}
-
-	latStr := strings.TrimSpace(c.Query("lat"))
-	lngStr := strings.TrimSpace(c.Query("lng"))
-	if latStr == "" || lngStr == "" {
-		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "lat and lng query params are required", nil)
-		return
-	}
-
-	lat := parseFloatWithDefault(latStr, 0)
-	lng := parseFloatWithDefault(lngStr, 0)
-
-	result := NormalizedPlace{
+func mockReverseGeocode(lat, lng float64) NormalizedPlace {
+	return NormalizedPlace{
 		ProviderPlaceID: fmt.Sprintf("rev_%d", time.Now().UnixNano()%10000),
 		Name:            fmt.Sprintf("Location at %.4f, %.4f", lat, lng),
 		Address:         fmt.Sprintf("%.4f, %.4f", lat, lng),
@@ -223,34 +488,22 @@ func reverseGeocode(c *gin.Context) {
 		Lng:             lng,
 		Categories:      []string{},
 	}
-
-	response.JSON(c, http.StatusOK, result)
 }
 
-func getPlaceDetail(c *gin.Context) {
-	if !checkQuota() {
-		response.Error(c, http.StatusTooManyRequests, perrors.CodeMapProviderQuotaExceed,
-			"map provider quota exceeded, try again later", nil)
-		return
-	}
-
-	placeID := strings.TrimSpace(c.Param("placeId"))
+func mockGetPlaceDetail(placeID string) any {
 	place, ok := placeStore[placeID]
-	if !ok {
-		// Partial warning: return minimal place with warning
-		response.JSON(c, http.StatusOK, gin.H{
-			"providerPlaceId": placeID,
-			"name":            placeID,
-			"address":         "",
-			"lat":             0,
-			"lng":             0,
-			"categories":      []string{},
-			"warnings":        []string{"place not found in provider, data may be incomplete"},
-		})
-		return
+	if ok {
+		return place
 	}
-
-	response.JSON(c, http.StatusOK, place)
+	return gin.H{
+		"providerPlaceId": placeID,
+		"name":            placeID,
+		"address":         "",
+		"lat":             0,
+		"lng":             0,
+		"categories":      []string{},
+		"warnings":        []string{"place not found in provider, data may be incomplete"},
+	}
 }
 
 func parseFloatWithDefault(raw string, fallback float64) float64 {
@@ -269,4 +522,16 @@ func haversineKm(lat1, lng1, lat2, lng2 float64) float64 {
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(toRad(lat1))*math.Cos(toRad(lat2))*math.Sin(dLng/2)*math.Sin(dLng/2)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 	return earthRadiusKm * c
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

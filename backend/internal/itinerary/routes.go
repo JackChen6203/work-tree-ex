@@ -1,6 +1,7 @@
 package itinerary
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -98,6 +99,27 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 
 func listDays(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
+	if getPool() != nil {
+		items, err := listDaysPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			if errors.Is(err, ErrItineraryTripNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+				return
+			}
+			if isValidationError(err) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list itinerary days", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
+	}
+
 	itineraryMu.Lock()
 	ensureSeededLocked(tripID)
 	items := cloneDays(daysByTrip[tripID])
@@ -142,6 +164,51 @@ func createItem(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, perrors.CodeInvalidDateRange, err.Error(), nil)
 			return
 		}
+	}
+
+	if getPool() != nil {
+		itineraryMu.Lock()
+		existingID, replay := itemCreateIdempotency[idempotencyKey]
+		itineraryMu.Unlock()
+		if replay {
+			existing, err := getItemPostgres(c.Request.Context(), tripID, existingID)
+			if err == nil {
+				response.JSON(c, http.StatusCreated, existing)
+				return
+			}
+		}
+
+		item, warnings, err := createItemPostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			if errors.Is(err, ErrItineraryTripNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+				return
+			}
+			if errors.Is(err, ErrItineraryDayNotFound) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "dayId not found", gin.H{"dayId": in.DayID})
+				return
+			}
+			if isValidationError(err) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create itinerary item", nil)
+			return
+		}
+
+		itineraryMu.Lock()
+		itemCreateIdempotency[idempotencyKey] = item.ID
+		itineraryMu.Unlock()
+
+		result := gin.H{"item": item}
+		if len(warnings) > 0 {
+			result["warnings"] = warnings
+		}
+		response.JSON(c, http.StatusCreated, result)
+		return
 	}
 
 	itineraryMu.Lock()
@@ -221,6 +288,39 @@ func patchItem(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, perrors.CodeInvalidDateRange, err.Error(), nil)
 			return
 		}
+	}
+
+	if getPool() != nil {
+		item, err := patchItemPostgres(c.Request.Context(), tripID, itemID, expectedVersion, in)
+		if err != nil {
+			if errors.Is(err, ErrItineraryItemNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": itemID})
+				return
+			}
+			if errors.Is(err, ErrItineraryVersionConflict) {
+				response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "item version conflict", nil)
+				return
+			}
+			if errors.Is(err, ErrItineraryDayNotFound) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "target dayId not found", nil)
+				return
+			}
+			if errors.Is(err, ErrItineraryTripNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+				return
+			}
+			if isValidationError(err) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch itinerary item", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
 	}
 
 	itineraryMu.Lock()
@@ -304,6 +404,26 @@ func deleteItem(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
 	itemID := strings.TrimSpace(c.Param("itemId"))
 
+	if getPool() != nil {
+		if err := deleteItemPostgres(c.Request.Context(), tripID, itemID); err != nil {
+			if errors.Is(err, ErrItineraryItemNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", gin.H{"itemId": itemID})
+				return
+			}
+			if isValidationError(err) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete itinerary item", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
 	itineraryMu.Lock()
 	item, ok := itemByID[itemID]
 	if !ok || itemTripByID[itemID] != tripID {
@@ -331,6 +451,50 @@ func reorderItems(c *gin.Context) {
 	var in reorderInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	if getPool() != nil {
+		itineraryMu.Lock()
+		replayed := reorderIdempotency[idempotencyKey] == tripID
+		itineraryMu.Unlock()
+		if replayed {
+			items, err := listDaysPostgres(c.Request.Context(), tripID)
+			if err == nil {
+				response.JSON(c, http.StatusOK, items)
+				return
+			}
+		}
+
+		items, err := reorderItemsPostgres(c.Request.Context(), tripID, in)
+		if err != nil {
+			if errors.Is(err, ErrItineraryItemNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "itinerary item not found", nil)
+				return
+			}
+			if errors.Is(err, ErrItineraryDayNotFound) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "targetDayId not found", nil)
+				return
+			}
+			if errors.Is(err, ErrItineraryTripNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+				return
+			}
+			if isValidationError(err) {
+				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to reorder itinerary items", nil)
+			return
+		}
+
+		itineraryMu.Lock()
+		reorderIdempotency[idempotencyKey] = tripID
+		itineraryMu.Unlock()
+		response.JSON(c, http.StatusOK, items)
 		return
 	}
 

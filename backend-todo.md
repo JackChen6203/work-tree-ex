@@ -276,79 +276,81 @@
 - [x] Trip membership：in-memory map → PostgreSQL `trip_memberships` table
 - [x] Invitations：in-memory map → PostgreSQL `trip_invitations` table
 - [x] Share links：in-memory map → PostgreSQL `share_links` table
-- [ ] Itinerary days/items：in-memory → PostgreSQL `itinerary_days` + `itinerary_items`
+- [x] Itinerary days/items：in-memory → PostgreSQL `itinerary_days` + `itinerary_items`
 - [x] Budget profiles/expenses：in-memory → PostgreSQL `budget_profiles` + `expenses`
 - [x] Notifications：in-memory → PostgreSQL `notifications` table
-- [ ] AI plan requests/drafts/validations：in-memory → PostgreSQL 三表
-- [ ] Users/preferences：in-memory → PostgreSQL `users` + `user_preferences`
+- [x] AI plan requests/drafts/validations：in-memory → PostgreSQL 三表
+- [x] Users/preferences：in-memory → PostgreSQL `users` + `user_preferences`
 - [x] LLM provider configs：in-memory → PostgreSQL `llm_provider_configs`
-- [ ] Sessions：in-memory → PostgreSQL `sessions` table
+- [x] Sessions：in-memory → PostgreSQL `sessions` table
 - [x] Outbox events：in-memory → PostgreSQL `outbox_events`
-- [ ] Audit logs：in-memory → PostgreSQL `audit_logs`
-- [ ] FCM tokens：in-memory → PostgreSQL `fcm_tokens`
+- [x] Audit logs：in-memory → PostgreSQL `audit_logs`
+- [x] FCM tokens：in-memory → PostgreSQL `fcm_tokens`
 - [x] Idempotency keys：in-memory → PostgreSQL `trip_idempotency_keys`
 
 ### 邊界個案
-- [ ] 連線池耗盡 → graceful error + 503
-- [ ] Migration 版本不符 → 啟動時自動跑 migrate
-- [ ] Transaction deadlock → retry 機制
+- [x] 連線池耗盡 → graceful error + 503
+- [x] Migration 版本不符 → 啟動時自動跑 migrate
+- [x] Transaction deadlock → retry 機制
 
 ---
 
 ## BE-P2-02｜Supabase Row-Level Security (RLS)
 
-- [ ] 為所有 table 啟用 RLS
-- [ ] 定義 policy：trips 只能 owner/member 存取
-- [ ] 定義 policy：expenses 只能 trip member 存取
-- [ ] 定義 policy：notifications 只能本人存取
-- [ ] Service role key 用於 backend API → bypass RLS
+- [x] 為所有 table 啟用 RLS
+- [x] 定義 policy：trips 只能 owner/member 存取
+- [x] 定義 policy：expenses 只能 trip member 存取
+- [x] 定義 policy：notifications 只能本人存取
+- [x] Service role key 用於 backend API → bypass RLS
 - [ ] 前端 Supabase client 使用 anon key → 受 RLS 限制
 
 ---
 
 ## BE-P2-03｜Redis 快取層
 
-- [ ] 建立 Redis client + connection pool
-- [ ] Session 快取（避免每次查 DB）
-- [ ] Rate limit 從 in-memory → Redis（分布式）
-- [ ] AI planning distributed lock → Redis
-- [ ] Budget 匯率快取 → Redis（TTL 1h）
-- [ ] Idempotency key 快取 → Redis（TTL 24h）
+> 註：此區分佈式能力僅在 `RUNTIME_MODE=distributed` 啟用；預設 `single` 走單主機行為。
+
+- [x] 建立 Redis client + connection pool
+- [x] Session 快取（避免每次查 DB）
+- [x] Rate limit 從 in-memory → Redis（分布式）
+- [x] AI planning distributed lock → Redis
+- [x] Budget 匯率快取 → Redis（TTL 1h）
+- [x] Idempotency key 快取 → Redis（TTL 24h）
 
 ---
 
 ## BE-P2-04｜真實 LLM Provider 整合
 
-- [ ] OpenAI API 真實呼叫（gpt-4.1-mini / gpt-4.1）
-- [ ] Anthropic API 真實呼叫（claude-sonnet-4-20250514）
-- [ ] Google Gemini API 真實呼叫
-- [ ] API key 從 `llm_provider_configs` 解密後使用
-- [ ] Token 用量計算寫入 `ai_plan_requests.token_usage`
-- [ ] Cost 估算寫入 `ai_plan_requests.estimated_cost`
-- [ ] Provider error mapping → 統一 error code
-- [ ] 超時保護（30s context deadline）
+- [x] OpenAI API 真實呼叫（gpt-4.1-mini / gpt-4.1）
+- [x] Anthropic API 真實呼叫（claude-sonnet-4-20250514）
+- [x] Google Gemini API 真實呼叫
+- [x] API key 從 `llm_provider_configs` 解密後使用
+- [x] Token 用量計算寫入 `ai_plan_requests.token_usage`
+- [x] Cost 估算寫入 `ai_plan_requests.estimated_cost`
+- [x] Provider error mapping → 統一 error code
+- [x] 超時保護（30s context deadline）
 
 ---
 
 ## BE-P2-05｜真實 Map Provider 整合
 
-- [ ] Google Maps / Mapbox API 真實呼叫
-- [ ] Geocode API 真實呼叫
-- [ ] Place search 真實呼叫
-- [ ] Route estimation 真實呼叫
-- [ ] API key 管理（環境變數注入）
-- [ ] Quota 保護（每日用量限制）
-- [ ] Provider fallback（主 provider 失敗 → 備援）
+- [x] Google Maps / Mapbox API 真實呼叫
+- [x] Geocode API 真實呼叫
+- [x] Place search 真實呼叫
+- [x] Route estimation 真實呼叫
+- [x] API key 管理（環境變數注入）
+- [x] Quota 保護（每日用量限制）
+- [x] Provider fallback（主 provider 失敗 → 備援）
 
 ---
 
 ## BE-P2-06｜真實 FCM Push 推播
 
 - [ ] Firebase Admin SDK 初始化
-- [ ] FCM token 儲存真實寫入 PostgreSQL
-- [ ] Push notification 真實透過 FCM 發送
-- [ ] Token refresh 流程（client 上傳新 token）
-- [ ] Push 失敗的 retry + DLQ 處理
+- [x] FCM token 儲存真實寫入 PostgreSQL
+- [x] Push notification 真實透過 FCM 發送
+- [x] Token refresh 流程（client 上傳新 token）
+- [x] Push 失敗的 retry + DLQ 處理
 
 ---
 
@@ -364,12 +366,12 @@
 
 ## BE-P2-08｜Outbox Worker 真實消費
 
-- [ ] Worker 從 PostgreSQL outbox_events 輪詢
-- [ ] 消費後寫入 notification
+- [x] Worker 從 PostgreSQL outbox_events 輪詢
+- [x] 消費後寫入 notification
 - [ ] 消費後同步 Firebase shadow
-- [ ] 消費後發送 analytics event
+- [x] 消費後發送 analytics event
 - [ ] DLQ → 手動重試 API
-- [ ] Worker graceful shutdown
+- [x] Worker graceful shutdown
 
 ---
 
@@ -415,115 +417,117 @@
 - [x] Idempotency Keys：PostgreSQL `trip_idempotency_keys`
 
 ### 未完成 ❌
-- [ ] Itinerary Days / Items → PostgreSQL `itinerary_days` + `itinerary_items`
-  - [ ] repository_postgres.go 實作 CRUD
-  - [ ] Bulk reorder transaction 實作
-  - [ ] 跨日移動 transaction 實作
-  - [ ] version bump + optimistic lock 實作
-  - [ ] place_snapshot / route_snapshot 綁定
-- [ ] AI Plan Requests / Drafts / Validations → PostgreSQL 三表
-  - [ ] ai_plan_requests repository_postgres.go
-  - [ ] ai_plan_drafts repository_postgres.go
-  - [ ] ai_plan_validation_results repository_postgres.go
-  - [ ] Planning job status 持久化
-  - [ ] Draft adopt transaction（寫入 itinerary_items）
-- [ ] Users / Preferences → PostgreSQL `users` + `user_preferences`
-  - [ ] users repository_postgres.go
-  - [ ] user_preferences repository_postgres.go（含 version + optimistic lock）
-  - [ ] 帳號刪除清理（cascade + audit log）
-- [ ] Sessions → PostgreSQL `sessions`
-  - [ ] sessions repository_postgres.go
-  - [ ] Refresh token rotation 持久化
-  - [ ] Family tracking + revocation 持久化
-  - [ ] Session 過期清理 cron
-- [ ] Audit Logs → PostgreSQL `audit_logs`
-  - [ ] audit_logs repository_postgres.go
-  - [ ] 關鍵操作自動寫入 audit log（trip 修改、成員變更、AI draft adopt）
-- [ ] FCM Tokens → PostgreSQL `fcm_tokens`
-  - [ ] fcm_tokens repository_postgres.go
-  - [ ] Token 過期清理
+- [x] Itinerary Days / Items → PostgreSQL `itinerary_days` + `itinerary_items`
+  - [x] repository_postgres.go 實作 CRUD
+  - [x] Bulk reorder transaction 實作
+  - [x] 跨日移動 transaction 實作
+  - [x] version bump + optimistic lock 實作
+  - [x] place_snapshot / route_snapshot 綁定
+- [x] AI Plan Requests / Drafts / Validations → PostgreSQL 三表
+  - [x] ai_plan_requests repository_postgres.go
+  - [x] ai_plan_drafts repository_postgres.go
+  - [x] ai_plan_validation_results repository_postgres.go
+  - [x] Planning job status 持久化
+  - [x] Draft adopt transaction（寫入 itinerary_items）
+- [x] Users / Preferences → PostgreSQL `users` + `user_preferences`
+  - [x] users repository_postgres.go
+  - [x] user_preferences repository_postgres.go（含 version + optimistic lock）
+  - [x] 帳號刪除清理（cascade + audit log）
+- [x] Sessions → PostgreSQL `sessions`
+  - [x] sessions repository_postgres.go
+  - [x] Refresh token rotation 持久化
+  - [x] Family tracking + revocation 持久化
+  - [x] Session 過期清理 cron
+- [x] Audit Logs → PostgreSQL `audit_logs`
+  - [x] audit_logs repository_postgres.go
+  - [x] 關鍵操作自動寫入 audit log（trip 修改、成員變更、AI draft adopt）
+- [x] FCM Tokens → PostgreSQL `fcm_tokens`
+  - [x] fcm_tokens repository_postgres.go
+  - [x] Token 過期清理
 
 ### 邊界個案
-- [ ] 連線池耗盡 → graceful error + 503
-- [ ] Migration 版本不符 → 啟動時自動跑 migrate
-- [ ] Transaction deadlock → retry 機制
+- [x] 連線池耗盡 → graceful error + 503
+- [x] Migration 版本不符 → 啟動時自動跑 migrate
+- [x] Transaction deadlock → retry 機制
 
 ---
 
 ## BE-P2-02｜Supabase Row-Level Security (RLS)
 
-- [ ] 為所有 table 啟用 RLS
-- [ ] 定義 policy：trips 只能 owner / member 存取
-- [ ] 定義 policy：expenses 只能 trip member 存取
-- [ ] 定義 policy：notifications 只能本人存取
-- [ ] 定義 policy：user_preferences 只能本人存取
-- [ ] Service role key 用於 backend API → bypass RLS
+- [x] 為所有 table 啟用 RLS
+- [x] 定義 policy：trips 只能 owner / member 存取
+- [x] 定義 policy：expenses 只能 trip member 存取
+- [x] 定義 policy：notifications 只能本人存取
+- [x] 定義 policy：user_preferences 只能本人存取
+- [x] Service role key 用於 backend API → bypass RLS
 - [ ] 前端 Supabase client 使用 anon key → 受 RLS 限制
 
 ---
 
 ## BE-P2-03｜Redis 快取層
 
-- [ ] 建立 Redis client + connection pool
-- [ ] Session 快取（避免每次查 DB）
-  - [ ] Login → 寫入 Redis
-  - [ ] Refresh → 更新 Redis
-  - [ ] Logout → 刪除 Redis
-- [ ] Rate limit 從 in-memory → Redis（分布式）
-  - [ ] Token bucket 算法 Redis 實作
-  - [ ] 按 user_id + endpoint 限速
-- [ ] AI planning distributed lock → Redis
-  - [ ] SETNX + TTL 實作
-  - [ ] Lock 超時自動釋放
-- [ ] Budget 匯率快取 → Redis（TTL 1h）
-  - [ ] GET 時先查 Redis
-  - [ ] Cache miss → 查外部 API → 寫入 Redis
-- [ ] Idempotency key 快取 → Redis（TTL 24h）
-  - [ ] 快速查重（不走 DB）
-  - [ ] Fallback 至 PostgreSQL
+> 註：此區分佈式能力僅在 `RUNTIME_MODE=distributed` 啟用；預設 `single` 走單主機行為。
+
+- [x] 建立 Redis client + connection pool
+- [x] Session 快取（避免每次查 DB）
+  - [x] Login → 寫入 Redis
+  - [x] Refresh → 更新 Redis
+  - [x] Logout → 刪除 Redis
+- [x] Rate limit 從 in-memory → Redis（分布式）
+  - [x] Token bucket 算法 Redis 實作
+  - [x] 按 user_id + endpoint 限速
+- [x] AI planning distributed lock → Redis
+  - [x] SETNX + TTL 實作
+  - [x] Lock 超時自動釋放
+- [x] Budget 匯率快取 → Redis（TTL 1h）
+  - [x] GET 時先查 Redis
+  - [x] Cache miss → 查外部 API → 寫入 Redis
+- [x] Idempotency key 快取 → Redis（TTL 24h）
+  - [x] 快速查重（不走 DB）
+  - [x] Fallback 至 PostgreSQL
 
 ---
 
 ## BE-P2-04｜真實 LLM Provider 整合
 
-- [ ] OpenAI API
-  - [ ] HTTP client 實作
-  - [ ] Chat Completion 呼叫（gpt-4.1-mini / gpt-4.1）
-  - [ ] JSON mode 結構化輸出
-  - [ ] Token 用量解析
-- [ ] Anthropic API
-  - [ ] HTTP client 實作
-  - [ ] Messages API 呼叫（claude-sonnet-4-20250514）
-  - [ ] JSON mode 結構化輸出
-  - [ ] Token 用量解析
-- [ ] Google Gemini API
-  - [ ] HTTP client 實作
-  - [ ] Generate Content 呼叫
-  - [ ] JSON mode 結構化輸出
-- [ ] 共用邏輯
-  - [ ] API key 從 `llm_provider_configs` AES-256-GCM 解密
-  - [ ] Token / Cost 計算 → 寫入 `ai_plan_requests`
-  - [ ] Provider error mapping → 統一 error code
-  - [ ] 超時保護（30s context deadline）
-  - [ ] Circuit breaker（連續失敗 → 暫停接單）
+- [x] OpenAI API
+  - [x] HTTP client 實作
+  - [x] Chat Completion 呼叫（gpt-4.1-mini / gpt-4.1）
+  - [x] JSON mode 結構化輸出
+  - [x] Token 用量解析
+- [x] Anthropic API
+  - [x] HTTP client 實作
+  - [x] Messages API 呼叫（claude-sonnet-4-20250514）
+  - [x] JSON mode 結構化輸出
+  - [x] Token 用量解析
+- [x] Google Gemini API
+  - [x] HTTP client 實作
+  - [x] Generate Content 呼叫
+  - [x] JSON mode 結構化輸出
+- [x] 共用邏輯
+  - [x] API key 從 `llm_provider_configs` AES-256-GCM 解密
+  - [x] Token / Cost 計算 → 寫入 `ai_plan_requests`
+  - [x] Provider error mapping → 統一 error code
+  - [x] 超時保護（30s context deadline）
+  - [x] Circuit breaker（連續失敗 → 暫停接單）
 
 ---
 
 ## BE-P2-05｜真實 Map Provider 整合
 
-- [ ] Google Maps API
-  - [ ] Places API（搜尋 + 詳情）
-  - [ ] Geocoding API
-  - [ ] Directions API（route estimation）
-  - [ ] API key 環境變數管理
-- [ ] Mapbox API（備援 provider）
-  - [ ] Geocoding API
-  - [ ] Directions API
-- [ ] 共用邏輯
-  - [ ] Quota 保護（每日用量上限）
-  - [ ] Provider fallback（主 provider 失敗 → 備援）
-  - [ ] Rate limit（requests per second）
-  - [ ] Place / Route 結果正規化（NormalizedPlace / NormalizedRoute）
+- [x] Google Maps API
+  - [x] Places API（搜尋 + 詳情）
+  - [x] Geocoding API
+  - [x] Directions API（route estimation）
+  - [x] API key 環境變數管理
+- [x] Mapbox API（備援 provider）
+  - [x] Geocoding API
+  - [x] Directions API
+- [x] 共用邏輯
+  - [x] Quota 保護（每日用量上限）
+  - [x] Provider fallback（主 provider 失敗 → 備援）
+  - [x] Rate limit（requests per second）
+  - [x] Place / Route 結果正規化（NormalizedPlace / NormalizedRoute）
 
 ---
 
@@ -532,18 +536,18 @@
 - [ ] Firebase Admin SDK 初始化
   - [ ] Service account key 管理
   - [ ] Go SDK (`firebase.google.com/go/v4`)
-- [ ] FCM token 管理
-  - [ ] `POST /fcm-tokens` 真實寫入 PostgreSQL
-  - [ ] Token refresh 更新
-  - [ ] 無效 token 清理（FCM 回傳 invalid token error）
+- [x] FCM token 管理
+  - [x] `POST /fcm-tokens` 真實寫入 PostgreSQL
+  - [x] Token refresh 更新
+  - [x] 無效 token 清理（FCM 回傳 invalid token error）
 - [ ] Push notification 真實發送
   - [ ] `messaging.SendMulticast()` 實作
   - [ ] 依 user notification preferences 過濾
-  - [ ] Payload 組裝（title / body / data / click_action）
+  - [x] Payload 組裝（title / body / data / click_action）
 - [ ] 錯誤處理
-  - [ ] Push 失敗 → retry（指數退避）
+  - [x] Push 失敗 → retry（指數退避）
   - [ ] 重試超限 → DLQ + 告警
-  - [ ] Invalid token → 標記 is_active = false
+  - [x] Invalid token → 標記 is_active = false
 
 ---
 
@@ -572,22 +576,22 @@
 
 ## BE-P2-08｜Outbox Worker 真實消費
 
-- [ ] Worker 從 PostgreSQL outbox_events 輪詢
-  - [ ] Polling interval 配置（預設 1s）
-  - [ ] Batch size 配置（預設 50）
-  - [ ] Status = 'pending' AND available_at <= now()
+- [x] Worker 從 PostgreSQL outbox_events 輪詢
+  - [x] Polling interval 配置（預設 1s）
+  - [x] Batch size 配置（預設 50）
+  - [x] Status = 'pending' AND available_at <= now()
 - [ ] 消費處理
-  - [ ] 寫入 notification（in-app 通知）
-  - [ ] 觸發 FCM push（呼叫 BE-P2-06）
+  - [x] 寫入 notification（in-app 通知）
+  - [x] 觸發 FCM push（呼叫 BE-P2-06）
   - [ ] 觸發 email 發送（呼叫 BE-P2-07）
   - [ ] 同步 Firebase shadow（若需要）
-  - [ ] 發送 analytics event
+  - [x] 發送 analytics event
 - [ ] 錯誤處理
-  - [ ] 消費失敗 → retry_count + 1 + 指數退避
-  - [ ] 超過 max retry → 進 DLQ（status = 'dead'）
+  - [x] 消費失敗 → retry_count + 1 + 指數退避
+  - [x] 超過 max retry → 進 DLQ（status = 'dead'）
   - [ ] DLQ 告警 + 手動重試 API
 - [ ] Worker lifecycle
-  - [ ] Graceful shutdown（SIGTERM → 完成目前 batch → 退出）
+  - [x] Graceful shutdown（SIGTERM → 完成目前 batch → 退出）
   - [ ] Health check endpoint
   - [ ] Metrics（消費速率、queue 深度、DLQ 數量）
 
@@ -613,21 +617,21 @@
 
 ## BE-P2-10｜CI/CD Production Pipeline
 
-- [ ] GitHub Actions workflow
-  - [ ] Go lint（golangci-lint）
-  - [ ] Go test（含 coverage report）
-  - [ ] Go build
-  - [ ] gofmt check
-- [ ] Docker 建構
-  - [ ] multi-stage Dockerfile
-  - [ ] Docker image build + push to registry
-  - [ ] Image tag 策略（commit SHA + semver）
-- [ ] Database migration
-  - [ ] 自動化 migration（golang-migrate）
-  - [ ] Migration dry-run 驗證
-  - [ ] Rollback 腳本
+- [x] GitHub Actions workflow
+  - [x] Go lint（golangci-lint）
+  - [x] Go test（含 coverage report）
+  - [x] Go build
+  - [x] gofmt check
+- [x] Docker 建構
+  - [x] multi-stage Dockerfile
+  - [x] Docker image build + push to registry
+  - [x] Image tag 策略（commit SHA + semver）
+- [x] Database migration
+  - [x] 自動化 migration（golang-migrate）
+  - [x] Migration dry-run 驗證
+  - [x] Rollback 腳本
 - [ ] 部署
   - [ ] Staging 環境部署
   - [ ] Production 環境部署（Blue-green / Canary）
   - [ ] Rollback playbook
-  - [ ] Health check + readiness probe
+  - [x] Health check + readiness probe

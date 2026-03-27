@@ -7,6 +7,7 @@ export interface PlaceSearchItem {
   lat: number;
   lng: number;
   categories: string[];
+  openingHours?: string;
 }
 
 export interface RouteEstimate {
@@ -15,8 +16,12 @@ export interface RouteEstimate {
   durationSeconds: number;
   estimatedCostAmount?: number;
   estimatedCostCurrency?: string;
-  provider: string;
-  snapshotToken: string;
+  provider?: string;
+  snapshotToken?: string;
+}
+
+export interface PlaceDetail extends PlaceSearchItem {
+  warnings?: string[];
 }
 
 export function searchPlaces(query: string, options?: { lat?: number; lng?: number; limit?: number }) {
@@ -32,6 +37,10 @@ export function searchPlaces(query: string, options?: { lat?: number; lng?: numb
     params.set("limit", String(options.limit));
   }
   return apiRequest<PlaceSearchItem[]>(`/api/v1/maps/search?${params.toString()}`);
+}
+
+export function getPlaceDetail(placeId: string) {
+  return apiRequest<PlaceDetail>(`/api/v1/maps/places/${placeId}`);
 }
 
 export function estimateRoute(input: {

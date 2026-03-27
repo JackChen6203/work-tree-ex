@@ -57,6 +57,7 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | --- | --- | --- | --- |
 | `APP_ENV` | Yes | API, worker | `dev`, `staging`, `prod` |
 | `TRIPS_STORE` | Yes | API, worker | `postgres` for real persistence, `memory` for quick local API-only dev |
+| `RUNTIME_MODE` | No | API, worker | `single` (default, single-host priority) or `distributed` (enable Redis-backed distributed features). |
 | `HTTP_HOST` | Yes | API | Usually `0.0.0.0` |
 | `HTTP_PORT` | Yes | API | Default `8080` |
 | `HTTP_READ_TIMEOUT_SEC` | No | API | Default `10` |
@@ -71,6 +72,7 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `DB_PASSWORD` | Yes | API, worker, Compose | DB password |
 | `DB_NAME` | Yes | API, worker, Compose | DB name |
 | `DB_SSLMODE` | Yes | API, worker | `disable` locally, usually `require` or platform-specific in managed DB setups |
+| `DB_APP_ROLE` | No | API, worker | Session-level app role for RLS context. Default `service_role` (backend bypasses RLS policies). |
 | `DB_MAX_OPEN_CONNS` | No | API, worker | Connection pool tuning |
 | `DB_MAX_IDLE_CONNS` | No | API, worker | Connection pool tuning |
 | `DB_CONN_MAX_LIFETIME_MIN` | No | API, worker | Connection pool tuning |
@@ -78,10 +80,15 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `REDIS_PORT` | No | Docker Compose | Local published port |
 | `REDIS_PASSWORD` | Yes | API, worker, Compose | Redis password |
 | `REDIS_DB` | No | API, worker | Usually `0` |
+| `REDIS_POOL_SIZE` | No | API, worker | Redis connection pool size, default `50` |
+| `REDIS_MIN_IDLE_CONNS` | No | API, worker | Redis minimum idle connections, default `10` |
+| `REDIS_CONN_MAX_LIFETIME_MIN` | No | API, worker | Redis connection max lifetime in minutes, default `30` |
+| `REDIS_CONN_MAX_IDLE_MIN` | No | API, worker | Redis connection max idle time in minutes, default `5` |
 | `JWT_SECRET` | Yes | API | Must be random in non-dev environments |
 | `JWT_ACCESS_TTL_MIN` | No | API | Default `60` |
 | `JWT_REFRESH_TTL_HOURS` | No | API | Default `168` |
 | `AUTH_ALLOW_MAGIC_LINK_PREVIEW` | Dev only | API auth routes | Set `true` only for local preview-code login during development |
+| `LLM_ENCRYPTION_KEY` | Required when using `encv1` provider key envelope | API AI planner | AES-256-GCM decryption key for `llm_provider_configs.encrypted_key`; accepts 32-byte raw string or base64-encoded 32-byte key |
 | `OAUTH_GOOGLE_CLIENT_ID` | Optional | API auth routes | Provider client ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | Required for real Google OAuth | API auth routes | Needed for server-side Google authorization-code exchange |
 | `OAUTH_APPLE_CLIENT_ID` | Optional | API auth routes | Provider client ID |
@@ -93,6 +100,16 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `OAUTH_WECHAT_CLIENT_ID` | Optional | API auth routes | Provider client ID |
 | `OAUTH_TRIPADVISOR_CLIENT_ID` | Optional | API auth routes | Provider client ID |
 | `OAUTH_BOOKING_CLIENT_ID` | Optional | API auth routes | Provider client ID |
+| `MAP_PRIMARY_PROVIDER` | No | API map routes | Primary map provider order (`google` or `mapbox`), fallback provider auto-applied when configured |
+| `MAP_DAILY_QUOTA` | No | API map routes | Daily provider request cap (default `10000`) |
+| `MAP_RPS_LIMIT` | No | API map routes | Per-second request cap (default `20`) |
+| `GOOGLE_MAPS_API_KEY` | Optional | API map routes | Enables Google Maps Places/Geocode/Directions live calls |
+| `MAPBOX_API_KEY` | Optional | API map routes | Enables Mapbox Geocoding/Directions live calls as backup |
+| `FCM_SERVER_KEY` | Optional | API notifications push delivery | Enables real FCM HTTP push delivery when set |
+| `FCM_SEND_ENDPOINT` | No | API notifications push delivery | Defaults to `https://fcm.googleapis.com/fcm/send` |
+| `WORKER_POLL_INTERVAL_SEC` | No | Worker outbox poller | Poll interval seconds, default `1` |
+| `WORKER_BATCH_SIZE` | No | Worker outbox poller | Max outbox events processed per cycle, default `50` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional | API integrations | Server-only key for Supabase HTTP APIs. Keep only on backend/secrets manager, never expose to browser. |
 | `WEB_PORT` | No | Docker Compose | Frontend nginx published port |
 | `MIGRATE_DATABASE_URL` | Recommended for external DB | Docker Compose migrate/manual migration | Use a full Postgres URL when your DB password contains special chars |
 
@@ -103,6 +120,8 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `VITE_API_BASE_URL` | Optional | `apps/web` | Needed when Vite dev server should call a backend origin directly, for example `http://localhost:8080` |
 | `VITE_ENABLE_MAGIC_LINK_AUTH` | Dev only | `apps/web` | Defaults to enabled in `npm run dev`, should stay `false` in production builds |
 | `VITE_OAUTH_PROVIDERS` | Recommended | `apps/web` | Comma-separated provider ids to show in the frontend, for example `google` |
+| `VITE_SUPABASE_URL` | Optional | `apps/web` Supabase client | Public Supabase project URL when frontend needs direct Supabase read access. |
+| `VITE_SUPABASE_ANON_KEY` | Optional | `apps/web` Supabase client | Public anon key. Subject to RLS, safe for browser exposure. |
 | `VITE_MAPBOX_ACCESS_TOKEN` | Optional | `apps/web` map module | Required only when enabling real Mapbox SDK rendering; when empty, map page falls back to address list mode |
 | `VITE_FIREBASE_API_KEY` | Optional | `apps/web` push module | Firebase Web config for FCM push |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Optional | `apps/web` push module | Firebase auth domain (web app config) |
@@ -275,6 +294,14 @@ Notes:
 - If your Supabase password contains characters such as `@`, `:`, `/`, or `?`, URL-encode it before putting it into the URL.
 - Store the final full URL in the GitHub repository secret `MIGRATE_DATABASE_URL`.
 
+RLS setup notes:
+
+- `RUNTIME_MODE=single` is the default, so distributed Redis-based behavior stays disabled on single-host deployments.
+- Set `RUNTIME_MODE=distributed` only when you actually deploy multiple API instances and want shared rate-limit/lock/cache semantics.
+- Backend API should run with `DB_APP_ROLE=service_role` (default). This marks each DB session as service role for RLS bypass policies.
+- If frontend directly uses Supabase JS client, use `VITE_SUPABASE_ANON_KEY` (not service role key), so all reads remain subject to RLS.
+- Keep `SUPABASE_SERVICE_ROLE_KEY` only in backend secrets (server-side), never expose it via Vite env.
+
 ## 5. Terraform setup
 
 If you use the Terraform folder, create `infra/terraform/terraform.tfvars` or export `TF_VAR_*`.
@@ -296,9 +323,9 @@ Terraform currently provisions secrets for:
 
 - DB password
 - JWT secret
-- LLM encryption key
+- LLM encryption key (`LLM_ENCRYPTION_KEY`)
 
-Note that the current backend runtime only consumes `DB_PASSWORD` and `JWT_SECRET`. The LLM encryption key is provisioned in Terraform, but I did not find a corresponding runtime read path in the current application code.
+The backend runtime consumes DB / Redis / JWT / `DB_APP_ROLE` from environment, and AI provider decryption now also reads `LLM_ENCRYPTION_KEY` (or `LLM_PROVIDER_ENCRYPTION_KEY` fallback for compatibility).
 
 ## 6. Practical minimum required values
 

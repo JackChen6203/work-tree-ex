@@ -1,6 +1,7 @@
 package budget
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/cache"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
@@ -93,6 +95,9 @@ func getBudget(c *gin.Context) {
 	if getPool() != nil {
 		profile, ok, err := getBudgetProfilePostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load budget profile", nil)
 			return
 		}
@@ -110,6 +115,9 @@ func getBudget(c *gin.Context) {
 
 		actual, err := getActualSpendPostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load expenses", nil)
 			return
 		}
@@ -194,6 +202,9 @@ func upsertBudget(c *gin.Context) {
 		if replay {
 			existing, ok, err := getBudgetProfilePostgres(c.Request.Context(), existingTrip)
 			if err != nil {
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load budget profile", nil)
 				return
 			}
@@ -205,6 +216,9 @@ func upsertBudget(c *gin.Context) {
 
 		profile, err := upsertBudgetPostgres(c.Request.Context(), tripID, in)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to upsert budget profile", nil)
 			return
 		}
@@ -249,6 +263,9 @@ func listExpenses(c *gin.Context) {
 	if getPool() != nil {
 		copyItems, err := listExpensesPostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list expenses", nil)
 			return
 		}
@@ -312,6 +329,9 @@ func createExpense(c *gin.Context) {
 		if err != nil {
 			if strings.Contains(err.Error(), "expenseAt") {
 				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
 				return
 			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create expense", nil)
@@ -385,6 +405,9 @@ func patchExpense(c *gin.Context) {
 			case strings.Contains(err.Error(), "expenseAt"):
 				response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch expense", nil)
 			}
 			return
@@ -444,6 +467,9 @@ func deleteExpense(c *gin.Context) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "expense not found", gin.H{"expenseId": expenseID})
 				return
 			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete expense", nil)
 			return
 		}
@@ -497,6 +523,8 @@ var (
 	rateCache = map[string]currencyRate{}
 )
 
+const exchangeRateRedisTTL = time.Hour
+
 func init() {
 	now := time.Now().UTC()
 	seedRates := []currencyRate{
@@ -521,20 +549,29 @@ func getRates(c *gin.Context) {
 	from := strings.ToUpper(strings.TrimSpace(c.Query("from")))
 	to := strings.ToUpper(strings.TrimSpace(c.Query("to")))
 
-	budgetMu.RLock()
-	defer budgetMu.RUnlock()
-
 	if from != "" && to != "" {
-		key := from + ":" + to
-		rate, ok := rateCache[key]
+		if cachedRate, ok := getRateFromRedis(c, from, to); ok {
+			response.JSON(c, http.StatusOK, cachedRate)
+			return
+		}
+
+		refreshedRate, ok := refreshRateFromMockProvider(from, to)
 		if !ok {
 			response.Error(c, http.StatusNotFound, perrors.CodeBudgetRateUnavailable,
 				"exchange rate not available for "+from+"/"+to, nil)
 			return
 		}
-		response.JSON(c, http.StatusOK, rate)
+		budgetMu.Lock()
+		rateCache[from+":"+to] = refreshedRate
+		budgetMu.Unlock()
+
+		setRateToRedis(c, refreshedRate)
+		response.JSON(c, http.StatusOK, refreshedRate)
 		return
 	}
+
+	budgetMu.RLock()
+	defer budgetMu.RUnlock()
 
 	rates := make([]currencyRate, 0, len(rateCache))
 	for _, r := range rateCache {
@@ -579,6 +616,7 @@ func refreshRates(c *gin.Context) {
 	}
 
 	rateCache[key] = newRate
+	setRateToRedis(c, newRate)
 	response.JSON(c, http.StatusOK, newRate)
 }
 
@@ -594,4 +632,62 @@ func ConvertAmount(from, to string, amount float64) (float64, bool) {
 		return 0, false
 	}
 	return amount * rate.Rate, true
+}
+
+func getRateFromRedis(c *gin.Context, from, to string) (currencyRate, bool) {
+	if !cache.DistributedModeEnabled() {
+		return currencyRate{}, false
+	}
+	client := cache.GetRedisClient()
+	if client == nil {
+		return currencyRate{}, false
+	}
+
+	key := "budget:rate:" + from + ":" + to
+	raw, err := client.Get(c.Request.Context(), key).Result()
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return currencyRate{}, false
+	}
+
+	var rate currencyRate
+	if err := json.Unmarshal([]byte(raw), &rate); err != nil {
+		return currencyRate{}, false
+	}
+	return rate, true
+}
+
+func setRateToRedis(c *gin.Context, rate currencyRate) {
+	if !cache.DistributedModeEnabled() {
+		return
+	}
+	client := cache.GetRedisClient()
+	if client == nil {
+		return
+	}
+
+	key := "budget:rate:" + rate.From + ":" + rate.To
+	payload, err := json.Marshal(rate)
+	if err != nil {
+		return
+	}
+	_ = client.Set(c.Request.Context(), key, payload, exchangeRateRedisTTL).Err()
+}
+
+func refreshRateFromMockProvider(from, to string) (currencyRate, bool) {
+	key := from + ":" + to
+	budgetMu.RLock()
+	existing, hasExisting := rateCache[key]
+	budgetMu.RUnlock()
+	if !hasExisting {
+		return currencyRate{}, false
+	}
+
+	now := time.Now().UTC()
+	return currencyRate{
+		From:      from,
+		To:        to,
+		Rate:      existing.Rate * 1.001,
+		Source:    "mock-api",
+		FetchedAt: now,
+	}, true
 }
