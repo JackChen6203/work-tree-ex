@@ -51,6 +51,21 @@ type notificationPreference struct {
 	Version           int    `json:"version"`
 }
 
+type DeliveryPreferenceSnapshot struct {
+	InApp            bool
+	Push             bool
+	Email            bool
+	DigestFrequency  string
+	QuietHoursStart  string
+	QuietHoursEnd    string
+	Locale           string
+	Timezone         string
+	EmailRecipient   string
+	TripUpdates      bool
+	BudgetAlerts     bool
+	AiPlanReadyAlert bool
+}
+
 type llmProvider struct {
 	ID        string    `json:"id"`
 	Provider  string    `json:"provider"`
@@ -110,6 +125,39 @@ func RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/me/llm-providers", listMyProviders)
 	group.POST("/me/llm-providers", createMyProvider)
 	group.DELETE("/me/llm-providers/:providerId", deleteMyProvider)
+}
+
+func ResolveDeliveryPreferences(userID, eventType string) DeliveryPreferenceSnapshot {
+	usersMu.RLock()
+	defer usersMu.RUnlock()
+
+	pref := myNotificationPreference
+	profile := me
+	var eventEnabled bool
+	normalizedEventType := strings.ToLower(strings.TrimSpace(eventType))
+	switch {
+	case strings.Contains(normalizedEventType, "budget"):
+		eventEnabled = pref.BudgetAlerts
+	case strings.Contains(normalizedEventType, "ai_plan"):
+		eventEnabled = pref.AiPlanReadyAlerts
+	default:
+		eventEnabled = pref.TripUpdates
+	}
+
+	return DeliveryPreferenceSnapshot{
+		InApp:            eventEnabled,
+		Push:             eventEnabled && pref.PushEnabled,
+		Email:            eventEnabled && pref.EmailEnabled,
+		DigestFrequency:  pref.DigestFrequency,
+		QuietHoursStart:  pref.QuietHoursStart,
+		QuietHoursEnd:    pref.QuietHoursEnd,
+		Locale:           profile.Locale,
+		Timezone:         profile.Timezone,
+		EmailRecipient:   profile.Email,
+		TripUpdates:      pref.TripUpdates,
+		BudgetAlerts:     pref.BudgetAlerts,
+		AiPlanReadyAlert: pref.AiPlanReadyAlerts,
+	}
 }
 
 func getMe(c *gin.Context) {

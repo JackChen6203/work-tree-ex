@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/admin"
@@ -66,6 +68,20 @@ func main() {
 		users.SetPool(pool)
 		auth.StartSessionCleanupWorker(ctx, time.Hour)
 		notifications.StartFCMTokenCleanupWorker(ctx, 6*time.Hour, 30*24*time.Hour)
+		if getEnvBool("EMAIL_DIGEST_ENABLED", true) {
+			notifications.StartDigestWorkers(
+				ctx,
+				time.Duration(getEnvInt("EMAIL_DIGEST_DAILY_INTERVAL_HOURS", 24))*time.Hour,
+				time.Duration(getEnvInt("EMAIL_DIGEST_WEEKLY_INTERVAL_HOURS", 168))*time.Hour,
+			)
+		}
+		if getEnvBool("INVITATION_REMINDER_ENABLED", true) {
+			trips.StartInvitationReminderWorker(
+				ctx,
+				time.Duration(getEnvInt("INVITATION_REMINDER_INTERVAL_MIN", 60))*time.Minute,
+				time.Duration(getEnvInt("INVITATION_REMINDER_LOOKAHEAD_HOURS", 24))*time.Hour,
+			)
+		}
 		httpserver.SetReadinessProbe(func(ctx context.Context) error {
 			return pool.Ping(ctx)
 		})
@@ -88,5 +104,32 @@ func main() {
 	if err := srv.Run(ctx); err != nil {
 		logger.Error("api server stopped with error", "error", err)
 		os.Exit(1)
+	}
+}
+
+func getEnvInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	switch strings.ToLower(raw) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
 	}
 }

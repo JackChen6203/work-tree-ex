@@ -22,6 +22,7 @@ func setupAuthRouter(t *testing.T) *gin.Engine {
 	SetPool(nil)
 	authStateMu.Lock()
 	pendingCodes = map[string]codeEntry{}
+	magicLinkSentAt = map[string]time.Time{}
 	oauthStates = map[string]oauthStateEntry{}
 	sessions = map[string]*sessionUser{}
 	refreshSessions = map[string]*sessionEntry{}
@@ -131,6 +132,32 @@ func TestVerifyMagicLinkRejectsInvalidCode(t *testing.T) {
 
 	if verifyW.Code != http.StatusUnauthorized {
 		t.Fatalf("expected verify status 401, got %d", verifyW.Code)
+	}
+}
+
+func TestMagicLinkRequestRateLimit(t *testing.T) {
+	r := setupAuthRouter(t)
+	t.Setenv("AUTH_ALLOW_MAGIC_LINK_PREVIEW", "true")
+
+	body := mustMarshalAuth(t, map[string]string{"email": "demo@example.com"})
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-magic-link", bytes.NewBuffer(body))
+	firstReq.Header.Set("Content-Type", "application/json")
+	firstW := httptest.NewRecorder()
+	r.ServeHTTP(firstW, firstReq)
+	if firstW.Code != http.StatusOK {
+		t.Fatalf("expected first request status 200, got %d", firstW.Code)
+	}
+
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-magic-link", bytes.NewBuffer(body))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondW := httptest.NewRecorder()
+	r.ServeHTTP(secondW, secondReq)
+
+	if secondW.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second request status 429, got %d body=%s", secondW.Code, secondW.Body.String())
+	}
+	if secondW.Header().Get("Retry-After") == "" {
+		t.Fatalf("expected Retry-After header on rate-limited response")
 	}
 }
 

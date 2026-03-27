@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+type OutboxStats struct {
+	PendingCount   int `json:"pendingCount"`
+	ProcessedCount int `json:"processedCount"`
+	DLQCount       int `json:"dlqCount"`
+}
+
 func PollPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
 	if getPool() != nil {
 		items, err := listOutboxEventsPostgres(ctx, "pending")
@@ -62,6 +68,48 @@ func AckOutboxEvent(ctx context.Context, eventID string, success bool) (OutboxEv
 	}
 	evt.AvailableAt = time.Now().UTC().Add(time.Duration(1<<evt.RetryCount) * time.Second)
 	return *evt, nil
+}
+
+func RetryOutboxEvent(ctx context.Context, eventID string) (OutboxEvent, error) {
+	if getPool() != nil {
+		return retryOutboxEventPostgres(ctx, eventID)
+	}
+
+	syncMu.Lock()
+	defer syncMu.Unlock()
+
+	evt, ok := outboxByID[eventID]
+	if !ok {
+		return OutboxEvent{}, ErrOutboxEventNotFound
+	}
+
+	evt.Status = "pending"
+	evt.RetryCount = 0
+	evt.ProcessedAt = nil
+	evt.AvailableAt = time.Now().UTC()
+	return *evt, nil
+}
+
+func GetOutboxStats(ctx context.Context) (OutboxStats, error) {
+	if getPool() != nil {
+		return getOutboxStatsPostgres(ctx)
+	}
+
+	syncMu.RLock()
+	defer syncMu.RUnlock()
+
+	stats := OutboxStats{}
+	for _, evt := range outboxEvents {
+		switch evt.Status {
+		case "pending":
+			stats.PendingCount++
+		case "processed":
+			stats.ProcessedCount++
+		case "dlq":
+			stats.DLQCount++
+		}
+	}
+	return stats, nil
 }
 
 func IsOutboxNotFound(err error) bool {

@@ -43,11 +43,15 @@ ENTRYPOINT ["api"]
 # ---- Worker Runtime ----
 FROM alpine:3.20 AS worker
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata curl
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=builder /out/worker /usr/local/bin/worker
 
 USER appuser
+EXPOSE 8091
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD sh -c 'curl -f http://localhost:${WORKER_HTTP_PORT:-8091}/healthz || exit 1'
 
 ENTRYPOINT ["worker"]

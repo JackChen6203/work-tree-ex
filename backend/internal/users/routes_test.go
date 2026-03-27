@@ -158,6 +158,48 @@ func TestCreateAndListProviders(t *testing.T) {
 	}
 }
 
+func TestResolveDeliveryPreferencesByEventType(t *testing.T) {
+	_ = newUsersRouter()
+
+	usersMu.Lock()
+	myNotificationPreference = notificationPreference{
+		PushEnabled:       true,
+		EmailEnabled:      true,
+		DigestFrequency:   "weekly",
+		QuietHoursStart:   "23:00",
+		QuietHoursEnd:     "07:00",
+		TripUpdates:       false,
+		BudgetAlerts:      true,
+		AiPlanReadyAlerts: false,
+		Version:           1,
+	}
+	me.Email = "owner@example.com"
+	me.Locale = "en-US"
+	me.Timezone = "Asia/Taipei"
+	usersMu.Unlock()
+
+	trip := ResolveDeliveryPreferences("u-1", "trip.updated")
+	if trip.Push || trip.Email || trip.InApp {
+		t.Fatalf("expected trip notifications disabled")
+	}
+
+	budget := ResolveDeliveryPreferences("u-1", "budget.alert")
+	if !budget.Push || !budget.Email || !budget.InApp {
+		t.Fatalf("expected budget notifications enabled")
+	}
+	if budget.DigestFrequency != "weekly" {
+		t.Fatalf("expected weekly digest, got %s", budget.DigestFrequency)
+	}
+	if budget.EmailRecipient != "owner@example.com" {
+		t.Fatalf("unexpected email recipient: %s", budget.EmailRecipient)
+	}
+
+	ai := ResolveDeliveryPreferences("u-1", "ai_plan_ready")
+	if ai.Push || ai.Email || ai.InApp {
+		t.Fatalf("expected ai notifications disabled")
+	}
+}
+
 func TestDeleteProvider(t *testing.T) {
 	r := newUsersRouter()
 

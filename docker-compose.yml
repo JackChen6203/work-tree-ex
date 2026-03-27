@@ -87,7 +87,60 @@ services:
       OAUTH_WECHAT_CLIENT_ID: ${OAUTH_WECHAT_CLIENT_ID:-}
       OAUTH_TRIPADVISOR_CLIENT_ID: ${OAUTH_TRIPADVISOR_CLIENT_ID:-}
       OAUTH_BOOKING_CLIENT_ID: ${OAUTH_BOOKING_CLIENT_ID:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     restart: unless-stopped
+
+  # ── API Hot Reload (Dev Profile) ─────────────────────────
+  api-dev:
+    image: golang:1.25-alpine
+    container_name: travel-api-dev
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      TRIPS_STORE: ${TRIPS_STORE:-postgres}
+      RUNTIME_MODE: ${RUNTIME_MODE:-single}
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: "8080"
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-travel}
+      DB_PASSWORD: ${DB_PASSWORD:-travel}
+      DB_NAME: ${DB_NAME:-travel_planner}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+      REDIS_DB: ${REDIS_DB:-0}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_TTL_MIN: ${JWT_ACCESS_TTL_MIN:-60}
+      JWT_REFRESH_TTL_HOURS: ${JWT_REFRESH_TTL_HOURS:-168}
+    command: >
+      sh -c "apk add --no-cache git &&
+             go install github.com/air-verse/air@v1.61.7 &&
+             /go/bin/air -c .air.toml"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/workspace
+      - go_mod_cache:/go/pkg/mod
+      - go_build_cache:/root/.cache/go-build
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/healthz > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    profiles:
+      - dev
 
   # ── Worker ────────────────────────────────────────────────
   worker:
@@ -116,6 +169,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_ACCESS_TTL_MIN: ${JWT_ACCESS_TTL_MIN:-60}
       JWT_REFRESH_TTL_HOURS: ${JWT_REFRESH_TTL_HOURS:-168}
+      WORKER_HTTP_PORT: ${WORKER_HTTP_PORT:-8091}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:${WORKER_HTTP_PORT:-8091}/healthz > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     restart: unless-stopped
 
   web:
@@ -132,3 +191,5 @@ services:
 
 volumes:
   postgres_data:
+  go_mod_cache:
+  go_build_cache:

@@ -1,7 +1,7 @@
 # 🖥️ 後端開發進度 Todo List
 
 > 依據 `backend-contruction.md` 規格文件，追蹤各模組開發進度。
-> 更新日期：2026-03-23
+> 更新日期：2026-03-27
 
 ---
 
@@ -346,7 +346,7 @@
 
 ## BE-P2-06｜真實 FCM Push 推播
 
-- [ ] Firebase Admin SDK 初始化
+- [x] Firebase Admin SDK 初始化
 - [x] FCM token 儲存真實寫入 PostgreSQL
 - [x] Push notification 真實透過 FCM 發送
 - [x] Token refresh 流程（client 上傳新 token）
@@ -356,11 +356,11 @@
 
 ## BE-P2-07｜真實 Email 發送
 
-- [ ] Email provider 整合（SendGrid / SES / Resend）
-- [ ] Magic link email 真實發送
-- [ ] Invite email 真實發送
-- [ ] Trip update digest email
-- [ ] Email template 管理
+- [x] Email provider 整合（SendGrid / SES / Resend）
+- [x] Magic link email 真實發送
+- [x] Invite email 真實發送
+- [x] Trip update digest email
+- [x] Email template 管理
 
 ---
 
@@ -368,28 +368,28 @@
 
 - [x] Worker 從 PostgreSQL outbox_events 輪詢
 - [x] 消費後寫入 notification
-- [ ] 消費後同步 Firebase shadow
+- [x] 消費後同步 Firebase shadow
 - [x] 消費後發送 analytics event
-- [ ] DLQ → 手動重試 API
+- [x] DLQ → 手動重試 API
 - [x] Worker graceful shutdown
 
 ---
 
 ## BE-P2-09｜Docker Compose 本地開發
 
-- [ ] docker-compose.yml（Go API + PostgreSQL + Redis）
+- [x] docker-compose.yml（Go API + PostgreSQL + Redis）
 - [ ] 配合 Supabase local dev（supabase start）
-- [ ] Hot reload（air 或 CompileDaemon）
-- [ ] .env.local 範例檔
-- [ ] Seed data 腳本
+- [x] Hot reload（air 或 CompileDaemon）
+- [x] .env.local 範例檔
+- [x] Seed data 腳本
 
 ---
 
 ## BE-P2-10｜CI/CD Production Pipeline
 
-- [ ] GitHub Actions：lint + test + build
-- [ ] Docker image build + push to registry
-- [ ] Database migration 自動化
+- [x] GitHub Actions：lint + test + build
+- [x] Docker image build + push to registry
+- [x] Database migration 自動化
 - [ ] Staging 環境部署
 - [ ] Production 環境部署（Blue-green / Canary）
 - [ ] Rollback playbook
@@ -398,7 +398,7 @@
 
 > Phase 1 所有 14 個模組均已完成（in-memory store）。
 > Phase 2 目標：將 in-memory 切換至 PostgreSQL 持久化，整合真實外部服務。
-> 更新日期：2026-03-26
+> 更新日期：2026-03-27
 
 ---
 
@@ -533,44 +533,44 @@
 
 ## BE-P2-06｜真實 FCM Push 推播
 
-- [ ] Firebase Admin SDK 初始化
-  - [ ] Service account key 管理
-  - [ ] Go SDK (`firebase.google.com/go/v4`)
+- [x] Firebase Admin SDK 初始化
+  - [x] Service account key 管理
+  - [x] Go SDK (`firebase.google.com/go/v4`)
 - [x] FCM token 管理
   - [x] `POST /fcm-tokens` 真實寫入 PostgreSQL
   - [x] Token refresh 更新
   - [x] 無效 token 清理（FCM 回傳 invalid token error）
-- [ ] Push notification 真實發送
-  - [ ] `messaging.SendMulticast()` 實作
-  - [ ] 依 user notification preferences 過濾
+- [x] Push notification 真實發送
+  - [x] `messaging.SendEachForMulticast()` 實作
+  - [x] 依 user notification preferences 過濾
   - [x] Payload 組裝（title / body / data / click_action）
-- [ ] 錯誤處理
+- [x] 錯誤處理
   - [x] Push 失敗 → retry（指數退避）
-  - [ ] 重試超限 → DLQ + 告警
+  - [x] 重試超限 → DLQ + 告警
   - [x] Invalid token → 標記 is_active = false
 
 ---
 
 ## BE-P2-07｜真實 Email 發送
 
-- [ ] Email provider 整合
-  - [ ] Provider adapter interface 定義
-  - [ ] SendGrid adapter 實作
-  - [ ] AWS SES adapter 實作（或 Resend）
-  - [ ] Provider fallback 機制
-- [ ] Magic Link email
-  - [ ] HTML template（含 magic link URL）
-  - [ ] 純文字 fallback
-  - [ ] Rate limit（同一 email 60s 內不重發）
-- [ ] Invite email
-  - [ ] HTML template（含邀請者名稱、trip 名稱、接受連結）
-  - [ ] 邀請過期前到期提醒
-- [ ] Trip update digest email
-  - [ ] 每日 / 每週摘要 cron
-  - [ ] HTML template（變更清單）
-- [ ] Email template 管理
-  - [ ] Go template 或 MJML
-  - [ ] i18n 支援（依 user locale）
+- [x] Email provider 整合
+  - [x] Provider adapter interface 定義
+  - [x] SendGrid adapter 實作
+  - [x] AWS SES adapter 實作（或 Resend）
+  - [x] Provider fallback 機制
+- [x] Magic Link email
+  - [x] HTML template（含 magic link URL）
+  - [x] 純文字 fallback
+  - [x] Rate limit（同一 email 60s 內不重發）
+- [x] Invite email
+  - [x] HTML template（含邀請者名稱、trip 名稱、接受連結）
+  - [x] 邀請過期前到期提醒
+- [x] Trip update digest email
+  - [x] 每日 / 每週摘要 cron
+  - [x] HTML template（變更清單）
+- [x] Email template 管理
+  - [x] Go template 或 MJML
+  - [x] i18n 支援（依 user locale）
 
 ---
 
@@ -580,38 +580,38 @@
   - [x] Polling interval 配置（預設 1s）
   - [x] Batch size 配置（預設 50）
   - [x] Status = 'pending' AND available_at <= now()
-- [ ] 消費處理
+- [x] 消費處理
   - [x] 寫入 notification（in-app 通知）
   - [x] 觸發 FCM push（呼叫 BE-P2-06）
-  - [ ] 觸發 email 發送（呼叫 BE-P2-07）
-  - [ ] 同步 Firebase shadow（若需要）
+  - [x] 觸發 email 發送（呼叫 BE-P2-07）
+  - [x] 同步 Firebase shadow（若需要）
   - [x] 發送 analytics event
-- [ ] 錯誤處理
+- [x] 錯誤處理
   - [x] 消費失敗 → retry_count + 1 + 指數退避
   - [x] 超過 max retry → 進 DLQ（status = 'dead'）
-  - [ ] DLQ 告警 + 手動重試 API
-- [ ] Worker lifecycle
+  - [x] DLQ 告警 + 手動重試 API
+- [x] Worker lifecycle
   - [x] Graceful shutdown（SIGTERM → 完成目前 batch → 退出）
-  - [ ] Health check endpoint
-  - [ ] Metrics（消費速率、queue 深度、DLQ 數量）
+  - [x] Health check endpoint
+  - [x] Metrics（消費速率、queue 深度、DLQ 數量）
 
 ---
 
 ## BE-P2-09｜Docker Compose 本地開發
 
 - [ ] docker-compose.yml
-  - [ ] Go API service（含 air hot reload）
-  - [ ] PostgreSQL 15+
-  - [ ] Redis 7+
+  - [x] Go API service（含 air hot reload）
+  - [x] PostgreSQL 15+
+  - [x] Redis 7+
   - [ ] Supabase local dev（`supabase start`）
-- [ ] 開發配置
-  - [ ] .env.local 範例檔
-  - [ ] Volume mount for hot reload
-  - [ ] Health check 配置
-- [ ] Seed data 腳本
-  - [ ] 測試用 user + trip + itinerary
-  - [ ] 測試用 budget + expenses
-  - [ ] 測試用 notifications
+- [x] 開發配置
+  - [x] .env.local 範例檔
+  - [x] Volume mount for hot reload
+  - [x] Health check 配置
+- [x] Seed data 腳本
+  - [x] 測試用 user + trip + itinerary
+  - [x] 測試用 budget + expenses
+  - [x] 測試用 notifications
 
 ---
 

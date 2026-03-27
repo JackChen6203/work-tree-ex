@@ -99,40 +99,44 @@
 - API key 環境變數管理
 - 每日 quota + per-second rate limit + provider fallback
 
-### BE-P2-06｜真實 FCM Push 推播（部分完成 ⚠️）
+### BE-P2-06｜真實 FCM Push 推播（大部分完成 ⚠️）
 
 - FCM token PostgreSQL 寫入（upsert/refresh）✅
-- Trigger notification 時真實 FCM HTTP 發送（可選，需設定 `FCM_SERVER_KEY`）✅
+- Trigger notification 時真實 FCM 發送（Firebase Admin SDK + HTTP fallback）✅
 - Push 失敗 retry + DLQ 標記 ✅
 - Invalid token 自動失效化（`is_active=false`）✅
-- Firebase Admin SDK 初始化（Service Account + Go SDK）❌
+- Firebase Admin SDK 初始化（Service Account + Go SDK）✅
+- 依 user notification preferences 過濾仍待補齊 ❌
 
-### BE-P2-07｜真實 Email 發送（全部未開始 ❌）
+### BE-P2-07｜真實 Email 發送（部分完成 ⚠️）
 
-- Email provider 整合（SendGrid / SES / Resend）
-- Magic link email
-- Invite email
-- Trip update digest
-- Email template
+- Email provider adapter（Resend / SendGrid / noop + fallback）✅
+- Magic link email（HTML + text fallback + 60s rate limit）✅
+- Invite email（HTML + text fallback）✅
+- Trip update digest（cron + template）❌
+- 進階 template 管理（MJML / 完整 i18n）❌
 
 ### BE-P2-08｜Outbox Worker 真實消費（部分完成 ⚠️）
 
 - PostgreSQL outbox_events 輪詢（interval / batch size 可配置）✅
 - 寫入 notification + FCM push + analytics dispatch hook ✅
 - retry/backoff + DLQ 狀態轉移 ✅
+- DLQ 告警 + Admin 手動重試 API ✅
 - Worker graceful shutdown ✅
-- Firebase shadow、Email dispatch、health/metrics 仍待補齊 ❌
+- Worker health/ready/metrics endpoint ✅
+- Firebase shadow、Email dispatch 仍待補齊 ❌
 
-### BE-P2-09｜Docker Compose 本地開發（全部未開始 ❌）
+### BE-P2-09｜Docker Compose 本地開發（部分完成 ⚠️）
 
-- docker-compose.yml（Go API + PostgreSQL + Redis）
-- Hot reload + Supabase local dev
-- .env.local + Seed data
+- docker-compose.yml（Go API + PostgreSQL + Redis）✅
+- Dev profile hot reload（air）+ volume mount ✅
+- `.env.local.example` + seed script ✅
+- Supabase local dev（`supabase start`）仍待補齊 ❌
 
-### BE-P2-10｜CI/CD Production Pipeline（全部未開始 ❌）
+### BE-P2-10｜CI/CD Production Pipeline（部分完成 ⚠️）
 
-- GitHub Actions：lint + test + build
-- Docker image build + push
-- Migration 自動化
-- Staging / Production 部署
-- Rollback playbook
+- GitHub Actions：lint + test + build ✅
+- Docker image build + push ✅
+- Migration 自動化 ✅
+- Staging / Production 部署 ❌
+- Rollback playbook ❌

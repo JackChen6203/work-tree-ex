@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -226,6 +227,30 @@ func ensureNotificationUser(ctx context.Context, p *pgxpool.Pool, userID string)
 		ON CONFLICT (id) DO NOTHING
 	`, userID, email, "System")
 	return err
+}
+
+func lookupUserEmailPostgres(ctx context.Context, userID string) (string, error) {
+	p := getPool()
+	if p == nil {
+		return "", errors.New("postgres notifications store not configured")
+	}
+	if _, err := uuid.Parse(userID); err != nil {
+		return "", nil
+	}
+
+	var email string
+	err := p.QueryRow(ctx, `
+		SELECT email::text
+		FROM users
+		WHERE id = $1::uuid
+	`, userID).Scan(&email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(email), nil
 }
 
 func stringsTrimOrDefault(v, fallback string) string {

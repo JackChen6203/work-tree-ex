@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/users"
 )
 
 type notification struct {
@@ -361,8 +363,8 @@ func triggerNotification(c *gin.Context) {
 	}
 	dedupeStore[dedupeKey] = now
 
-	// Check delivery preferences
-	prefs := defaultDeliveryPrefs
+	// Check per-user delivery preferences
+	prefs := resolveDeliveryPrefs(in.UserID, in.EventType)
 	notificationsMu.Unlock()
 	channels := []string{}
 
@@ -427,6 +429,9 @@ func triggerNotification(c *gin.Context) {
 			if pushErr != nil && status == "sent" {
 				pd.Status = "failed"
 			}
+			if pd.Status == "dlq" {
+				log.Printf("notifications: push delivery moved to dlq (notification_id=%s event_type=%s resource_id=%s)", notifID, in.EventType, in.ResourceID)
+			}
 			if len(invalidTokens) > 0 {
 				_ = deactivateFCMTokens(c.Request.Context(), invalidTokens)
 			}
@@ -440,6 +445,9 @@ func triggerNotification(c *gin.Context) {
 
 	// Email delivery (skipped if not enabled)
 	if prefs.Email {
+		if err := sendNotificationEmail(c.Request.Context(), in.UserID, in, notifID); err != nil {
+			log.Printf("notifications: email delivery failed (notification_id=%s user_id=%s): %v", notifID, in.UserID, err)
+		}
 		channels = append(channels, "email")
 	}
 
@@ -448,6 +456,15 @@ func triggerNotification(c *gin.Context) {
 		"channels":       channels,
 		"skipped":        false,
 	})
+}
+
+func resolveDeliveryPrefs(userID, eventType string) DeliveryPrefs {
+	snapshot := users.ResolveDeliveryPreferences(userID, eventType)
+	prefs := defaultDeliveryPrefs
+	prefs.InApp = snapshot.InApp
+	prefs.Push = snapshot.Push
+	prefs.Email = snapshot.Email
+	return prefs
 }
 
 func listPushDeliveries(c *gin.Context) {
