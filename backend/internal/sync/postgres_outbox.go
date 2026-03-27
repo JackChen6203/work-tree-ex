@@ -13,7 +13,10 @@ import (
 	platformdb "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 )
 
-var ErrOutboxEventNotFound = errors.New("outbox event not found")
+var (
+	ErrOutboxEventNotFound     = errors.New("outbox event not found")
+	ErrOutboxEventNotRetryable = errors.New("outbox event is not retryable")
+)
 
 var (
 	poolMu sync.RWMutex
@@ -230,6 +233,144 @@ func ackOutboxEventPostgres(ctx context.Context, eventID string, success bool) (
 		}
 		return OutboxEvent{}, err
 	}
+}
+
+func retryOutboxEventPostgres(ctx context.Context, eventID string) (OutboxEvent, error) {
+	p := getPool()
+	if p == nil {
+		return OutboxEvent{}, errors.New("postgres outbox store not configured")
+	}
+
+	for attempt := 1; ; attempt++ {
+		item, err := func() (OutboxEvent, error) {
+			tx, err := p.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return OutboxEvent{}, err
+			}
+			defer rollbackTx(ctx, tx)
+
+			var (
+				item       OutboxEvent
+				payloadRaw []byte
+				dbStatus   string
+				tripID     string
+			)
+			err = tx.QueryRow(ctx, `
+				SELECT id::text, COALESCE(trip_id::text, ''), aggregate_type, aggregate_id, event_type,
+				       payload, dedupe_key, status, retry_count, available_at, processed_at, created_at
+				FROM outbox_events
+				WHERE id = $1::uuid
+				FOR UPDATE
+			`, eventID).Scan(
+				&item.ID,
+				&tripID,
+				&item.AggregateType,
+				&item.AggregateID,
+				&item.EventType,
+				&payloadRaw,
+				&item.DedupeKey,
+				&dbStatus,
+				&item.RetryCount,
+				&item.AvailableAt,
+				&item.ProcessedAt,
+				&item.CreatedAt,
+			)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return OutboxEvent{}, ErrOutboxEventNotFound
+			}
+			if err != nil {
+				return OutboxEvent{}, err
+			}
+			if dbStatus != "dead" {
+				return OutboxEvent{}, ErrOutboxEventNotRetryable
+			}
+
+			now := time.Now().UTC()
+			_, err = tx.Exec(ctx, `
+				UPDATE outbox_events
+				SET status = 'pending',
+				    retry_count = 0,
+				    available_at = $2,
+				    processed_at = NULL
+				WHERE id = $1::uuid
+			`, eventID, now)
+			if err != nil {
+				return OutboxEvent{}, err
+			}
+
+			item.Status = "pending"
+			item.RetryCount = 0
+			item.AvailableAt = now
+			item.ProcessedAt = nil
+			item.TripID = tripID
+			if len(payloadRaw) > 0 {
+				if err := json.Unmarshal(payloadRaw, &item.Payload); err != nil {
+					return OutboxEvent{}, err
+				}
+			}
+			if item.Payload == nil {
+				item.Payload = gin.H{}
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				return OutboxEvent{}, err
+			}
+			return item, nil
+		}()
+		if err == nil {
+			return item, nil
+		}
+
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
+		}
+		if platformdb.IsDeadlock(err) {
+			return OutboxEvent{}, platformdb.DeadlockRetryExhaustedError(err)
+		}
+		return OutboxEvent{}, err
+	}
+}
+
+func getOutboxStatsPostgres(ctx context.Context) (OutboxStats, error) {
+	p := getPool()
+	if p == nil {
+		return OutboxStats{}, errors.New("postgres outbox store not configured")
+	}
+
+	rows, err := p.Query(ctx, `
+		SELECT status, count(*)
+		FROM outbox_events
+		GROUP BY status
+	`)
+	if err != nil {
+		return OutboxStats{}, err
+	}
+	defer rows.Close()
+
+	stats := OutboxStats{}
+	for rows.Next() {
+		var (
+			status string
+			count  int
+		)
+		if err := rows.Scan(&status, &count); err != nil {
+			return OutboxStats{}, err
+		}
+		switch status {
+		case "pending":
+			stats.PendingCount = count
+		case "done":
+			stats.ProcessedCount = count
+		case "dead":
+			stats.DLQCount = count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return OutboxStats{}, err
+	}
+	return stats, nil
 }
 
 func rollbackTx(ctx context.Context, tx pgx.Tx) {

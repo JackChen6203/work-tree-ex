@@ -923,10 +923,14 @@ Step 3: 旅行風格偏好（可跳過）
 ### 細部功能
 - FCM token 寫入 PostgreSQL（`POST /fcm-tokens` upsert）
 - Trigger notification 時組裝 push payload（title/body/data/click_action）
-- 可選 FCM HTTP gateway（`FCM_SERVER_KEY` + `FCM_SEND_ENDPOINT`）啟用真實發送
+- Firebase Admin SDK gateway（`FCM_SERVICE_ACCOUNT_FILE` / `FCM_SERVICE_ACCOUNT_JSON` / `FCM_PROJECT_ID`）
+- `messaging.SendEachForMulticast()` 真實推播（Admin SDK）
+- 可選 legacy FCM HTTP gateway（`FCM_SERVER_KEY` + `FCM_SEND_ENDPOINT`）作為 fallback
 - Push 失敗重試（指數退避）與重試超限標記 `dlq`
 - FCM invalid token 自動標記 `is_active=false`
-- Email provider（SendGrid / SES / Resend）與 template rendering 待續作
+- Email provider adapter（Resend / SendGrid / noop + fallback）已接入
+- Magic link / Invite email 已具備 HTML + text fallback 與基本 i18n
+- Trip digest email 與完整 template 管理（MJML / 進階 i18n）待續作
 
 ---
 
@@ -939,4 +943,20 @@ Step 3: 旅行風格偏好（可跳過）
 - 每輪最多處理 `WORKER_BATCH_SIZE` 筆事件
 - 消費後寫入 in-app notification，並觸發 FCM push（若可用）
 - 消費失敗時 nack：`retry_count + 1` + 指數退避；超過上限進入 `dlq`
+- 提供 Admin 手動重試 API：`POST /api/v1/admin/outbox/:eventId/retry`（僅 `dead` 事件）
+- Worker 監控端點（`WORKER_HTTP_PORT`）：`/healthz`、`/readyz`、`/metrics`
 - SIGTERM/SIGINT graceful shutdown（完成當前 cycle 後退出）
+
+---
+
+## BE-P2-09｜Docker Compose 本地開發
+
+**模式**：單主機本地開發，提供正式 runtime 與 dev hot-reload profile
+
+### 細部功能
+- `docker-compose.yml` 具備 API / Worker / PostgreSQL 16 / Redis 7 / Web
+- `api-dev` profile：`air` hot reload + bind mount（`./backend:/workspace`）
+- API 與 Worker 都提供 healthcheck（搭配 `/healthz`）
+- `.env.local.example` 提供 dev profile 參數範本
+- `scripts/seed-local-data.sh` 透過 API 建立 demo trip / itinerary / budget / expense / notifications
+- Supabase local dev（`supabase start`）待續作

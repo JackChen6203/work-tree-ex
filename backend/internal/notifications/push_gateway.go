@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
 )
 
 type pushMessage struct {
@@ -45,6 +48,10 @@ type httpFCMPushGateway struct {
 	client    *http.Client
 	endpoint  string
 	serverKey string
+}
+
+type firebaseAdminPushGateway struct {
+	client *messaging.Client
 }
 
 func (g *httpFCMPushGateway) Send(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error) {
@@ -133,6 +140,54 @@ func (g *httpFCMPushGateway) Send(ctx context.Context, tokens []string, msg push
 	return out, nil
 }
 
+func (g *firebaseAdminPushGateway) Send(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error) {
+	if len(tokens) == 0 {
+		return pushGatewayResult{}, nil
+	}
+
+	multicast := &messaging.MulticastMessage{
+		Tokens: tokens,
+		Data:   msg.Data,
+		Notification: &messaging.Notification{
+			Title: msg.Title,
+			Body:  msg.Body,
+		},
+		Webpush: &messaging.WebpushConfig{
+			Notification: &messaging.WebpushNotification{
+				Title: msg.Title,
+				Body:  msg.Body,
+			},
+		},
+	}
+
+	resp, err := g.client.SendEachForMulticast(ctx, multicast)
+	if err != nil {
+		return pushGatewayResult{
+			SuccessCount: 0,
+			FailureCount: len(tokens),
+			Retryable:    isRetryableFCMError(err),
+		}, err
+	}
+
+	out := pushGatewayResult{
+		SuccessCount: resp.SuccessCount,
+		FailureCount: resp.FailureCount,
+	}
+	for idx, item := range resp.Responses {
+		if item == nil || item.Success || item.Error == nil {
+			continue
+		}
+		if isInvalidTokenError(item.Error) && idx < len(tokens) {
+			out.InvalidTokens = append(out.InvalidTokens, tokens[idx])
+			continue
+		}
+		if isRetryableFCMError(item.Error) {
+			out.Retryable = true
+		}
+	}
+	return out, nil
+}
+
 var (
 	pushGatewayOnce sync.Once
 	globalGateway   pushGateway
@@ -158,6 +213,10 @@ func getPushGateway(_ context.Context) pushGateway {
 }
 
 func buildPushGateway() pushGateway {
+	if gateway, ok := buildFirebaseAdminGateway(); ok {
+		return gateway
+	}
+
 	serverKey := strings.TrimSpace(os.Getenv("FCM_SERVER_KEY"))
 	if serverKey == "" {
 		return &noopPushGateway{}
@@ -176,6 +235,66 @@ func buildPushGateway() pushGateway {
 		endpoint:  endpoint,
 		serverKey: serverKey,
 	}
+}
+
+func buildFirebaseAdminGateway() (pushGateway, bool) {
+	credentialsJSON := strings.TrimSpace(os.Getenv("FCM_SERVICE_ACCOUNT_JSON"))
+	credentialsFile := strings.TrimSpace(os.Getenv("FCM_SERVICE_ACCOUNT_FILE"))
+	projectID := strings.TrimSpace(os.Getenv("FCM_PROJECT_ID"))
+	if credentialsJSON == "" && credentialsFile == "" {
+		return nil, false
+	}
+
+	var cfg *firebase.Config
+	if projectID != "" {
+		cfg = &firebase.Config{ProjectID: projectID}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	credentialsPath := credentialsFile
+	if credentialsPath == "" {
+		tmpFile, err := os.CreateTemp("", "fcm-service-account-*.json")
+		if err != nil {
+			log.Printf("notifications: failed to create temp credentials file: %v", err)
+			return nil, false
+		}
+		if _, err := tmpFile.WriteString(credentialsJSON); err != nil {
+			_ = tmpFile.Close()
+			log.Printf("notifications: failed to write temp credentials file: %v", err)
+			return nil, false
+		}
+		if err := tmpFile.Chmod(0o600); err != nil {
+			_ = tmpFile.Close()
+			log.Printf("notifications: failed to chmod temp credentials file: %v", err)
+			return nil, false
+		}
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("notifications: failed to close temp credentials file: %v", err)
+			return nil, false
+		}
+		credentialsPath = tmpFile.Name()
+	}
+	if err := os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credentialsPath); err != nil {
+		log.Printf("notifications: failed to set GOOGLE_APPLICATION_CREDENTIALS: %v", err)
+		return nil, false
+	}
+
+	app, err := firebase.NewApp(ctx, cfg)
+	if err != nil {
+		log.Printf("notifications: failed to init Firebase Admin SDK: %v", err)
+		return nil, false
+	}
+
+	client, err := app.Messaging(ctx)
+	if err != nil {
+		log.Printf("notifications: failed to init Firebase messaging client: %v", err)
+		return nil, false
+	}
+
+	log.Printf("notifications: Firebase Admin SDK gateway enabled")
+	return &firebaseAdminPushGateway{client: client}, true
 }
 
 func setPushGatewayForTest(gateway pushGateway) {
@@ -200,8 +319,21 @@ func isRetryableFCMError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "unavailable") ||
 		strings.Contains(message, "internal") ||
+		strings.Contains(message, "resource-exhausted") ||
+		strings.Contains(message, "rate exceeded") ||
 		strings.Contains(message, "deadline exceeded") ||
 		strings.Contains(message, "timeout")
+}
+
+func isInvalidTokenError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "not registered") ||
+		strings.Contains(message, "registration-token-not-registered") ||
+		strings.Contains(message, "invalid registration token") ||
+		strings.Contains(message, "invalid-argument")
 }
 
 func isInvalidTokenErrorCode(code string) bool {

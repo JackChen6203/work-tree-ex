@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -426,6 +427,9 @@ func triggerNotification(c *gin.Context) {
 			pd.RetryCount = retryCount
 			if pushErr != nil && status == "sent" {
 				pd.Status = "failed"
+			}
+			if pd.Status == "dlq" {
+				log.Printf("notifications: push delivery moved to dlq (notification_id=%s event_type=%s resource_id=%s)", notifID, in.EventType, in.ResourceID)
 			}
 			if len(invalidTokens) > 0 {
 				_ = deactivateFCMTokens(c.Request.Context(), invalidTokens)

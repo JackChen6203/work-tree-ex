@@ -19,6 +19,18 @@ Create it by copying:
 cp .env.example .env
 ```
 
+### Root `.env.local` (optional for Compose dev profile)
+
+Used by:
+
+- `docker-compose.yml` `api-dev` profile (`docker compose --profile dev up api-dev`)
+
+Create it by copying:
+
+```bash
+cp .env.local.example .env.local
+```
+
 ### `apps/web/.env.local`
 
 Used only by Vite when you run the frontend locally with `npm run dev`.
@@ -105,10 +117,22 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `MAP_RPS_LIMIT` | No | API map routes | Per-second request cap (default `20`) |
 | `GOOGLE_MAPS_API_KEY` | Optional | API map routes | Enables Google Maps Places/Geocode/Directions live calls |
 | `MAPBOX_API_KEY` | Optional | API map routes | Enables Mapbox Geocoding/Directions live calls as backup |
+| `FCM_SERVICE_ACCOUNT_FILE` | Optional | API notifications push delivery | Firebase Admin SDK service account JSON file path. Preferred over legacy FCM server key. |
+| `FCM_SERVICE_ACCOUNT_JSON` | Optional | API notifications push delivery | Firebase Admin SDK service account JSON body (for secret manager injection). |
+| `FCM_PROJECT_ID` | Optional | API notifications push delivery | Explicit Firebase project id override for Admin SDK init. |
 | `FCM_SERVER_KEY` | Optional | API notifications push delivery | Enables real FCM HTTP push delivery when set |
 | `FCM_SEND_ENDPOINT` | No | API notifications push delivery | Defaults to `https://fcm.googleapis.com/fcm/send` |
+| `EMAIL_PROVIDER_PRIMARY` | No | API auth + trips invitation mailer | Primary provider: `resend`, `sendgrid`, or `noop` (default auto-detects by API keys) |
+| `EMAIL_PROVIDER_FALLBACK` | Optional | API auth + trips invitation mailer | Fallback provider when primary send fails |
+| `EMAIL_SEND_TIMEOUT_SEC` | No | API auth + trips invitation mailer | Email provider HTTP timeout seconds (default `8`) |
+| `EMAIL_FROM` | No | API auth + trips invitation mailer | Sender address for transactional emails |
+| `RESEND_API_KEY` | Optional | API auth + trips invitation mailer | Enables Resend email provider |
+| `RESEND_API_ENDPOINT` | No | API auth + trips invitation mailer | Defaults to `https://api.resend.com/emails` |
+| `SENDGRID_API_KEY` | Optional | API auth + trips invitation mailer | Enables SendGrid email provider |
+| `SENDGRID_API_ENDPOINT` | No | API auth + trips invitation mailer | Defaults to `https://api.sendgrid.com/v3/mail/send` |
 | `WORKER_POLL_INTERVAL_SEC` | No | Worker outbox poller | Poll interval seconds, default `1` |
 | `WORKER_BATCH_SIZE` | No | Worker outbox poller | Max outbox events processed per cycle, default `50` |
+| `WORKER_HTTP_PORT` | No | Worker monitor server | Worker health/ready/metrics HTTP port (default `8091`, set `0` to disable). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Optional | API integrations | Server-only key for Supabase HTTP APIs. Keep only on backend/secrets manager, never expose to browser. |
 | `WEB_PORT` | No | Docker Compose | Frontend nginx published port |
 | `MIGRATE_DATABASE_URL` | Recommended for external DB | Docker Compose migrate/manual migration | Use a full Postgres URL when your DB password contains special chars |

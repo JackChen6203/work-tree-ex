@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -67,6 +68,9 @@ func ConsumeOutboxEvent(ctx context.Context, eventType, resourceID string, paylo
 			})
 			pd.Status = status
 			pd.RetryCount = retryCount
+			if pd.Status == "dlq" {
+				log.Printf("notifications: worker push delivery moved to dlq (notification_id=%s event_type=%s resource_id=%s)", notifID, in.EventType, in.ResourceID)
+			}
 			if len(invalidTokens) > 0 {
 				_ = deactivateFCMTokens(ctx, invalidTokens)
 			}

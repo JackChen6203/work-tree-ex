@@ -14,6 +14,7 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	pjwt "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/jwt"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/mailer"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
 
@@ -57,6 +59,7 @@ const webSessionTTL = 24 * time.Hour
 
 // refreshTokenTTL is the default refresh token duration.
 const refreshTokenTTL = 7 * 24 * time.Hour
+const magicLinkSendCooldown = 60 * time.Second
 
 type sessionEntry struct {
 	User             *sessionUser
@@ -135,6 +138,7 @@ var oauthProviders = map[string]oauthProviderConfig{
 var (
 	authStateMu     sync.RWMutex
 	pendingCodes    = map[string]codeEntry{}
+	magicLinkSentAt = map[string]time.Time{}
 	oauthStates     = map[string]oauthStateEntry{}
 	sessions        = map[string]*sessionUser{}
 	refreshSessions = map[string]*sessionEntry{} // keyed by refresh token hash hex
@@ -325,6 +329,24 @@ func requestMagicLink(c *gin.Context) {
 		return
 	}
 
+	authStateMu.RLock()
+	lastSentAt, seen := magicLinkSentAt[email]
+	authStateMu.RUnlock()
+	if seen {
+		retryAfter := time.Until(lastSentAt.Add(magicLinkSendCooldown))
+		if retryAfter > 0 {
+			retryAfterSeconds := int(retryAfter.Seconds())
+			if retryAfterSeconds < 1 {
+				retryAfterSeconds = 1
+			}
+			c.Header("Retry-After", strconv.Itoa(retryAfterSeconds))
+			response.Error(c, http.StatusTooManyRequests, perrors.CodeRateLimitExceeded, "magic-link was recently sent; please retry later", gin.H{
+				"retryAfterSec": retryAfterSeconds,
+			})
+			return
+		}
+	}
+
 	code, err := generateCode(6)
 	if err != nil {
 		if response.DatabaseUnavailable(c, err) {
@@ -336,7 +358,20 @@ func requestMagicLink(c *gin.Context) {
 
 	authStateMu.Lock()
 	pendingCodes[email] = codeEntry{CodeHash: sha256.Sum256([]byte(code)), ExpiresAt: time.Now().Add(10 * time.Minute)}
+	magicLinkSentAt[email] = time.Now().UTC()
 	authStateMu.Unlock()
+
+	expiresAt := time.Now().UTC().Add(10 * time.Minute)
+	verifyURL := buildFrontendBaseURL(c) + "/login?method=magic-link&email=" + url.QueryEscape(email) + "&code=" + url.QueryEscape(code)
+	message := mailer.BuildMagicLinkMessage(email, requestLocale(c), code, verifyURL, expiresAt)
+	if err := mailer.Send(c.Request.Context(), message); err != nil {
+		authStateMu.Lock()
+		delete(pendingCodes, email)
+		delete(magicLinkSentAt, email)
+		authStateMu.Unlock()
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to send magic-link email", nil)
+		return
+	}
 
 	payload := gin.H{
 		"sent":      true,
@@ -525,6 +560,18 @@ func buildFrontendBaseURL(c *gin.Context) string {
 	}
 
 	return "http://localhost:5173"
+}
+
+func requestLocale(c *gin.Context) string {
+	value := strings.TrimSpace(c.GetHeader("Accept-Language"))
+	if value == "" {
+		return "zh-TW"
+	}
+	parts := strings.Split(value, ",")
+	if len(parts) == 0 {
+		return "zh-TW"
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func upsertSessionLocked(c *gin.Context, user *sessionUser) (string, error) {

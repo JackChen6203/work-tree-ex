@@ -4,7 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/mailer"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
 )
 
@@ -64,7 +69,8 @@ func createInvitation(c *gin.Context) {
 		return
 	}
 
-	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
+	tripInfo, err := activeRepository.Get(c.Request.Context(), tripID)
+	if err != nil {
 		response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
 		return
 	}
@@ -125,6 +131,7 @@ func createInvitation(c *gin.Context) {
 		invitationMu.Unlock()
 
 		if created {
+			sendInvitationEmail(c, tripInfo, inv)
 			response.JSON(c, http.StatusCreated, inv)
 			return
 		}
@@ -164,6 +171,7 @@ func createInvitation(c *gin.Context) {
 	invitationByID[inv.ID] = &invitationsByTrip[tripID][len(invitationsByTrip[tripID])-1]
 	invitationIdempotency[key] = inv.ID
 
+	sendInvitationEmail(c, tripInfo, inv)
 	response.JSON(c, http.StatusCreated, inv)
 }
 
@@ -330,4 +338,57 @@ func isValidInvitationRole(role string) bool {
 	default:
 		return false
 	}
+}
+
+func sendInvitationEmail(c *gin.Context, tripInfo trip, inv invitation) {
+	message := mailer.BuildInviteMessage(
+		inv.Email,
+		requestLocale(c),
+		inviterName(inv.InvitedBy),
+		strings.TrimSpace(tripInfo.Name),
+		buildInvitationAcceptURL(c, inv),
+		inv.ExpiresAt,
+	)
+	if err := mailer.Send(c.Request.Context(), message); err != nil {
+		log.Printf("trips: failed to send invitation email (invitation_id=%s email=%s): %v", inv.ID, inv.Email, err)
+	}
+}
+
+func inviterName(invitedBy string) string {
+	invitedBy = strings.TrimSpace(invitedBy)
+	if invitedBy == "" || invitedBy == "system" {
+		return "Trip owner"
+	}
+	return invitedBy
+}
+
+func buildInvitationAcceptURL(c *gin.Context, inv invitation) string {
+	baseURL := strings.TrimSpace(os.Getenv("FRONTEND_BASE_URL"))
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(c.GetHeader("Origin"))
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	return fmt.Sprintf(
+		"%s/invitations/accept?tripId=%s&invitationId=%s&token=%s",
+		baseURL,
+		url.QueryEscape(inv.TripID),
+		url.QueryEscape(inv.ID),
+		url.QueryEscape(inv.Token),
+	)
+}
+
+func requestLocale(c *gin.Context) string {
+	value := strings.TrimSpace(c.GetHeader("Accept-Language"))
+	if value == "" {
+		return "zh-TW"
+	}
+	parts := strings.Split(value, ",")
+	if len(parts) == 0 {
+		return "zh-TW"
+	}
+	return strings.TrimSpace(parts[0])
 }

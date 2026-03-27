@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
+	syncmod "github.com/solidityDeveloper/time_tree_ex/backend/internal/sync"
 )
 
 // Job represents an AI planning job in the admin view.
@@ -107,6 +109,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	admin.GET("/jobs", listJobs)
 	admin.POST("/jobs/:jobId/retry", retryJob)
 	admin.POST("/jobs/:jobId/cancel", cancelJob)
+	admin.POST("/outbox/:eventId/retry", retryOutboxEvent)
 	admin.GET("/providers/health", getProvidersHealth)
 	admin.GET("/audit-logs", listAuditLogs)
 	admin.GET("/usage/suspicious", getSuspiciousUsage)
@@ -201,6 +204,47 @@ func cancelJob(c *gin.Context) {
 	}
 
 	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "job not found", gin.H{"jobId": jobID})
+}
+
+func retryOutboxEvent(c *gin.Context) {
+	eventID := strings.TrimSpace(c.Param("eventId"))
+	if eventID == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "eventId is required", nil)
+		return
+	}
+
+	evt, err := syncmod.RetryOutboxEvent(c.Request.Context(), eventID)
+	if err != nil {
+		if syncmod.IsOutboxNotFound(err) {
+			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "outbox event not found", gin.H{"eventId": eventID})
+			return
+		}
+		if errors.Is(err, syncmod.ErrOutboxEventNotRetryable) {
+			response.Error(c, http.StatusConflict, perrors.CodeConflict, "outbox event is not in dlq status", gin.H{"eventId": eventID})
+			return
+		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to retry outbox event", nil)
+		return
+	}
+
+	if err := appendAuditLog(c, AuditLog{
+		ID:           uuid.NewString(),
+		Action:       "retry_outbox_event",
+		ResourceType: "outbox_events",
+		ResourceID:   eventID,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+		return
+	}
+
+	response.JSON(c, http.StatusOK, evt)
 }
 
 func getProvidersHealth(c *gin.Context) {

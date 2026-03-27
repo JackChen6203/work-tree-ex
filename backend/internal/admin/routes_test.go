@@ -106,3 +106,16 @@ func TestSuspiciousUsage(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+func TestRetryOutboxEventNotFound(t *testing.T) {
+	r := setupRouter()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/outbox/non-existent-event/retry", nil)
+	req.Header.Set("X-Admin-Token", "admin-secret-token")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", w.Code, w.Body.String())
+	}
+}
