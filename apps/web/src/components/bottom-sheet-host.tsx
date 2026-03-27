@@ -1,10 +1,12 @@
 import { NavLink } from "react-router-dom";
 import clsx from "clsx";
+import { useRef } from "react";
 import { LocaleSwitcher } from "./locale-switcher";
 import { useShellNavItems } from "./shell-nav-items";
 import { useI18n } from "../lib/i18n";
 import { useSessionStore } from "../store/session-store";
 import { useUiStore } from "../store/ui-store";
+import { useFocusTrap } from "./use-focus-trap";
 
 export function BottomSheetHost() {
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -12,6 +14,14 @@ export function BottomSheetHost() {
   const { t } = useI18n();
   const items = useShellNavItems();
   const user = useSessionStore((state) => state.user);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const isActive = Boolean(activeSheet && activeSheet.type === "mobile-nav");
+
+  useFocusTrap({
+    active: isActive,
+    containerRef: sheetRef,
+    onEscape: closeSheet
+  });
 
   if (!activeSheet || activeSheet.type !== "mobile-nav") {
     return null;
@@ -24,7 +34,9 @@ export function BottomSheetHost() {
         aria-describedby="mobile-nav-sheet-description"
         aria-modal="true"
         className="relative w-full rounded-t-[32px] border border-white/70 bg-white/95 px-4 pb-7 pt-4 shadow-card"
+        ref={sheetRef}
         role="dialog"
+        tabIndex={-1}
       >
         <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-ink/15" />
         <div className="flex items-start justify-between gap-4">

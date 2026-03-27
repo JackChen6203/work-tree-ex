@@ -113,6 +113,9 @@ func createInvitation(c *gin.Context) {
 	if getCollaborationPool() != nil {
 		inv, created, err := createInvitationPostgres(c.Request.Context(), tripID, in)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create invitation", nil)
 			return
 		}
@@ -177,6 +180,9 @@ func listInvitations(c *gin.Context) {
 		var err error
 		items, err = listInvitationsPostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list invitations", nil)
 			return
 		}
@@ -212,6 +218,9 @@ func revokeInvitation(c *gin.Context) {
 			case errors.Is(err, ErrInvitationNotPending):
 				response.Error(c, http.StatusConflict, perrors.CodeConflict, "invitation is not pending", nil)
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to revoke invitation", nil)
 			}
 			return
@@ -253,6 +262,9 @@ func acceptInvitation(c *gin.Context) {
 			case errors.Is(err, ErrInvitationNotPending):
 				response.Error(c, http.StatusConflict, perrors.CodeConflict, "invitation is not pending", nil)
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to accept invitation", nil)
 			}
 			return

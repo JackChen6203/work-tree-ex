@@ -13,6 +13,7 @@ import (
 // publicPrefixes defines route prefixes that skip JWT enforcement.
 var publicPrefixes = []string{
 	"/healthz",
+	"/readyz",
 	"/api/v1/auth/",
 }
 

@@ -12,6 +12,7 @@ import (
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	plannerMu.Lock()
 	plansByTrip = map[string][]planDraft{}
 	planByID = map[string]planDraft{}

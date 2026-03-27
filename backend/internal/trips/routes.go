@@ -106,6 +106,9 @@ func resetMemberStoreForTests() {
 func listTrips(c *gin.Context) {
 	items, err := activeRepository.List(c.Request.Context())
 	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list trips", nil)
 		return
 	}
@@ -133,6 +136,9 @@ func createTrip(c *gin.Context) {
 
 	t, err := activeRepository.Create(c.Request.Context(), in, idempotencyKey)
 	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create trip", nil)
 		return
 	}
@@ -152,6 +158,9 @@ func getTrip(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, ErrTripNotFound) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		if response.DatabaseUnavailable(c, err) {
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to get trip", nil)
@@ -192,6 +201,9 @@ func patchTrip(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
 			return
 		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
 		return
 	}
@@ -200,6 +212,7 @@ func patchTrip(c *gin.Context) {
 		response.Error(c, http.StatusForbidden, perrors.CodeForbidden, "archived trip cannot be edited", nil)
 		return
 	}
+	beforeState := preview
 
 	if in.Name != nil && len(*in.Name) > 200 {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "name must not exceed 200 characters", nil)
@@ -235,8 +248,21 @@ func patchTrip(c *gin.Context) {
 			response.Error(c, http.StatusConflict, perrors.CodeVersionConflict, "trip version conflict", nil)
 			return
 		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to update trip", nil)
 		return
+	}
+
+	if getCollaborationPool() != nil {
+		if err := writeTripAuditLog(c.Request.Context(), "trip_updated", "trips", t.ID, beforeState, t); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+			return
+		}
 	}
 
 	response.JSON(c, http.StatusOK, t)
@@ -254,6 +280,9 @@ func listTripMembers(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
 			return
 		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
 		return
 	}
@@ -263,6 +292,9 @@ func listTripMembers(c *gin.Context) {
 		var err error
 		items, err = listTripMembersPostgres(c.Request.Context(), tripID, roleFilter)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list trip members", nil)
 			return
 		}
@@ -292,6 +324,9 @@ func addTripMember(c *gin.Context) {
 	if _, err := activeRepository.Get(c.Request.Context(), tripID); err != nil {
 		if errors.Is(err, ErrTripNotFound) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
+			return
+		}
+		if response.DatabaseUnavailable(c, err) {
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
@@ -330,12 +365,22 @@ func addTripMember(c *gin.Context) {
 				response.Error(c, http.StatusConflict, perrors.CodeConflict, "member already exists", gin.H{"email": in.Email, "userId": in.UserID})
 				return
 			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to add member", nil)
 			return
 		}
 		membersMu.Lock()
 		idempotentAdds[key] = item
 		membersMu.Unlock()
+		if err := writeTripAuditLog(c.Request.Context(), "trip_member_added", "trip_memberships", item.ID, nil, item); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+			return
+		}
 		response.JSON(c, http.StatusCreated, item)
 		return
 	}
@@ -385,6 +430,9 @@ func removeTripMember(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
 			return
 		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
 		return
 	}
@@ -398,8 +446,18 @@ func removeTripMember(c *gin.Context) {
 			case errors.Is(err, ErrMemberNotFound):
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to remove trip member", nil)
 			}
+			return
+		}
+		if err := writeTripAuditLog(c.Request.Context(), "trip_member_removed", "trip_memberships", memberID, nil, nil); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
 			return
 		}
 		response.NoContent(c)
@@ -439,6 +497,9 @@ func patchTripMember(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, perrors.CodeTripNotFound, "trip not found", gin.H{"tripId": tripID})
 			return
 		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load trip", nil)
 		return
 	}
@@ -463,8 +524,18 @@ func patchTripMember(c *gin.Context) {
 			case errors.Is(err, ErrMemberNotFound):
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "member not found", gin.H{"memberId": memberID})
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to patch member", nil)
 			}
+			return
+		}
+		if err := writeTripAuditLog(c.Request.Context(), "trip_member_role_updated", "trip_memberships", item.ID, nil, item); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
 			return
 		}
 		response.JSON(c, http.StatusOK, item)

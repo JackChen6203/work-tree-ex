@@ -12,6 +12,7 @@ import (
 
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	itineraryMu.Lock()
 	daysByTrip = map[string][]itineraryDay{}
 	itemByID = map[string]itineraryItem{}
@@ -247,7 +248,9 @@ func TestReorderRollbackOnFailure(t *testing.T) {
 			} `json:"item"`
 		} `json:"data"`
 	}
-	json.Unmarshal(createW.Body.Bytes(), &created)
+	if err := json.Unmarshal(createW.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created item: %v", err)
+	}
 
 	// Try to reorder to a non-existent day: should fail and rollback
 	reorderBody := mustJSON(t, map[string]any{
@@ -278,7 +281,9 @@ func TestReorderRollbackOnFailure(t *testing.T) {
 	var listed struct {
 		Data []itineraryDay `json:"data"`
 	}
-	json.Unmarshal(listW.Body.Bytes(), &listed)
+	if err := json.Unmarshal(listW.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list days: %v", err)
+	}
 
 	found := false
 	for _, day := range listed.Data {

@@ -9,6 +9,11 @@
 
 後端採用 **Go (net/http + chi router)** 建構，資料層規劃使用 **PostgreSQL (pgx) + Redis**。目前 Phase 1 所有模組均已完成（in-memory store），Phase 2 持久化與真實外部服務整合進行中。
 
+目前執行模式採 **single-host 優先**：
+
+- 預設 `RUNTIME_MODE=single`，分佈式 Redis 行為關閉（保留本地行為）。
+- 只有在 `RUNTIME_MODE=distributed` 時才啟用分佈式能力（共享 rate limit / lock / cache）。
+
 ---
 
 ## Phase 1 模組實作狀態（全部完成 ✅）
@@ -76,29 +81,31 @@
 - 匯率快取（TTL 1h）
 - Idempotency key 快取（TTL 24h）
 
-### BE-P2-04｜真實 LLM Provider 整合（全部未開始 ❌）
+### BE-P2-04｜真實 LLM Provider 整合（已完成 ✅）
 
-- OpenAI API（gpt-4.1-mini / gpt-4.1）
-- Anthropic API（claude-sonnet-4-20250514）
-- Google Gemini API
-- API key 解密使用
-- Token / Cost 計算
-- Provider error mapping
+- OpenAI Chat Completions（`gpt-4.1-mini` / `gpt-4.1`）
+- Anthropic Messages API（`claude-sonnet-4-20250514`）
+- Google Gemini Generate Content
+- API key 解密（AES-256-GCM envelope）
+- Token / Cost 計算與寫入 `ai_plan_requests`
+- Provider error mapping + circuit breaker
 - 超時保護（30s deadline）
 
-### BE-P2-05｜真實 Map Provider 整合（全部未開始 ❌）
+### BE-P2-05｜真實 Map Provider 整合（已完成 ✅）
 
-- Google Maps / Mapbox API 真實呼叫
-- Geocode / Place search / Route estimation
-- API key 管理
-- Quota 保護 + Provider fallback
+- Google Maps Places / Geocoding / Directions
+- Mapbox Geocoding / Directions（備援 provider）
+- Geocode / Place search / Route estimation 真實呼叫
+- API key 環境變數管理
+- 每日 quota + per-second rate limit + provider fallback
 
-### BE-P2-06｜真實 FCM Push 推播（全部未開始 ❌）
+### BE-P2-06｜真實 FCM Push 推播（部分完成 ⚠️）
 
-- Firebase Admin SDK
-- FCM token PostgreSQL 寫入
-- 真實 Push 發送
-- Token refresh + retry + DLQ
+- FCM token PostgreSQL 寫入（upsert/refresh）✅
+- Trigger notification 時真實 FCM HTTP 發送（可選，需設定 `FCM_SERVER_KEY`）✅
+- Push 失敗 retry + DLQ 標記 ✅
+- Invalid token 自動失效化（`is_active=false`）✅
+- Firebase Admin SDK 初始化（Service Account + Go SDK）❌
 
 ### BE-P2-07｜真實 Email 發送（全部未開始 ❌）
 
@@ -108,11 +115,13 @@
 - Trip update digest
 - Email template
 
-### BE-P2-08｜Outbox Worker 真實消費（全部未開始 ❌）
+### BE-P2-08｜Outbox Worker 真實消費（部分完成 ⚠️）
 
-- PostgreSQL outbox_events 輪詢
-- 寫入 notification + Firebase shadow + analytics
-- DLQ + graceful shutdown
+- PostgreSQL outbox_events 輪詢（interval / batch size 可配置）✅
+- 寫入 notification + FCM push + analytics dispatch hook ✅
+- retry/backoff + DLQ 狀態轉移 ✅
+- Worker graceful shutdown ✅
+- Firebase shadow、Email dispatch、health/metrics 仍待補齊 ❌
 
 ### BE-P2-09｜Docker Compose 本地開發（全部未開始 ❌）
 

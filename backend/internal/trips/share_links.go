@@ -83,6 +83,9 @@ func createShareLink(c *gin.Context) {
 	if getCollaborationPool() != nil {
 		sl, err := createShareLinkPostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create share link", nil)
 			return
 		}
@@ -128,6 +131,9 @@ func listShareLinks(c *gin.Context) {
 		var err error
 		items, err = listShareLinksPostgres(c.Request.Context(), tripID)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list share links", nil)
 			return
 		}
@@ -163,6 +169,9 @@ func revokeShareLink(c *gin.Context) {
 			case errors.Is(err, ErrShareLinkAlreadyRevoked):
 				response.Error(c, http.StatusConflict, perrors.CodeConflict, "share link already revoked", nil)
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to revoke share link", nil)
 			}
 			return
@@ -206,6 +215,9 @@ func verifyShareLink(c *gin.Context) {
 			case errors.Is(err, ErrShareLinkExpired):
 				response.Error(c, http.StatusGone, perrors.CodeBadRequest, "share link has expired", nil)
 			default:
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to verify share link", nil)
 			}
 			return

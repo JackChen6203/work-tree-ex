@@ -2,8 +2,10 @@ package database
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/config"
 )
@@ -18,6 +20,12 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, err
 	poolCfg.MinConns = int32(cfg.MaxIdleConns)
 	poolCfg.MaxConnLifetime = cfg.ConnMaxLifetime
 	poolCfg.MaxConnIdleTime = 5 * time.Minute
+	if role := strings.TrimSpace(cfg.AppRole); role != "" {
+		poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			_, err := conn.Exec(ctx, "SELECT set_config('app.role', $1, false)", role)
+			return err
+		}
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

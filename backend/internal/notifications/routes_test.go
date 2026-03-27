@@ -1,7 +1,9 @@
 package notifications
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +16,7 @@ import (
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	SetPool(nil)
+	resetPushGatewayForTest()
 	notificationsMu.Lock()
 	items = []notification{
 		{ID: "n-1", Type: "ai_plan_ready", Title: "AI draft 已完成", Body: "候選方案可比較", Link: "/dashboard"},
@@ -21,6 +24,7 @@ func setupRouter() *gin.Engine {
 	}
 	dedupeStore = map[string]time.Time{}
 	pushDeliveries = map[string]*pushDelivery{}
+	fcmTokensByToken = map[string]fcmToken{}
 	notificationsMu.Unlock()
 
 	r := gin.New()
@@ -283,5 +287,154 @@ func TestCleanupReadNotifications(t *testing.T) {
 	}
 	if len(listResp.Data) != 1 || listResp.Data[0].ID != "n-1" {
 		t.Fatalf("expected only unread n-1 to remain")
+	}
+}
+
+func TestUpsertAndDeactivateFCMToken(t *testing.T) {
+	r := setupRouter()
+
+	body := `{"token":"fcm-token-1","platform":"web","userId":"u-1"}`
+	upsertReq := httptest.NewRequest(http.MethodPost, "/api/v1/fcm-tokens", strings.NewReader(body))
+	upsertReq.Header.Set("Content-Type", "application/json")
+	upsertW := httptest.NewRecorder()
+	r.ServeHTTP(upsertW, upsertReq)
+	if upsertW.Code != http.StatusOK {
+		t.Fatalf("expected 200 upsert fcm token, got %d body=%s", upsertW.Code, upsertW.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/fcm-tokens", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list fcm tokens, got %d", listW.Code)
+	}
+	if !strings.Contains(listW.Body.String(), "fcm-token-1") {
+		t.Fatalf("expected token in list response, got %s", listW.Body.String())
+	}
+
+	deactivateReq := httptest.NewRequest(http.MethodDelete, "/api/v1/fcm-tokens/fcm-token-1", nil)
+	deactivateW := httptest.NewRecorder()
+	r.ServeHTTP(deactivateW, deactivateReq)
+	if deactivateW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 deactivate fcm token, got %d body=%s", deactivateW.Code, deactivateW.Body.String())
+	}
+}
+
+func TestUpsertFCMTokenValidation(t *testing.T) {
+	r := setupRouter()
+
+	body := `{"token":"fcm-token-2","platform":"windows"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/fcm-tokens", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 invalid platform, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+type stubPushGateway struct {
+	sendFn func(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error)
+}
+
+func (s stubPushGateway) Send(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error) {
+	return s.sendFn(ctx, tokens, msg)
+}
+
+func TestTriggerNotificationPushRetriesToDLQ(t *testing.T) {
+	r := setupRouter()
+
+	upsertReq := httptest.NewRequest(http.MethodPost, "/api/v1/fcm-tokens", strings.NewReader(`{"token":"fcm-retry","platform":"web","userId":"u-1"}`))
+	upsertReq.Header.Set("Content-Type", "application/json")
+	upsertW := httptest.NewRecorder()
+	r.ServeHTTP(upsertW, upsertReq)
+	if upsertW.Code != http.StatusOK {
+		t.Fatalf("expected 200 upsert token, got %d body=%s", upsertW.Code, upsertW.Body.String())
+	}
+
+	setPushGatewayForTest(stubPushGateway{
+		sendFn: func(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error) {
+			return pushGatewayResult{
+				SuccessCount: 0,
+				FailureCount: len(tokens),
+				Retryable:    true,
+			}, errors.New("firebase unavailable")
+		},
+	})
+
+	triggerReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/trigger", strings.NewReader(`{
+		"eventType":"trip_updated",
+		"resourceId":"trip-1",
+		"title":"Trip Updated",
+		"body":"Something changed",
+		"link":"/trips/trip-1",
+		"userId":"u-1"
+	}`))
+	triggerReq.Header.Set("Content-Type", "application/json")
+	triggerW := httptest.NewRecorder()
+	r.ServeHTTP(triggerW, triggerReq)
+	if triggerW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 trigger, got %d body=%s", triggerW.Code, triggerW.Body.String())
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/push-status", nil)
+	statusW := httptest.NewRecorder()
+	r.ServeHTTP(statusW, statusReq)
+	if statusW.Code != http.StatusOK {
+		t.Fatalf("expected 200 push-status, got %d body=%s", statusW.Code, statusW.Body.String())
+	}
+	if !strings.Contains(statusW.Body.String(), `"status":"dlq"`) {
+		t.Fatalf("expected dlq status, got %s", statusW.Body.String())
+	}
+}
+
+func TestTriggerNotificationPushInvalidTokenDeactivated(t *testing.T) {
+	r := setupRouter()
+
+	upsertReq := httptest.NewRequest(http.MethodPost, "/api/v1/fcm-tokens", strings.NewReader(`{"token":"fcm-invalid","platform":"web","userId":"u-2"}`))
+	upsertReq.Header.Set("Content-Type", "application/json")
+	upsertW := httptest.NewRecorder()
+	r.ServeHTTP(upsertW, upsertReq)
+	if upsertW.Code != http.StatusOK {
+		t.Fatalf("expected 200 upsert token, got %d body=%s", upsertW.Code, upsertW.Body.String())
+	}
+
+	setPushGatewayForTest(stubPushGateway{
+		sendFn: func(ctx context.Context, tokens []string, msg pushMessage) (pushGatewayResult, error) {
+			return pushGatewayResult{
+				SuccessCount: 0,
+				FailureCount: len(tokens),
+				Retryable:    false,
+				InvalidTokens: []string{
+					"fcm-invalid",
+				},
+			}, errors.New("registration token is not registered")
+		},
+	})
+
+	triggerReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/trigger", strings.NewReader(`{
+		"eventType":"trip_updated",
+		"resourceId":"trip-2",
+		"title":"Trip Updated",
+		"body":"Something changed",
+		"link":"/trips/trip-2",
+		"userId":"u-2"
+	}`))
+	triggerReq.Header.Set("Content-Type", "application/json")
+	triggerW := httptest.NewRecorder()
+	r.ServeHTTP(triggerW, triggerReq)
+	if triggerW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 trigger, got %d body=%s", triggerW.Code, triggerW.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/fcm-tokens?userId=u-2", nil)
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200 list tokens, got %d body=%s", listW.Code, listW.Body.String())
+	}
+	if strings.Contains(listW.Body.String(), `"isActive":true`) {
+		t.Fatalf("expected token to be deactivated, got %s", listW.Body.String())
 	}
 }

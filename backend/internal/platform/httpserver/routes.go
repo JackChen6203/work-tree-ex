@@ -1,7 +1,9 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/admin"
@@ -20,6 +22,25 @@ import (
 func registerRoutes(engine *gin.Engine) {
 	engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	engine.GET("/readyz", func(c *gin.Context) {
+		probe := getReadinessProbe()
+		if probe == nil {
+			c.JSON(http.StatusOK, gin.H{"status": "ready"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := probe(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not_ready",
+				"error":  "dependency unavailable",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
 	v1 := engine.Group("/api/v1")

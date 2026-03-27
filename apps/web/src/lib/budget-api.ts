@@ -5,6 +5,15 @@ export interface BudgetCategoryPlan {
   plannedAmount: number;
 }
 
+export interface BudgetRateSnapshot {
+  from: string;
+  to: string;
+  rate: number;
+  source: string;
+  fetchedAt: string;
+  staleAt?: string;
+}
+
 export interface BudgetProfile {
   tripId: string;
   totalBudget?: number;
@@ -27,6 +36,7 @@ export interface ExpenseItem {
   currency: string;
   expenseAt?: string;
   note?: string;
+  linkedItemId?: string;
   createdAt: string;
 }
 
@@ -59,7 +69,14 @@ export function listExpenses(tripId: string) {
 
 export function createExpense(
   tripId: string,
-  input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }
+  input: {
+    category: string;
+    amount: number;
+    currency: string;
+    expenseAt?: string;
+    note?: string;
+    linkedItemId?: string;
+  }
 ) {
   return apiRequest<ExpenseItem>(`/api/v1/trips/${tripId}/expenses`, {
     method: "POST",
@@ -85,10 +102,36 @@ export function patchExpense(
     currency?: string;
     expenseAt?: string;
     note?: string;
+    linkedItemId?: string;
   }
 ) {
   return apiRequest<ExpenseItem>(`/api/v1/trips/${tripId}/expenses/${expenseId}`, {
     method: "PATCH",
     body: JSON.stringify(input)
+  });
+}
+
+export function getBudgetRates(tripId: string, options?: { from?: string; to?: string }) {
+  const params = new URLSearchParams();
+  if (options?.from) {
+    params.set("from", options.from.toUpperCase());
+  }
+  if (options?.to) {
+    params.set("to", options.to.toUpperCase());
+  }
+
+  const query = params.toString();
+  return apiRequest<BudgetRateSnapshot | BudgetRateSnapshot[]>(
+    `/api/v1/trips/${tripId}/budget/rates${query ? `?${query}` : ""}`
+  );
+}
+
+export function refreshBudgetRate(tripId: string, from: string, to: string) {
+  const params = new URLSearchParams({
+    from: from.toUpperCase(),
+    to: to.toUpperCase()
+  });
+  return apiRequest<BudgetRateSnapshot>(`/api/v1/trips/${tripId}/budget/rates/refresh?${params.toString()}`, {
+    method: "POST"
   });
 }

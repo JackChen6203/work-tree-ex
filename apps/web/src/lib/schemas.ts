@@ -27,7 +27,8 @@ export const addExpenseSchema = z.object({
   amount: z.number({ coerce: true }).min(0, "amountNonNegative"),
   currency: z.string().min(1, "required"),
   note: z.string().max(1000).optional(),
-  expenseAt: z.string().optional()
+  expenseAt: z.string().optional(),
+  linkedItemId: z.string().optional()
 });
 
 export type AddExpenseFormValues = z.infer<typeof addExpenseSchema>;

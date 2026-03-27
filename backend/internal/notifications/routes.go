@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -30,6 +31,22 @@ type pushDelivery struct {
 	LastAttemptAt  time.Time `json:"lastAttemptAt"`
 }
 
+type fcmToken struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	Token     string    `json:"token"`
+	Platform  string    `json:"platform"`
+	IsActive  bool      `json:"isActive"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type fcmTokenInput struct {
+	Token    string `json:"token"`
+	Platform string `json:"platform"`
+	UserID   string `json:"userId"`
+}
+
 // DeliveryPrefs per-user delivery preferences
 type DeliveryPrefs struct {
 	InApp bool `json:"inApp"`
@@ -51,6 +68,9 @@ var (
 	// Push delivery tracking
 	pushDeliveries = map[string]*pushDelivery{}
 
+	// In-memory FCM tokens for non-postgres mode
+	fcmTokensByToken = map[string]fcmToken{}
+
 	// Default delivery preferences (per-user, simplified to global for mock)
 	defaultDeliveryPrefs = DeliveryPrefs{InApp: true, Push: true, Email: false}
 )
@@ -64,6 +84,9 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.DELETE("/notifications/:notificationId", deleteNotification)
 	v1.POST("/notifications/trigger", triggerNotification)
 	v1.GET("/notifications/push-status", listPushDeliveries)
+	v1.POST("/fcm-tokens", upsertFCMToken)
+	v1.GET("/fcm-tokens", listFCMTokens)
+	v1.DELETE("/fcm-tokens/:token", deactivateFCMToken)
 }
 
 func listNotifications(c *gin.Context) {
@@ -84,6 +107,9 @@ func listNotifications(c *gin.Context) {
 		if err != nil {
 			if errors.Is(err, ErrCursorNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "cursor not found", gin.H{"cursor": cursor})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
 				return
 			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list notifications", nil)
@@ -139,6 +165,9 @@ func markRead(c *gin.Context) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 				return
 			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark notification read", nil)
 			return
 		}
@@ -175,6 +204,9 @@ func markUnread(c *gin.Context) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 				return
 			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark notification unread", nil)
 			return
 		}
@@ -200,6 +232,9 @@ func markUnread(c *gin.Context) {
 func markAllRead(c *gin.Context) {
 	if getPool() != nil {
 		if err := markAllReadPostgres(c.Request.Context()); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to mark all notifications read", nil)
 			return
 		}
@@ -222,6 +257,9 @@ func cleanupRead(c *gin.Context) {
 	if getPool() != nil {
 		deletedCount, err := cleanupReadPostgres(c.Request.Context())
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to cleanup read notifications", nil)
 			return
 		}
@@ -257,6 +295,9 @@ func deleteNotification(c *gin.Context) {
 		if err := deleteNotificationPostgres(c.Request.Context(), notificationID); err != nil {
 			if errors.Is(err, ErrNotificationNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
 				return
 			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to delete notification", nil)
@@ -332,6 +373,9 @@ func triggerNotification(c *gin.Context) {
 		if getPool() != nil {
 			id, err := createNotificationPostgres(c.Request.Context(), in, now)
 			if err != nil {
+				if response.DatabaseUnavailable(c, err) {
+					return
+				}
 				response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to create notification", nil)
 				return
 			}
@@ -358,13 +402,37 @@ func triggerNotification(c *gin.Context) {
 
 	// Push delivery (simulated)
 	if prefs.Push {
-		notificationsMu.Lock()
+		tokens, err := listActivePushTokens(c.Request.Context(), in.UserID)
 		pd := &pushDelivery{
 			NotificationID: notifID,
 			Status:         "sent",
 			RetryCount:     0,
 			LastAttemptAt:  now,
 		}
+		if err != nil {
+			pd.Status = "failed"
+		} else if len(tokens) > 0 {
+			status, retryCount, invalidTokens, pushErr := sendPushWithRetry(c.Request.Context(), tokens, pushMessage{
+				Title: in.Title,
+				Body:  in.Body,
+				Data: map[string]string{
+					"notificationId": notifID,
+					"eventType":      in.EventType,
+					"resourceId":     in.ResourceID,
+					"link":           in.Link,
+				},
+			})
+			pd.Status = status
+			pd.RetryCount = retryCount
+			if pushErr != nil && status == "sent" {
+				pd.Status = "failed"
+			}
+			if len(invalidTokens) > 0 {
+				_ = deactivateFCMTokens(c.Request.Context(), invalidTokens)
+			}
+		}
+
+		notificationsMu.Lock()
 		pushDeliveries[notifID] = pd
 		notificationsMu.Unlock()
 		channels = append(channels, "push")
@@ -392,4 +460,254 @@ func listPushDeliveries(c *gin.Context) {
 	}
 
 	response.JSON(c, http.StatusOK, deliveries)
+}
+
+func upsertFCMToken(c *gin.Context) {
+	var in fcmTokenInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	token := strings.TrimSpace(in.Token)
+	platform := strings.ToLower(strings.TrimSpace(in.Platform))
+	userID := strings.TrimSpace(in.UserID)
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "token is required", nil)
+		return
+	}
+	if !isValidFCMPlatform(platform) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "platform must be web/android/ios", nil)
+		return
+	}
+
+	if getPool() != nil {
+		item, err := upsertFCMTokenPostgres(c.Request.Context(), token, platform, userID)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to upsert fcm token", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
+	}
+
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+
+	now := time.Now().UTC()
+	if existing, ok := fcmTokensByToken[token]; ok {
+		existing.Platform = platform
+		existing.UserID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+		existing.IsActive = true
+		existing.UpdatedAt = now
+		fcmTokensByToken[token] = existing
+		response.JSON(c, http.StatusOK, existing)
+		return
+	}
+
+	item := fcmToken{
+		ID:        "fcm-" + strconv.FormatInt(now.UnixNano(), 10),
+		UserID:    stringsTrimOrDefault(userID, defaultNotificationUserID),
+		Token:     token,
+		Platform:  platform,
+		IsActive:  true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	fcmTokensByToken[token] = item
+	response.JSON(c, http.StatusOK, item)
+}
+
+func listFCMTokens(c *gin.Context) {
+	userID := strings.TrimSpace(c.Query("userId"))
+
+	if getPool() != nil {
+		items, err := listFCMTokensPostgres(c.Request.Context(), userID)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list fcm tokens", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
+	}
+
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+
+	items := make([]fcmToken, 0, len(fcmTokensByToken))
+	for _, item := range fcmTokensByToken {
+		if userID != "" && item.UserID != userID {
+			continue
+		}
+		items = append(items, item)
+	}
+	response.JSON(c, http.StatusOK, items)
+}
+
+func deactivateFCMToken(c *gin.Context) {
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "token is required", nil)
+		return
+	}
+
+	if getPool() != nil {
+		if err := deactivateFCMTokenPostgres(c.Request.Context(), token); err != nil {
+			if errors.Is(err, ErrFCMTokenNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "fcm token not found", nil)
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to deactivate fcm token", nil)
+			return
+		}
+		response.NoContent(c)
+		return
+	}
+
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+
+	item, ok := fcmTokensByToken[token]
+	if !ok {
+		response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "fcm token not found", nil)
+		return
+	}
+	item.IsActive = false
+	item.UpdatedAt = time.Now().UTC()
+	fcmTokensByToken[token] = item
+	response.NoContent(c)
+}
+
+func isValidFCMPlatform(v string) bool {
+	switch v {
+	case "web", "android", "ios":
+		return true
+	default:
+		return false
+	}
+}
+
+func listActivePushTokens(ctx context.Context, userID string) ([]string, error) {
+	if getPool() != nil {
+		items, err := listFCMTokensPostgres(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		tokens := make([]string, 0, len(items))
+		for _, item := range items {
+			if !item.IsActive {
+				continue
+			}
+			tokens = append(tokens, item.Token)
+		}
+		return tokens, nil
+	}
+
+	notificationsMu.RLock()
+	defer notificationsMu.RUnlock()
+	tokens := make([]string, 0, len(fcmTokensByToken))
+	for _, item := range fcmTokensByToken {
+		if !item.IsActive {
+			continue
+		}
+		if strings.TrimSpace(userID) != "" && item.UserID != strings.TrimSpace(userID) {
+			continue
+		}
+		tokens = append(tokens, item.Token)
+	}
+	return tokens, nil
+}
+
+func deactivateFCMTokens(ctx context.Context, tokens []string) error {
+	if len(tokens) == 0 {
+		return nil
+	}
+	if getPool() != nil {
+		for _, token := range tokens {
+			if err := deactivateFCMTokenPostgres(ctx, token); err != nil && !errors.Is(err, ErrFCMTokenNotFound) {
+				return err
+			}
+		}
+		return nil
+	}
+
+	notificationsMu.Lock()
+	defer notificationsMu.Unlock()
+	now := time.Now().UTC()
+	for _, token := range tokens {
+		item, ok := fcmTokensByToken[token]
+		if !ok {
+			continue
+		}
+		item.IsActive = false
+		item.UpdatedAt = now
+		fcmTokensByToken[token] = item
+	}
+	return nil
+}
+
+func sendPushWithRetry(ctx context.Context, tokens []string, message pushMessage) (string, int, []string, error) {
+	const maxAttempts = 3
+	gateway := getPushGateway(ctx)
+
+	retryCount := 0
+	invalidTokenSet := map[string]struct{}{}
+	var lastErr error
+	status := "sent"
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		result, err := gateway.Send(ctx, tokens, message)
+		for _, token := range result.InvalidTokens {
+			invalidTokenSet[token] = struct{}{}
+		}
+
+		if err == nil && result.FailureCount == 0 {
+			status = "sent"
+			return status, retryCount, mapKeys(invalidTokenSet), nil
+		}
+
+		lastErr = err
+		if result.SuccessCount > 0 && result.FailureCount > 0 && !result.Retryable {
+			status = "failed"
+			return status, retryCount, mapKeys(invalidTokenSet), lastErr
+		}
+
+		if !result.Retryable || attempt == maxAttempts {
+			if result.SuccessCount > 0 {
+				status = "failed"
+			} else {
+				status = "dlq"
+			}
+			return status, retryCount, mapKeys(invalidTokenSet), lastErr
+		}
+
+		retryCount++
+		backoff := time.Duration(1<<retryCount) * 100 * time.Millisecond
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "dlq", retryCount, mapKeys(invalidTokenSet), ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return status, retryCount, mapKeys(invalidTokenSet), lastErr
+}
+
+func mapKeys(values map[string]struct{}) []string {
+	items := make([]string, 0, len(values))
+	for key := range values {
+		items = append(items, key)
+	}
+	return items
 }
