@@ -149,10 +149,16 @@ func retryJob(c *gin.Context) {
 		adminJobs[i].FailureCode = nil
 
 		// Audit log
-		adminAuditLogs = append(adminAuditLogs, AuditLog{
+		if err := appendAuditLog(c, AuditLog{
 			ID: uuid.NewString(), Action: "retry_job", ResourceType: "jobs",
 			ResourceID: jobID, CreatedAt: time.Now().UTC(),
-		})
+		}); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+			return
+		}
 
 		response.JSON(c, http.StatusOK, adminJobs[i])
 		return
@@ -179,10 +185,16 @@ func cancelJob(c *gin.Context) {
 		now := time.Now().UTC()
 		adminJobs[i].FinishedAt = &now
 
-		adminAuditLogs = append(adminAuditLogs, AuditLog{
+		if err := appendAuditLog(c, AuditLog{
 			ID: uuid.NewString(), Action: "cancel_job", ResourceType: "jobs",
 			ResourceID: jobID, CreatedAt: now,
-		})
+		}); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+			return
+		}
 
 		response.JSON(c, http.StatusOK, adminJobs[i])
 		return
@@ -214,6 +226,19 @@ func providerStatus(name string) string {
 func listAuditLogs(c *gin.Context) {
 	resourceType := strings.TrimSpace(c.Query("resourceType"))
 	resourceID := strings.TrimSpace(c.Query("resourceId"))
+
+	if getPool() != nil {
+		items, err := listAuditLogsPostgres(c.Request.Context(), resourceType, resourceID)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list audit logs", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
+	}
 
 	adminMu.RLock()
 	items := make([]AuditLog, 0, len(adminAuditLogs))
@@ -256,13 +281,19 @@ func toggleFeatureFlag(c *gin.Context) {
 	flag.UpdatedAt = time.Now().UTC()
 
 	// Audit log
-	adminAuditLogs = append(adminAuditLogs, AuditLog{
+	if err := appendAuditLog(c, AuditLog{
 		ID: uuid.NewString(), Action: "toggle_feature_flag", ResourceType: "feature_flags",
 		ResourceID:  flagName,
 		BeforeState: map[string]any{"enabled": !flag.Enabled},
 		AfterState:  map[string]any{"enabled": flag.Enabled},
 		CreatedAt:   flag.UpdatedAt,
-	})
+	}); err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+		return
+	}
 
 	response.JSON(c, http.StatusOK, flag)
 }
@@ -286,10 +317,16 @@ func disableProvider(c *gin.Context) {
 
 	providerDisabled[name] = true
 
-	adminAuditLogs = append(adminAuditLogs, AuditLog{
+	if err := appendAuditLog(c, AuditLog{
 		ID: uuid.NewString(), Action: "disable_provider", ResourceType: "providers",
 		ResourceID: name, CreatedAt: time.Now().UTC(),
-	})
+	}); err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+		return
+	}
 
 	response.JSON(c, http.StatusOK, gin.H{"provider": name, "disabled": true})
 }
@@ -302,10 +339,25 @@ func enableProvider(c *gin.Context) {
 
 	delete(providerDisabled, name)
 
-	adminAuditLogs = append(adminAuditLogs, AuditLog{
+	if err := appendAuditLog(c, AuditLog{
 		ID: uuid.NewString(), Action: "enable_provider", ResourceType: "providers",
 		ResourceID: name, CreatedAt: time.Now().UTC(),
-	})
+	}); err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+		return
+	}
 
 	response.JSON(c, http.StatusOK, gin.H{"provider": name, "disabled": false})
+}
+
+func appendAuditLog(c *gin.Context, entry AuditLog) error {
+	if getPool() != nil {
+		_, err := createAuditLogPostgres(c.Request.Context(), entry)
+		return err
+	}
+	adminAuditLogs = append(adminAuditLogs, entry)
+	return nil
 }

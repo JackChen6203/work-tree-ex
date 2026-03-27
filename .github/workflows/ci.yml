@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ["v*"]
   pull_request:
     branches: [main, develop]
 
@@ -55,6 +56,17 @@ jobs:
         working-directory: backend
         run: |
           test -z "$(gofmt -l .)"
+
+      - name: Run golangci-lint
+        working-directory: backend
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          "$(go env GOPATH)/bin/golangci-lint" run ./... \
+            --disable-all \
+            --enable=govet \
+            --enable=staticcheck \
+            --enable=ineffassign \
+            --enable=errcheck
 
       - name: Run go vet
         working-directory: backend
@@ -142,22 +154,22 @@ jobs:
           sudo mv migrate /usr/local/bin/migrate
 
       - name: Migrate up
+        env:
+          MIGRATE_DATABASE_URL: postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable
         run: |
-          migrate -path backend/migrations \
-            -database "postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable" \
-            up
+          ./scripts/migrate.sh up
 
-      - name: Migrate down (rollback all)
+      - name: Migrate rollback (all)
+        env:
+          MIGRATE_DATABASE_URL: postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable
         run: |
-          migrate -path backend/migrations \
-            -database "postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable" \
-            down -all
+          ./scripts/migrate-rollback.sh
 
       - name: Migrate up again (idempotency check)
+        env:
+          MIGRATE_DATABASE_URL: postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable
         run: |
-          migrate -path backend/migrations \
-            -database "postgres://travel:travel@localhost:5432/travel_planner_migrate?sslmode=disable" \
-            up
+          ./scripts/migrate.sh up
   build:
     name: Backend Build
     runs-on: ubuntu-latest
@@ -174,3 +186,43 @@ jobs:
         run: |
           go build -o /dev/null ./cmd/api
           go build -o /dev/null ./cmd/worker
+
+  docker-backend:
+    name: Backend Docker Image
+    runs-on: ubuntu-latest
+    needs: [lint, test, migration, build]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/work-tree-ex-backend
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -108,10 +108,11 @@ export function AuthPage() {
   return (
     <div className="relative min-h-screen overflow-hidden px-4 py-10">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_15%_20%,rgba(218,106,78,0.24),transparent_24%),radial-gradient(circle_at_78%_12%,rgba(45,90,74,0.22),transparent_22%),linear-gradient(180deg,#f9f4ea_0%,#efe5d5_100%)]" />
-      <div className="mx-auto flex w-full max-w-5xl justify-end pb-4">
+      <header className="mx-auto flex w-full max-w-5xl justify-end pb-4">
         <LocaleSwitcher />
-      </div>
-      <SurfaceCard className="mx-auto w-full max-w-5xl" eyebrow={t("auth.module")} title={t("auth.title")}>
+      </header>
+      <main className="mx-auto w-full max-w-5xl" id="main-content">
+        <SurfaceCard className="mx-auto w-full max-w-5xl" eyebrow={t("auth.module")} title={t("auth.title")} titleAs="h1">
           <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr]">
             <div>
               <p className="text-sm leading-7 text-ink/70">{t("auth.description")}</p>
@@ -206,12 +207,12 @@ export function AuthPage() {
 
               <div className={magicLinkAuthEnabled ? "mt-7 border-t border-ink/10 pt-5" : "mt-6"}>
                 <p className="text-sm font-medium text-ink">{t("auth.oauthTitle")}</p>
-                <p className="mt-1 text-xs text-ink/60">{t("auth.oauthDescription")}</p>
+                <p className="mt-1 text-xs text-ink/70">{t("auth.oauthDescription")}</p>
                 {oauthProviderGroups.length > 0 ? (
                   <div className="mt-4 space-y-4">
                     {oauthProviderGroups.map((group) => (
                       <section key={group.category}>
-                        <p className="mb-2 text-xs uppercase tracking-[0.22em] text-ink/45">
+                        <p className="mb-2 text-xs uppercase tracking-[0.22em] text-ink/70">
                           {group.category === "social" ? t("auth.oauthCategorySocial") : t("auth.oauthCategoryTravel")}
                         </p>
                         <div className="grid gap-2 sm:grid-cols-2">
@@ -237,7 +238,7 @@ export function AuthPage() {
               </div>
             </div>
             <div className="rounded-[24px] bg-gradient-to-br from-[#f5e4d9] to-[#d7e1dd] p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-ink/45">{t("auth.sessionPolicy")}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-ink/70">{t("auth.sessionPolicy")}</p>
               <ul className="mt-4 space-y-3 text-sm text-ink/75">
                 <li>{t("auth.policy.1")}</li>
                 <li>{t("auth.policy.2")}</li>
@@ -252,6 +253,7 @@ export function AuthPage() {
             </div>
           </div>
         </SurfaceCard>
+      </main>
     </div>
   );
 }

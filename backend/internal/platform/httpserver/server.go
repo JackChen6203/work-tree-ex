@@ -36,6 +36,7 @@ func New(cfg config.Config, logger *slog.Logger) *Server {
 	engine.Use(otelgin.Middleware(serviceName))
 	engine.Use(corsMiddleware(cfg.CORS.AllowedOrigins))
 	engine.Use(requestIDMiddleware())
+	engine.Use(dbRequestTimeoutMiddleware(cfg.Database.RequestTimeout))
 	engine.Use(jwtMiddleware())
 	engine.Use(csrfMiddleware())
 	engine.Use(rateLimitMiddleware(50, 100))

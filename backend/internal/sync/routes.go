@@ -237,6 +237,9 @@ func listOutboxEvents(c *gin.Context) {
 	if getPool() != nil {
 		items, err := listOutboxEventsPostgres(c.Request.Context(), statusFilter)
 		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list outbox events", nil)
 			return
 		}
@@ -275,6 +278,9 @@ func ackOutboxEvent(c *gin.Context) {
 		if err != nil {
 			if errors.Is(err, ErrOutboxEventNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "outbox event not found", gin.H{"eventId": eventID})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
 				return
 			}
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to ack outbox event", nil)

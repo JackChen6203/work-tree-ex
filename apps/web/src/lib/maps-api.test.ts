@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { estimateRoute, searchPlaces } from "./maps-api";
+import { estimateRoute, getPlaceDetail, searchPlaces } from "./maps-api";
 
 describe("maps api", () => {
   beforeEach(() => {
@@ -44,6 +44,31 @@ describe("maps api", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8080/api/v1/maps/routes",
       expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("gets place detail by id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          providerPlaceId: "poi_kiyomizu",
+          name: "Kiyomizu-dera",
+          address: "Kyoto",
+          lat: 35,
+          lng: 135,
+          categories: ["temple"],
+          openingHours: "09:00-18:00"
+        }
+      })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getPlaceDetail("poi_kiyomizu");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/maps/places/poi_kiyomizu",
+      expect.anything()
     );
   });
 });

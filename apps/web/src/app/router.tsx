@@ -1,18 +1,67 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./app-shell";
 import { PublicOnlyGate } from "./public-only-gate";
 import { SessionGate } from "./session-gate";
 import { OAuthBridgePage } from "./oauth-bridge-page";
-import { AuthPage } from "../features/auth/auth-page";
-import { WelcomePage } from "../features/auth/welcome-page";
-import { DashboardPage } from "../features/dashboard/dashboard-page";
-import { TripOverviewPage } from "../features/trip/trip-overview-page";
-import { ItineraryPage } from "../features/itinerary/itinerary-page";
-import { BudgetPage } from "../features/budget/budget-page";
-import { MapPage } from "../features/map/map-page";
-import { AiPlannerPage } from "../features/ai-planner/ai-planner-page";
-import { NotificationsPage } from "../features/notifications/notifications-page";
-import { SettingsPage } from "../features/settings/settings-page";
+
+const AuthPage = lazy(async () => {
+  const module = await import("../features/auth/auth-page");
+  return { default: module.AuthPage };
+});
+
+const WelcomePage = lazy(async () => {
+  const module = await import("../features/auth/welcome-page");
+  return { default: module.WelcomePage };
+});
+
+const DashboardPage = lazy(async () => {
+  const module = await import("../features/dashboard/dashboard-page");
+  return { default: module.DashboardPage };
+});
+
+const TripOverviewPage = lazy(async () => {
+  const module = await import("../features/trip/trip-overview-page");
+  return { default: module.TripOverviewPage };
+});
+
+const ItineraryPage = lazy(async () => {
+  const module = await import("../features/itinerary/itinerary-page");
+  return { default: module.ItineraryPage };
+});
+
+const BudgetPage = lazy(async () => {
+  const module = await import("../features/budget/budget-page");
+  return { default: module.BudgetPage };
+});
+
+const MapPage = lazy(async () => {
+  const module = await import("../features/map/map-page");
+  return { default: module.MapPage };
+});
+
+const AiPlannerPage = lazy(async () => {
+  const module = await import("../features/ai-planner/ai-planner-page");
+  return { default: module.AiPlannerPage };
+});
+
+const NotificationsPage = lazy(async () => {
+  const module = await import("../features/notifications/notifications-page");
+  return { default: module.NotificationsPage };
+});
+
+const SettingsPage = lazy(async () => {
+  const module = await import("../features/settings/settings-page");
+  return { default: module.SettingsPage };
+});
+
+function RouteFallback() {
+  return <div className="rounded-[24px] bg-sand/70 p-5 text-sm text-ink/65">Loading...</div>;
+}
+
+function withSuspense(element: JSX.Element) {
+  return <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
@@ -27,7 +76,7 @@ export const router = createBrowserRouter([
     path: "/welcome",
     element: (
       <PublicOnlyGate>
-        <WelcomePage />
+        {withSuspense(<WelcomePage />)}
       </PublicOnlyGate>
     )
   },
@@ -35,7 +84,7 @@ export const router = createBrowserRouter([
     path: "/login",
     element: (
       <PublicOnlyGate>
-        <AuthPage />
+        {withSuspense(<AuthPage />)}
       </PublicOnlyGate>
     )
   },
@@ -47,14 +96,15 @@ export const router = createBrowserRouter([
       </SessionGate>
     ),
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "trips/:tripId", element: <TripOverviewPage /> },
-      { path: "trips/:tripId/itinerary", element: <ItineraryPage /> },
-      { path: "trips/:tripId/budget", element: <BudgetPage /> },
-      { path: "trips/:tripId/map", element: <MapPage /> },
-      { path: "trips/:tripId/ai-planner", element: <AiPlannerPage /> },
-      { path: "notifications", element: <NotificationsPage /> },
-      { path: "settings", element: <SettingsPage /> }
+      { index: true, element: withSuspense(<DashboardPage />) },
+      { path: "trips/:tripId", element: withSuspense(<TripOverviewPage />) },
+      { path: "trips/:tripId/itinerary", element: withSuspense(<ItineraryPage />) },
+      { path: "trips/:tripId/budget", element: withSuspense(<BudgetPage />) },
+      { path: "trips/:tripId/map", element: withSuspense(<MapPage />) },
+      { path: "trips/:tripId/ai-planner", element: withSuspense(<AiPlannerPage />) },
+      { path: "notifications", element: withSuspense(<NotificationsPage />) },
+      { path: "settings", element: withSuspense(<SettingsPage />) }
     ]
   }
 ]);
+

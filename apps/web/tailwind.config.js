@@ -11,7 +11,7 @@ export default {
         mist: "#d7e1dd"
       },
       fontFamily: {
-        sans: ["'DM Sans'", "'Noto Sans TC'", "sans-serif"],
+        sans: ["'Inter'", "'DM Sans'", "'Noto Sans TC'", "sans-serif"],
         display: ["'Space Grotesk'", "'Noto Sans TC'", "sans-serif"]
       },
       boxShadow: {

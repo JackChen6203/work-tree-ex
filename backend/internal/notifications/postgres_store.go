@@ -14,6 +14,7 @@ import (
 var (
 	ErrNotificationNotFound = errors.New("notification not found")
 	ErrCursorNotFound       = errors.New("cursor not found")
+	ErrFCMTokenNotFound     = errors.New("fcm token not found")
 )
 
 const defaultNotificationUserID = "00000000-0000-0000-0000-000000000001"
@@ -233,4 +234,154 @@ func stringsTrimOrDefault(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func upsertFCMTokenPostgres(ctx context.Context, token, platform, userID string) (fcmToken, error) {
+	p := getPool()
+	if p == nil {
+		return fcmToken{}, errors.New("postgres notifications store not configured")
+	}
+
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
+	}
+	if err := ensureNotificationUser(ctx, p, userID); err != nil {
+		return fcmToken{}, err
+	}
+
+	var item fcmToken
+	err := p.QueryRow(ctx, `
+		INSERT INTO fcm_tokens (user_id, token, platform, is_active, created_at, updated_at)
+		VALUES ($1::uuid, $2, $3, true, now(), now())
+		ON CONFLICT (token)
+		DO UPDATE SET
+			user_id = EXCLUDED.user_id,
+			platform = EXCLUDED.platform,
+			is_active = true,
+			updated_at = now()
+		RETURNING id::text, user_id::text, token, platform, is_active, created_at, updated_at
+	`, userID, token, platform).Scan(
+		&item.ID,
+		&item.UserID,
+		&item.Token,
+		&item.Platform,
+		&item.IsActive,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return fcmToken{}, err
+	}
+	return item, nil
+}
+
+func listFCMTokensPostgres(ctx context.Context, userID string) ([]fcmToken, error) {
+	p := getPool()
+	if p == nil {
+		return nil, errors.New("postgres notifications store not configured")
+	}
+
+	query := `
+		SELECT id::text, user_id::text, token, platform, is_active, created_at, updated_at
+		FROM fcm_tokens
+		WHERE 1=1
+	`
+	args := []any{}
+	if strings.TrimSpace(userID) != "" {
+		query += " AND user_id = $1::uuid"
+		args = append(args, userID)
+	}
+	query += " ORDER BY updated_at DESC"
+
+	rows, err := p.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]fcmToken, 0)
+	for rows.Next() {
+		var item fcmToken
+		if err := rows.Scan(
+			&item.ID,
+			&item.UserID,
+			&item.Token,
+			&item.Platform,
+			&item.IsActive,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func deactivateFCMTokenPostgres(ctx context.Context, token string) error {
+	p := getPool()
+	if p == nil {
+		return errors.New("postgres notifications store not configured")
+	}
+
+	res, err := p.Exec(ctx, `
+		UPDATE fcm_tokens
+		SET is_active = false,
+		    updated_at = now()
+		WHERE token = $1
+	`, token)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrFCMTokenNotFound
+	}
+	return nil
+}
+
+func cleanupInactiveFCMTokensPostgres(ctx context.Context, retention time.Duration) (int64, error) {
+	p := getPool()
+	if p == nil {
+		return 0, errors.New("postgres notifications store not configured")
+	}
+	if retention <= 0 {
+		retention = 30 * 24 * time.Hour
+	}
+
+	cutoff := time.Now().Add(-retention)
+	res, err := p.Exec(ctx, `
+		DELETE FROM fcm_tokens
+		WHERE is_active = false
+		  AND updated_at < $1
+	`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected(), nil
+}
+
+func StartFCMTokenCleanupWorker(ctx context.Context, interval, retention time.Duration) {
+	if interval <= 0 {
+		interval = 6 * time.Hour
+	}
+	if getPool() == nil {
+		return
+	}
+
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, _ = cleanupInactiveFCMTokensPostgres(ctx, retention)
+			}
+		}
+	}()
 }

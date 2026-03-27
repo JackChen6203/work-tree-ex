@@ -12,15 +12,33 @@ import { createTripSchema, validationMessages } from "../../lib/schemas";
 import type { CreateTripFormValues } from "../../lib/schemas";
 import type { Locale } from "../../lib/translations";
 import { upsertBudgetProfile } from "../../lib/budget-api";
+import { listTripCoverImages, saveTripCoverImage } from "../../lib/trip-cover-storage";
 import { budgetSeedCategories, currencyOptions, timezoneOptions } from "../../lib/trip-form-options";
 
 type TripWizardStep = 1 | 2 | 3;
+const MAX_COVER_FILE_BYTES = 750 * 1024;
+const ACCEPTED_COVER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
 const wizardStepFields: Record<TripWizardStep, Array<keyof CreateTripFormValues>> = {
   1: ["name", "departureText", "destinationText"],
   2: ["startDate", "endDate", "timezone", "travelersCount"],
   3: ["currency", "totalBudget", "pace"]
 };
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Invalid file data"));
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export function DashboardPage() {
   const { t, locale } = useI18n();
@@ -31,6 +49,8 @@ export function DashboardPage() {
   const [wizardStep, setWizardStep] = useState<TripWizardStep>(1);
   const [destinationKeyword, setDestinationKeyword] = useState("");
   const [selectedDestinationPoint, setSelectedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const [coverPreviewDataUrl, setCoverPreviewDataUrl] = useState<string | null>(null);
+  const [tripCoverById, setTripCoverById] = useState<Record<string, string>>(() => listTripCoverImages());
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
   const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
@@ -88,6 +108,28 @@ export function DashboardPage() {
     setWizardStep((current) => (current > 1 ? ((current - 1) as TripWizardStep) : current));
   };
 
+  const onSelectCoverFile = async (file: File | null) => {
+    if (!file) {
+      setCoverPreviewDataUrl(null);
+      return;
+    }
+    if (!ACCEPTED_COVER_TYPES.includes(file.type)) {
+      pushToast({ type: "error", message: t("trip.coverImageInvalidType") });
+      return;
+    }
+    if (file.size > MAX_COVER_FILE_BYTES) {
+      pushToast({ type: "error", message: t("trip.coverImageTooLarge") });
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCoverPreviewDataUrl(dataUrl);
+    } catch {
+      pushToast({ type: "error", message: t("common.actionFailed") });
+    }
+  };
+
   const onSubmit = form.handleSubmit(async (values) => {
     const departureText = values.departureText.trim();
     const destinationText = values.destinationText.trim();
@@ -116,6 +158,15 @@ export function DashboardPage() {
       }
     }
 
+    if (coverPreviewDataUrl) {
+      try {
+        saveTripCoverImage(trip.id, coverPreviewDataUrl);
+        setTripCoverById((current) => ({ ...current, [trip.id]: coverPreviewDataUrl }));
+      } catch {
+        pushToast({ type: "warning", message: t("trip.coverImageSaveFailed") });
+      }
+    }
+
     trackEvent({ name: analyticsEventNames.tripCreated, context: { trip_id: trip.id } });
     pushToast(t("trip.created"));
     setShowForm(false);
@@ -133,6 +184,7 @@ export function DashboardPage() {
     });
     setDestinationKeyword("");
     setSelectedDestinationPoint(null);
+    setCoverPreviewDataUrl(null);
     setWizardStep(1);
     navigate(`/trips/${trip.id}`);
   });
@@ -156,6 +208,7 @@ export function DashboardPage() {
                 const next = !current;
                 if (next) {
                   setWizardStep(1);
+                  setCoverPreviewDataUrl(null);
                 }
                 return next;
               })
@@ -350,6 +403,43 @@ export function DashboardPage() {
                     })}
                   </div>
                 </div>
+                <div className="md:col-span-2">
+                  <span className="mb-2 block text-sm font-medium text-ink">{t("trip.coverImage")}</span>
+                  <div className="grid gap-2 rounded-2xl border border-ink/10 bg-white p-3 md:grid-cols-[auto_auto_1fr] md:items-center">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-ink/15 px-4 py-2 text-sm font-medium text-ink transition hover:bg-sand">
+                      <input
+                        accept={ACCEPTED_COVER_TYPES.join(",")}
+                        className="sr-only"
+                        onChange={(event) => {
+                          void onSelectCoverFile(event.target.files?.[0] ?? null);
+                          event.currentTarget.value = "";
+                        }}
+                        type="file"
+                      />
+                      {t("trip.coverImageUpload")}
+                    </label>
+                    <button
+                      className="rounded-full border border-ink/15 px-4 py-2 text-sm font-medium text-ink disabled:opacity-40"
+                      disabled={!coverPreviewDataUrl}
+                      onClick={() => setCoverPreviewDataUrl(null)}
+                      type="button"
+                    >
+                      {t("trip.coverImageClear")}
+                    </button>
+                    <p className="text-xs text-ink/60">{t("trip.coverImageHint")}</p>
+                  </div>
+                  {coverPreviewDataUrl ? (
+                    <div className="mt-3 overflow-hidden rounded-2xl border border-ink/10 bg-white">
+                      <img
+                        alt={t("trip.coverImageAlt")}
+                        className="h-40 w-full object-cover"
+                        decoding="async"
+                        loading="lazy"
+                        src={coverPreviewDataUrl}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </>
             ) : null}
 
@@ -400,27 +490,42 @@ export function DashboardPage() {
           </div>
         ) : null}
         <div className="grid gap-4">
-          {trips.map((trip) => (
-            <Link
-              key={trip.id}
-              to={`/trips/${trip.id}`}
-              className={`rounded-[28px] bg-gradient-to-r ${trip.coverGradient} p-5 text-white transition hover:scale-[0.99]`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-white/70">{trip.destination}</p>
-                  <h2 className="mt-2 font-display text-3xl font-bold">{trip.name}</h2>
+          {trips.map((trip) => {
+            const coverImageUrl = tripCoverById[trip.id];
+            return (
+              <Link
+                key={trip.id}
+                to={`/trips/${trip.id}`}
+                className={`relative overflow-hidden rounded-[28px] bg-gradient-to-r ${trip.coverGradient} p-5 text-white transition hover:scale-[0.99]`}
+              >
+                {coverImageUrl ? (
+                  <>
+                    <img
+                      alt={t("trip.coverImageAlt")}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      decoding="async"
+                      loading="lazy"
+                      src={coverImageUrl}
+                    />
+                    <div className="absolute inset-0 bg-ink/35" />
+                  </>
+                ) : null}
+                <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-white/70">{trip.destination}</p>
+                    <h2 className="mt-2 font-display text-3xl font-bold">{trip.name}</h2>
+                  </div>
+                  <StatusPill tone="accent">{trip.role}</StatusPill>
                 </div>
-                <StatusPill tone="accent">{trip.role}</StatusPill>
-              </div>
-              <div className="mt-6 flex flex-wrap gap-5 text-sm text-white/85">
-                <span>{trip.dateRange}</span>
-                <span>{trip.timezone}</span>
-                <span>{trip.members} {t("common.members")}</span>
-                <span>{trip.currency}</span>
-              </div>
-            </Link>
-          ))}
+                <div className="relative z-10 mt-6 flex flex-wrap gap-5 text-sm text-white/85">
+                  <span>{trip.dateRange}</span>
+                  <span>{trip.timezone}</span>
+                  <span>{trip.members} {t("common.members")}</span>
+                  <span>{trip.currency}</span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </SurfaceCard>
       <div className="space-y-6">

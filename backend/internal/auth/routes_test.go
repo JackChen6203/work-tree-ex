@@ -19,6 +19,7 @@ func setupAuthRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
+	SetPool(nil)
 	authStateMu.Lock()
 	pendingCodes = map[string]codeEntry{}
 	oauthStates = map[string]oauthStateEntry{}

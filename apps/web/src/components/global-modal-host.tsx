@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useUiStore } from "../store/ui-store";
 import { useI18n } from "../lib/i18n";
+import { useFocusTrap } from "./use-focus-trap";
 
 export function GlobalModalHost() {
   const activeModal = useUiStore((state) => state.activeModal);
@@ -8,6 +9,14 @@ export function GlobalModalHost() {
   const pushToast = useUiStore((state) => state.pushToast);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { t } = useI18n();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const isDialogActive = activeModal !== null && activeModal.type !== "invite";
+
+  useFocusTrap({
+    active: isDialogActive,
+    containerRef: dialogRef,
+    onEscape: closeModal
+  });
 
   if (!activeModal) {
     return null;
@@ -50,7 +59,9 @@ export function GlobalModalHost() {
         aria-describedby="global-confirm-description"
         aria-modal="true"
         className="w-full max-w-lg rounded-[32px] border border-white/70 bg-white/95 p-6 shadow-card"
+        ref={dialogRef}
         role="dialog"
+        tabIndex={-1}
       >
         <p className={`text-xs uppercase tracking-[0.24em] ${payload.tone === "danger" ? "text-coral" : "text-pine"}`}>{t("common.confirm")}</p>
         <h2 className="mt-3 font-display text-3xl font-bold text-ink">{payload.title}</h2>

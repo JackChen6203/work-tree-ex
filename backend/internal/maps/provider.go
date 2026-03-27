@@ -1,12 +1,17 @@
 package maps
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // MapProvider defines the interface for map service providers.
 type MapProvider interface {
 	SearchPlaces(ctx context.Context, req PlaceSearchRequest) ([]NormalizedPlace, error)
 	GetPlaceDetail(ctx context.Context, providerPlaceID string) (*NormalizedPlace, error)
 	EstimateRoute(ctx context.Context, req RouteEstimateRequest) (*NormalizedRoute, error)
+	Geocode(ctx context.Context, address string) (*NormalizedPlace, error)
+	ReverseGeocode(ctx context.Context, lat, lng float64) (*NormalizedPlace, error)
 	Name() string
 }
 
@@ -45,4 +50,30 @@ type NormalizedRoute struct {
 	DurationSeconds       int      `json:"durationSeconds"`
 	EstimatedCostAmount   *float64 `json:"estimatedCostAmount,omitempty"`
 	EstimatedCostCurrency *string  `json:"estimatedCostCurrency,omitempty"`
+}
+
+type ProviderTimeoutError struct {
+	Provider string
+}
+
+func (e ProviderTimeoutError) Error() string {
+	return fmt.Sprintf("%s provider timed out", e.Provider)
+}
+
+type ProviderQuotaError struct {
+	Provider string
+}
+
+func (e ProviderQuotaError) Error() string {
+	return fmt.Sprintf("%s provider quota exceeded", e.Provider)
+}
+
+type ProviderAPIError struct {
+	Provider   string
+	StatusCode int
+	Message    string
+}
+
+func (e ProviderAPIError) Error() string {
+	return fmt.Sprintf("%s provider api error: status=%d message=%s", e.Provider, e.StatusCode, e.Message)
 }

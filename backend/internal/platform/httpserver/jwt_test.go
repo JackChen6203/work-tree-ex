@@ -23,6 +23,9 @@ func setupJWTTestEngine(t *testing.T) *gin.Engine {
 	r.GET("/healthz", func(c *gin.Context) {
 		response.JSON(c, http.StatusOK, gin.H{"status": "ok"})
 	})
+	r.GET("/readyz", func(c *gin.Context) {
+		response.JSON(c, http.StatusOK, gin.H{"status": "ready"})
+	})
 	r.GET("/api/v1/trips", func(c *gin.Context) {
 		userID, _ := c.Get("userID")
 		response.JSON(c, http.StatusOK, gin.H{"userID": userID})
@@ -45,6 +48,13 @@ func TestJWTMiddlewareAllowsPublicRoutes(t *testing.T) {
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected 200 for auth route, got %d", w2.Code)
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusOK {
+		t.Fatalf("expected 200 for readyz, got %d", w3.Code)
 	}
 }
 

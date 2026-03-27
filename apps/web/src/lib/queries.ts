@@ -1,8 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addTripMember, createTrip, getTrip, listTripMembers, listTrips, patchTrip, removeTripMember, updateTripMemberRole } from "./trips-api";
+import {
+  createTripInvitation,
+  createTripShareLink,
+  listTripInvitations,
+  listTripShareLinks,
+  revokeTripInvitation,
+  revokeTripShareLink
+} from "./trips-collaboration-api";
 import { requestMagicLink, verifyMagicLink } from "./auth-api";
 import { adoptAiPlan, createAiPlan, getAiPlan, listAiPlans } from "./ai-planner-api";
-import { createExpense, deleteExpense, getBudgetProfile, listExpenses, patchExpense, upsertBudgetProfile } from "./budget-api";
+import { createExpense, deleteExpense, getBudgetProfile, getBudgetRates, listExpenses, patchExpense, refreshBudgetRate, upsertBudgetProfile } from "./budget-api";
 import { cleanupReadNotifications, deleteNotification, listNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "./notifications-api";
 import { createItineraryItem, deleteItineraryItem, listItineraryDays, patchItineraryItem, reorderItineraryItems } from "./itinerary-api";
 import { estimateRoute, searchPlaces } from "./maps-api";
@@ -98,6 +106,68 @@ export function useUpdateTripMemberRoleMutation(tripId: string) {
       trackQueuedMutation("trip-members.role", () => updateTripMemberRole(tripId, memberId, role)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-members", tripId] });
+    }
+  });
+}
+
+export function useTripShareLinksQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["trip-share-links", tripId],
+    queryFn: () => listTripShareLinks(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useCreateTripShareLinkMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => trackQueuedMutation("trip-share-links.create", () => createTripShareLink(tripId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-share-links", tripId] });
+    }
+  });
+}
+
+export function useRevokeTripShareLinkMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (linkId: string) => trackQueuedMutation("trip-share-links.revoke", () => revokeTripShareLink(tripId, linkId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-share-links", tripId] });
+    }
+  });
+}
+
+export function useTripInvitationsQuery(tripId: string) {
+  return useQuery({
+    queryKey: ["trip-invitations", tripId],
+    queryFn: () => listTripInvitations(tripId),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useCreateTripInvitationMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { inviteeEmail: string; role: "editor" | "commenter" | "viewer" }) =>
+      trackQueuedMutation("trip-invitations.create", () => createTripInvitation(tripId, input)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-invitations", tripId] });
+    }
+  });
+}
+
+export function useRevokeTripInvitationMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (invitationId: string) =>
+      trackQueuedMutation("trip-invitations.revoke", () => revokeTripInvitation(tripId, invitationId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-invitations", tripId] });
     }
   });
 }
@@ -203,7 +273,14 @@ export function useCreateExpenseMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { category: string; amount: number; currency: string; expenseAt?: string; note?: string }) => trackQueuedMutation("expenses.create", () => createExpense(tripId, input)),
+    mutationFn: (input: {
+      category: string;
+      amount: number;
+      currency: string;
+      expenseAt?: string;
+      note?: string;
+      linkedItemId?: string;
+    }) => trackQueuedMutation("expenses.create", () => createExpense(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
@@ -232,11 +309,37 @@ export function usePatchExpenseMutation(tripId: string) {
       input
     }: {
       expenseId: string;
-      input: { category?: string; amount?: number; currency?: string; expenseAt?: string; note?: string };
+      input: {
+        category?: string;
+        amount?: number;
+        currency?: string;
+        expenseAt?: string;
+        note?: string;
+        linkedItemId?: string;
+      };
     }) => trackQueuedMutation("expenses.patch", () => patchExpense(tripId, expenseId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", tripId] });
       queryClient.invalidateQueries({ queryKey: ["budget", tripId] });
+    }
+  });
+}
+
+export function useBudgetRatesQuery(tripId: string, options?: { from?: string; to?: string }) {
+  return useQuery({
+    queryKey: ["budget-rates", tripId, options?.from ?? "*", options?.to ?? "*"],
+    queryFn: () => getBudgetRates(tripId, options),
+    enabled: Boolean(tripId)
+  });
+}
+
+export function useRefreshBudgetRateMutation(tripId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) => refreshBudgetRate(tripId, from, to),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget-rates", tripId] });
     }
   });
 }
@@ -315,7 +418,22 @@ export function useCreateItineraryItemMutation(tripId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { dayId: string; title: string; itemType: string; allDay: boolean; note?: string }) => trackQueuedMutation("itinerary-items.create", () => createItineraryItem(tripId, input)),
+    mutationFn: (input: {
+      dayId: string;
+      title: string;
+      itemType: string;
+      allDay: boolean;
+      note?: string;
+      startAt?: string;
+      endAt?: string;
+      placeId?: string;
+      lat?: number;
+      lng?: number;
+      placeSnapshotId?: string;
+      routeSnapshotId?: string;
+      estimatedCostAmount?: number;
+      estimatedCostCurrency?: string;
+    }) => trackQueuedMutation("itinerary-items.create", () => createItineraryItem(tripId, input)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["itinerary-days", tripId] });
     }

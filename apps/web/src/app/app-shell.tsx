@@ -47,6 +47,12 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-10">
+      <a
+        className="sr-only z-[90] rounded-md bg-ink px-3 py-2 text-sm font-medium text-sand focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        href="#main-content"
+      >
+        {t("common.skipToMain")}
+      </a>
       <OfflineBanner />
       <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-6 rounded-[36px] border border-white/60 bg-white/35 p-4 shadow-card backdrop-blur sm:p-6">
         <header className="flex flex-col gap-4 rounded-[28px] bg-gradient-to-r from-white via-white/80 to-[#f0dfd6] p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -101,7 +107,7 @@ export function AppShell() {
           </div>
         </header>
         <SyncStatusBar />
-        <main className="flex-1">
+        <main className="flex-1" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -103,19 +104,38 @@ func createPlan(c *gin.Context) {
 		response.JSON(c, http.StatusAccepted, gin.H{"jobId": existing.ID, "status": "succeeded", "acceptedAt": existing.CreatedAt})
 		return
 	}
+	plannerMu.Unlock()
 
-	// Distributed lock: prevent duplicate jobs for same trip
-	if tripJobLocks[tripID] {
-		plannerMu.Unlock()
+	releaseLock, lockAcquired := acquireTripPlanningLock(c.Request.Context(), tripID)
+	if !lockAcquired {
 		response.Error(c, http.StatusConflict, perrors.CodeConflict,
 			"a planning job is already running for this trip", gin.H{"tripId": tripID})
 		return
 	}
-	tripJobLocks[tripID] = true
-	plannerMu.Unlock()
+	defer releaseLock()
 
-	// Execute provider adapter
-	provider := GetProvider("openai") // Default mock provider
+	providerCfg, err := resolveProviderRuntimeConfig(c.Request.Context(), in.ProviderConfigID)
+	if err != nil {
+		if errors.Is(err, ErrProviderConfigNotFound) {
+			response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider config not found", gin.H{"providerConfigId": in.ProviderConfigID})
+			return
+		}
+		if errors.Is(err, ErrProviderUnsupported) {
+			response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "provider is not supported", gin.H{"providerConfigId": in.ProviderConfigID})
+			return
+		}
+		if errors.Is(err, ErrProviderKeyDecrypt) {
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "provider api key decryption failed", gin.H{"providerConfigId": in.ProviderConfigID})
+			return
+		}
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to resolve provider config", nil)
+		return
+	}
+	provider := BuildProvider(providerCfg)
+
 	prompt := BuildPrompt(
 		"Trip Plan", tripID,
 		time.Now().Format("2006-01-02"), time.Now().AddDate(0, 0, 3).Format("2006-01-02"),
@@ -138,25 +158,23 @@ func createPlan(c *gin.Context) {
 	defer cancel()
 
 	rawOutput, usage, err := provider.GeneratePlan(ctx, prompt.FullPrompt())
-
-	plannerMu.Lock()
-	delete(tripJobLocks, tripID) // Release lock
-	plannerMu.Unlock()
-
 	if err != nil {
-		if _, ok := err.(ProviderTimeoutError); ok {
-			response.Error(c, http.StatusGatewayTimeout, perrors.CodeAIProviderTimeout,
-				"AI provider timed out", gin.H{"provider": provider.Name()})
-			return
+		statusCode, mappedCode, message := mapProviderGenerateError(err)
+		if getPool() != nil {
+			recordFailedPlanRequestPostgres(c.Request.Context(), tripID, in, provider.Name(), mappedCode, err.Error())
 		}
-		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError,
-			"AI provider error", gin.H{"error": err.Error()})
+		response.Error(c, statusCode, mappedCode, message, gin.H{
+			"provider": provider.Name(),
+		})
 		return
 	}
 
 	// Parse structured JSON output
 	_, parseErr := ParseStructuredOutput(provider.Name(), rawOutput)
 	if parseErr != nil {
+		if getPool() != nil {
+			recordFailedPlanRequestPostgres(c.Request.Context(), tripID, in, provider.Name(), perrors.CodeAIProviderInvalidOutput, parseErr.Error())
+		}
 		response.Error(c, http.StatusBadGateway, perrors.CodeAIProviderInvalidOutput,
 			"AI provider returned invalid JSON", gin.H{"provider": provider.Name()})
 		return
@@ -197,6 +215,22 @@ func createPlan(c *gin.Context) {
 		CreatedAt:        time.Now().UTC(),
 	}
 
+	if getPool() != nil {
+		storedDraft, err := createPlanPostgres(c.Request.Context(), tripID, in, provider.Name(), usage, status, warnings, estimated)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to persist ai draft", nil)
+			return
+		}
+		plannerMu.Lock()
+		createIdempotency[idempotencyKey] = storedDraft.ID
+		plannerMu.Unlock()
+		response.JSON(c, http.StatusAccepted, gin.H{"jobId": storedDraft.ID, "status": "succeeded", "acceptedAt": storedDraft.CreatedAt})
+		return
+	}
+
 	plannerMu.Lock()
 	plansByTrip[tripID] = append(plansByTrip[tripID], draft)
 	planByID[draft.ID] = draft
@@ -206,8 +240,54 @@ func createPlan(c *gin.Context) {
 	response.JSON(c, http.StatusAccepted, gin.H{"jobId": draft.ID, "status": "succeeded", "acceptedAt": draft.CreatedAt})
 }
 
+func mapProviderGenerateError(err error) (int, string, string) {
+	var timeoutErr ProviderTimeoutError
+	if errors.As(err, &timeoutErr) {
+		return http.StatusGatewayTimeout, perrors.CodeAIProviderTimeout, "AI provider timed out"
+	}
+
+	var circuitErr ProviderCircuitOpenError
+	if errors.As(err, &circuitErr) {
+		return http.StatusServiceUnavailable, perrors.CodeAIProviderCircuitOpen, "AI provider is temporarily unavailable"
+	}
+
+	var invalidOutputErr ProviderInvalidOutputError
+	if errors.As(err, &invalidOutputErr) {
+		return http.StatusBadGateway, perrors.CodeAIProviderInvalidOutput, "AI provider returned invalid output"
+	}
+
+	var apiErr ProviderAPIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.StatusCode == http.StatusTooManyRequests:
+			return http.StatusTooManyRequests, perrors.CodeAIProviderQuotaExceed, "AI provider quota exceeded"
+		case apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden:
+			return http.StatusBadGateway, perrors.CodeAIProviderAuthFailed, "AI provider authentication failed"
+		case apiErr.StatusCode == http.StatusBadRequest || apiErr.StatusCode == http.StatusUnprocessableEntity || apiErr.StatusCode == http.StatusNotFound:
+			return http.StatusBadGateway, perrors.CodeAIProviderBadRequest, "AI provider rejected request"
+		default:
+			return http.StatusBadGateway, perrors.CodeAIProviderUnavailable, "AI provider unavailable"
+		}
+	}
+
+	return http.StatusInternalServerError, perrors.CodeInternalError, "AI provider error"
+}
+
 func listPlans(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
+	if getPool() != nil {
+		items, err := listPlansPostgres(c.Request.Context(), tripID)
+		if err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list ai plans", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, items)
+		return
+	}
+
 	plannerMu.RLock()
 	items := plansByTrip[tripID]
 	copyItems := make([]planDraft, len(items))
@@ -220,6 +300,23 @@ func listPlans(c *gin.Context) {
 func getPlan(c *gin.Context) {
 	tripID := strings.TrimSpace(c.Param("tripId"))
 	planID := strings.TrimSpace(c.Param("planId"))
+
+	if getPool() != nil {
+		item, err := getPlanPostgres(c.Request.Context(), tripID, planID)
+		if err != nil {
+			if errors.Is(err, ErrAIDraftNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to get ai plan", nil)
+			return
+		}
+		response.JSON(c, http.StatusOK, item)
+		return
+	}
 
 	plannerMu.RLock()
 	item, ok := planByID[planID]
@@ -246,6 +343,64 @@ func adoptPlan(c *gin.Context) {
 	if existing, ok := adoptIdempotency[idempotencyKey]; ok {
 		plannerMu.Unlock()
 		response.JSON(c, http.StatusOK, existing)
+		return
+	}
+
+	if getPool() != nil {
+		plannerMu.Unlock()
+
+		item, err := getPlanPostgres(c.Request.Context(), tripID, planID)
+		if err != nil {
+			if errors.Is(err, ErrAIDraftNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to load ai plan", nil)
+			return
+		}
+
+		if item.Status == "invalid" {
+			response.Error(c, http.StatusConflict, perrors.CodeAIDraftInvalid, "ai draft is invalid and cannot be adopted", gin.H{"planId": planID})
+			return
+		}
+		if item.Status == "warning" && !confirmWarnings {
+			response.Error(c, http.StatusConflict, perrors.CodeAIDraftInvalid, "ai draft requires warning confirmation before adoption", gin.H{"planId": planID, "warnings": item.Warnings})
+			return
+		}
+
+		if err := adoptDraftToItineraryPostgres(c.Request.Context(), tripID, planID); err != nil {
+			if errors.Is(err, ErrAIDraftNotFound) {
+				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "ai plan not found", gin.H{"planId": planID, "tripId": tripID})
+				return
+			}
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to adopt ai draft", nil)
+			return
+		}
+
+		result := gin.H{
+			"tripId":   tripID,
+			"planId":   planID,
+			"adopted":  true,
+			"status":   item.Status,
+			"warnings": item.Warnings,
+		}
+		if err := writeAIAuditLogPostgres(c.Request.Context(), "adopt_ai_draft", "ai_plan_drafts", planID, nil, result); err != nil {
+			if response.DatabaseUnavailable(c, err) {
+				return
+			}
+			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to write audit log", nil)
+			return
+		}
+		plannerMu.Lock()
+		adoptIdempotency[idempotencyKey] = result
+		plannerMu.Unlock()
+		response.JSON(c, http.StatusOK, result)
 		return
 	}
 

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	platformdb "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 )
 
 var ErrOutboxEventNotFound = errors.New("outbox event not found")
@@ -123,95 +124,112 @@ func ackOutboxEventPostgres(ctx context.Context, eventID string, success bool) (
 		return OutboxEvent{}, errors.New("postgres outbox store not configured")
 	}
 
-	tx, err := p.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
+	for attempt := 1; ; attempt++ {
+		item, err := func() (OutboxEvent, error) {
+			tx, err := p.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return OutboxEvent{}, err
+			}
+			defer rollbackTx(ctx, tx)
+
+			var (
+				item       OutboxEvent
+				payloadRaw []byte
+				dbStatus   string
+				tripID     string
+			)
+			err = tx.QueryRow(ctx, `
+				SELECT id::text, COALESCE(trip_id::text, ''), aggregate_type, aggregate_id, event_type,
+				       payload, dedupe_key, status, retry_count, available_at, processed_at, created_at
+				FROM outbox_events
+				WHERE id = $1::uuid
+				FOR UPDATE
+			`, eventID).Scan(
+				&item.ID,
+				&tripID,
+				&item.AggregateType,
+				&item.AggregateID,
+				&item.EventType,
+				&payloadRaw,
+				&item.DedupeKey,
+				&dbStatus,
+				&item.RetryCount,
+				&item.AvailableAt,
+				&item.ProcessedAt,
+				&item.CreatedAt,
+			)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return OutboxEvent{}, ErrOutboxEventNotFound
+			}
+			if err != nil {
+				return OutboxEvent{}, err
+			}
+
+			now := time.Now().UTC()
+			if success {
+				_, err = tx.Exec(ctx, `
+					UPDATE outbox_events
+					SET status = 'done',
+					    processed_at = $2
+					WHERE id = $1::uuid
+				`, eventID, now)
+				if err != nil {
+					return OutboxEvent{}, err
+				}
+				item.Status = "processed"
+				item.ProcessedAt = &now
+			} else {
+				item.RetryCount++
+				nextStatus := "pending"
+				nextAvailable := item.AvailableAt
+				if item.RetryCount > maxRetries {
+					nextStatus = "dead"
+				} else {
+					nextAvailable = now.Add(time.Duration(1<<item.RetryCount) * time.Second)
+				}
+				_, err = tx.Exec(ctx, `
+					UPDATE outbox_events
+					SET retry_count = $2,
+					    status = $3,
+					    available_at = $4
+					WHERE id = $1::uuid
+				`, eventID, item.RetryCount, nextStatus, nextAvailable)
+				if err != nil {
+					return OutboxEvent{}, err
+				}
+				item.Status = mapDBStatusToAPI(nextStatus)
+				item.AvailableAt = nextAvailable
+			}
+
+			item.TripID = tripID
+			if len(payloadRaw) > 0 {
+				if err := json.Unmarshal(payloadRaw, &item.Payload); err != nil {
+					return OutboxEvent{}, err
+				}
+			}
+			if item.Payload == nil {
+				item.Payload = gin.H{}
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				return OutboxEvent{}, err
+			}
+			return item, nil
+		}()
+		if err == nil {
+			return item, nil
+		}
+
+		err = platformdb.WrapError(err)
+		if platformdb.ShouldRetryDeadlock(err, attempt) {
+			time.Sleep(platformdb.DeadlockRetryDelay(attempt))
+			continue
+		}
+		if platformdb.IsDeadlock(err) {
+			return OutboxEvent{}, platformdb.DeadlockRetryExhaustedError(err)
+		}
 		return OutboxEvent{}, err
 	}
-	defer rollbackTx(ctx, tx)
-
-	var (
-		item       OutboxEvent
-		payloadRaw []byte
-		dbStatus   string
-		tripID     string
-	)
-	err = tx.QueryRow(ctx, `
-		SELECT id::text, COALESCE(trip_id::text, ''), aggregate_type, aggregate_id, event_type,
-		       payload, dedupe_key, status, retry_count, available_at, processed_at, created_at
-		FROM outbox_events
-		WHERE id = $1::uuid
-		FOR UPDATE
-	`, eventID).Scan(
-		&item.ID,
-		&tripID,
-		&item.AggregateType,
-		&item.AggregateID,
-		&item.EventType,
-		&payloadRaw,
-		&item.DedupeKey,
-		&dbStatus,
-		&item.RetryCount,
-		&item.AvailableAt,
-		&item.ProcessedAt,
-		&item.CreatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return OutboxEvent{}, ErrOutboxEventNotFound
-	}
-	if err != nil {
-		return OutboxEvent{}, err
-	}
-
-	now := time.Now().UTC()
-	if success {
-		_, err = tx.Exec(ctx, `
-			UPDATE outbox_events
-			SET status = 'done',
-			    processed_at = $2
-			WHERE id = $1::uuid
-		`, eventID, now)
-		if err != nil {
-			return OutboxEvent{}, err
-		}
-		item.Status = "processed"
-		item.ProcessedAt = &now
-	} else {
-		item.RetryCount++
-		nextStatus := "pending"
-		nextAvailable := item.AvailableAt
-		if item.RetryCount > maxRetries {
-			nextStatus = "dead"
-		} else {
-			nextAvailable = now.Add(time.Duration(1<<item.RetryCount) * time.Second)
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE outbox_events
-			SET retry_count = $2,
-			    status = $3,
-			    available_at = $4
-			WHERE id = $1::uuid
-		`, eventID, item.RetryCount, nextStatus, nextAvailable)
-		if err != nil {
-			return OutboxEvent{}, err
-		}
-		item.Status = mapDBStatusToAPI(nextStatus)
-		item.AvailableAt = nextAvailable
-	}
-
-	item.TripID = tripID
-	if len(payloadRaw) > 0 {
-		if err := json.Unmarshal(payloadRaw, &item.Payload); err != nil {
-			return OutboxEvent{}, err
-		}
-	}
-	if item.Payload == nil {
-		item.Payload = gin.H{}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return OutboxEvent{}, err
-	}
-	return item, nil
 }
 
 func rollbackTx(ctx context.Context, tx pgx.Tx) {
