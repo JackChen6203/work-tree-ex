@@ -477,6 +477,50 @@ func listInvitationsPostgres(ctx context.Context, tripID string) ([]invitation, 
 	return items, nil
 }
 
+func listExpiringInvitationsPostgres(ctx context.Context, now, cutoff time.Time) ([]invitation, error) {
+	pool := getCollaborationPool()
+	if pool == nil {
+		return nil, errors.New("postgres collaboration store not configured")
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT id::text, trip_id::text, invited_by_user_id::text, invitee_email::text, role, token_hash, status, expires_at, accepted_at, created_at
+		FROM trip_invitations
+		WHERE status = 'pending'
+		  AND expires_at > $1
+		  AND expires_at <= $2
+		ORDER BY expires_at ASC
+	`, now, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]invitation, 0)
+	for rows.Next() {
+		var item invitation
+		if err := rows.Scan(
+			&item.ID,
+			&item.TripID,
+			&item.InvitedBy,
+			&item.Email,
+			&item.Role,
+			&item.TokenHash,
+			&item.Status,
+			&item.ExpiresAt,
+			&item.AcceptedAt,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func revokeInvitationPostgres(ctx context.Context, tripID, invitationID string) (invitation, error) {
 	pool := getCollaborationPool()
 	if pool == nil {

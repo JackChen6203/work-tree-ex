@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	perrors "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/errors"
 	"github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/response"
+	"github.com/solidityDeveloper/time_tree_ex/backend/internal/users"
 )
 
 type notification struct {
@@ -362,8 +363,8 @@ func triggerNotification(c *gin.Context) {
 	}
 	dedupeStore[dedupeKey] = now
 
-	// Check delivery preferences
-	prefs := defaultDeliveryPrefs
+	// Check per-user delivery preferences
+	prefs := resolveDeliveryPrefs(in.UserID, in.EventType)
 	notificationsMu.Unlock()
 	channels := []string{}
 
@@ -444,6 +445,9 @@ func triggerNotification(c *gin.Context) {
 
 	// Email delivery (skipped if not enabled)
 	if prefs.Email {
+		if err := sendNotificationEmail(c.Request.Context(), in.UserID, in, notifID); err != nil {
+			log.Printf("notifications: email delivery failed (notification_id=%s user_id=%s): %v", notifID, in.UserID, err)
+		}
 		channels = append(channels, "email")
 	}
 
@@ -452,6 +456,15 @@ func triggerNotification(c *gin.Context) {
 		"channels":       channels,
 		"skipped":        false,
 	})
+}
+
+func resolveDeliveryPrefs(userID, eventType string) DeliveryPrefs {
+	snapshot := users.ResolveDeliveryPreferences(userID, eventType)
+	prefs := defaultDeliveryPrefs
+	prefs.InApp = snapshot.InApp
+	prefs.Push = snapshot.Push
+	prefs.Email = snapshot.Email
+	return prefs
 }
 
 func listPushDeliveries(c *gin.Context) {

@@ -122,10 +122,17 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `FCM_PROJECT_ID` | Optional | API notifications push delivery | Explicit Firebase project id override for Admin SDK init. |
 | `FCM_SERVER_KEY` | Optional | API notifications push delivery | Enables real FCM HTTP push delivery when set |
 | `FCM_SEND_ENDPOINT` | No | API notifications push delivery | Defaults to `https://fcm.googleapis.com/fcm/send` |
+| `FIREBASE_SHADOW_ENABLED` | No | Worker outbox consumer | Enable Firebase shadow sync after outbox consumption (default `false`) |
+| `FIREBASE_DATABASE_URL` | Required when `FIREBASE_SHADOW_ENABLED=true` | Worker outbox consumer | Firebase Realtime Database URL used by shadow sync |
+| `FIREBASE_SHADOW_PATH_PREFIX` | No | Worker outbox consumer | Realtime DB path prefix for shadow docs, default `shadow` |
 | `EMAIL_PROVIDER_PRIMARY` | No | API auth + trips invitation mailer | Primary provider: `resend`, `sendgrid`, or `noop` (default auto-detects by API keys) |
 | `EMAIL_PROVIDER_FALLBACK` | Optional | API auth + trips invitation mailer | Fallback provider when primary send fails |
 | `EMAIL_SEND_TIMEOUT_SEC` | No | API auth + trips invitation mailer | Email provider HTTP timeout seconds (default `8`) |
 | `EMAIL_FROM` | No | API auth + trips invitation mailer | Sender address for transactional emails |
+| `EMAIL_DIGEST_ENABLED` | No | API notification digest worker | Enable daily/weekly digest email workers in API runtime (default `true` when `TRIPS_STORE=postgres`) |
+| `EMAIL_DIGEST_DAILY_INTERVAL_HOURS` | No | API notification digest worker | Daily digest scheduling interval in hours, default `24` |
+| `EMAIL_DIGEST_WEEKLY_INTERVAL_HOURS` | No | API notification digest worker | Weekly digest scheduling interval in hours, default `168` |
+| `DEFAULT_LOCALE` | No | API invitation reminder + mail templates | Locale fallback used when rendering reminder/template content without user locale (default `zh-TW`) |
 | `RESEND_API_KEY` | Optional | API auth + trips invitation mailer | Enables Resend email provider |
 | `RESEND_API_ENDPOINT` | No | API auth + trips invitation mailer | Defaults to `https://api.resend.com/emails` |
 | `SENDGRID_API_KEY` | Optional | API auth + trips invitation mailer | Enables SendGrid email provider |
@@ -133,6 +140,9 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `WORKER_POLL_INTERVAL_SEC` | No | Worker outbox poller | Poll interval seconds, default `1` |
 | `WORKER_BATCH_SIZE` | No | Worker outbox poller | Max outbox events processed per cycle, default `50` |
 | `WORKER_HTTP_PORT` | No | Worker monitor server | Worker health/ready/metrics HTTP port (default `8091`, set `0` to disable). |
+| `INVITATION_REMINDER_ENABLED` | No | API invitation reminder worker | Enable invitation expiry reminder worker in API runtime (default `true` when `TRIPS_STORE=postgres`) |
+| `INVITATION_REMINDER_INTERVAL_MIN` | No | API invitation reminder worker | Poll interval minutes for scanning expiring invitations, default `60` |
+| `INVITATION_REMINDER_LOOKAHEAD_HOURS` | No | API invitation reminder worker | Reminder lead time window in hours before expiry, default `24` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Optional | API integrations | Server-only key for Supabase HTTP APIs. Keep only on backend/secrets manager, never expose to browser. |
 | `WEB_PORT` | No | Docker Compose | Frontend nginx published port |
 | `MIGRATE_DATABASE_URL` | Recommended for external DB | Docker Compose migrate/manual migration | Use a full Postgres URL when your DB password contains special chars |

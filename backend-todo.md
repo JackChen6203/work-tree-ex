@@ -359,8 +359,8 @@
 - [x] Email provider 整合（SendGrid / SES / Resend）
 - [x] Magic link email 真實發送
 - [x] Invite email 真實發送
-- [ ] Trip update digest email
-- [ ] Email template 管理
+- [x] Trip update digest email
+- [x] Email template 管理
 
 ---
 
@@ -368,7 +368,7 @@
 
 - [x] Worker 從 PostgreSQL outbox_events 輪詢
 - [x] 消費後寫入 notification
-- [ ] 消費後同步 Firebase shadow
+- [x] 消費後同步 Firebase shadow
 - [x] 消費後發送 analytics event
 - [x] DLQ → 手動重試 API
 - [x] Worker graceful shutdown
@@ -540,9 +540,9 @@
   - [x] `POST /fcm-tokens` 真實寫入 PostgreSQL
   - [x] Token refresh 更新
   - [x] 無效 token 清理（FCM 回傳 invalid token error）
-- [ ] Push notification 真實發送
+- [x] Push notification 真實發送
   - [x] `messaging.SendEachForMulticast()` 實作
-  - [ ] 依 user notification preferences 過濾
+  - [x] 依 user notification preferences 過濾
   - [x] Payload 組裝（title / body / data / click_action）
 - [x] 錯誤處理
   - [x] Push 失敗 → retry（指數退避）
@@ -562,15 +562,15 @@
   - [x] HTML template（含 magic link URL）
   - [x] 純文字 fallback
   - [x] Rate limit（同一 email 60s 內不重發）
-- [ ] Invite email
+- [x] Invite email
   - [x] HTML template（含邀請者名稱、trip 名稱、接受連結）
-  - [ ] 邀請過期前到期提醒
-- [ ] Trip update digest email
-  - [ ] 每日 / 每週摘要 cron
-  - [ ] HTML template（變更清單）
-- [ ] Email template 管理
-  - [ ] Go template 或 MJML
-  - [ ] i18n 支援（依 user locale）
+  - [x] 邀請過期前到期提醒
+- [x] Trip update digest email
+  - [x] 每日 / 每週摘要 cron
+  - [x] HTML template（變更清單）
+- [x] Email template 管理
+  - [x] Go template 或 MJML
+  - [x] i18n 支援（依 user locale）
 
 ---
 
@@ -580,11 +580,11 @@
   - [x] Polling interval 配置（預設 1s）
   - [x] Batch size 配置（預設 50）
   - [x] Status = 'pending' AND available_at <= now()
-- [ ] 消費處理
+- [x] 消費處理
   - [x] 寫入 notification（in-app 通知）
   - [x] 觸發 FCM push（呼叫 BE-P2-06）
-  - [ ] 觸發 email 發送（呼叫 BE-P2-07）
-  - [ ] 同步 Firebase shadow（若需要）
+  - [x] 觸發 email 發送（呼叫 BE-P2-07）
+  - [x] 同步 Firebase shadow（若需要）
   - [x] 發送 analytics event
 - [x] 錯誤處理
   - [x] 消費失敗 → retry_count + 1 + 指數退避

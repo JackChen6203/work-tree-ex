@@ -18,9 +18,10 @@ func ConsumeOutboxEvent(ctx context.Context, eventType, resourceID string, paylo
 		Link:       inferOutboxLink(resourceID, payload),
 		UserID:     defaultNotificationUserID,
 	}
+	prefs := resolveDeliveryPrefs(in.UserID, in.EventType)
 
 	notifID := ""
-	if defaultDeliveryPrefs.InApp {
+	if prefs.InApp {
 		if getPool() != nil {
 			id, err := createNotificationPostgres(ctx, in, now)
 			if err != nil {
@@ -45,7 +46,7 @@ func ConsumeOutboxEvent(ctx context.Context, eventType, resourceID string, paylo
 		notifID = "evt-" + strconv.FormatInt(now.UnixNano(), 10)
 	}
 
-	if defaultDeliveryPrefs.Push {
+	if prefs.Push {
 		tokens, err := listActivePushTokens(ctx, in.UserID)
 		pd := &pushDelivery{
 			NotificationID: notifID,
@@ -79,6 +80,16 @@ func ConsumeOutboxEvent(ctx context.Context, eventType, resourceID string, paylo
 		notificationsMu.Lock()
 		pushDeliveries[notifID] = pd
 		notificationsMu.Unlock()
+	}
+
+	if prefs.Email {
+		if err := sendNotificationEmail(ctx, in.UserID, in, notifID); err != nil {
+			log.Printf("notifications: worker email delivery failed (notification_id=%s user_id=%s): %v", notifID, in.UserID, err)
+		}
+	}
+
+	if err := syncFirebaseShadow(ctx, in.EventType, in.ResourceID, payload, in.UserID, notifID); err != nil {
+		return err
 	}
 
 	return nil
