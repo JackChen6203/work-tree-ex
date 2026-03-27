@@ -90,24 +90,24 @@ export function AiPlannerPage() {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      setPlanningJob((current) => {
-        if (!current || current.status === "succeeded" || current.status === "failed") {
-          return current;
-        }
+      const timer = window.setInterval(() => {
+        setPlanningJob((current) => {
+          if (!current || current.status === "succeeded" || current.status === "failed") {
+            return current;
+          }
 
         if (current.pollCount >= 20) {
           return { ...current, status: "failed" };
         }
 
-        return {
-          ...current,
-          status: "running",
-          pollCount: current.pollCount + 1
-        };
-      });
-      void queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
-    }, 3000);
+          return {
+            ...current,
+            status: current.status === "queued" ? "queued" : "running",
+            pollCount: current.pollCount + 1
+          };
+        });
+        void queryClient.invalidateQueries({ queryKey: ["ai-plans", tripId] });
+      }, 3000);
 
     return () => {
       window.clearInterval(timer);
@@ -386,10 +386,10 @@ export function AiPlannerPage() {
         <div className="mt-5 rounded-[24px] bg-ink p-5 text-sand">
           <p className="text-xs uppercase tracking-[0.22em] text-sand/55">{t("ai.status")}</p>
           <h3 className="mt-2 font-display text-2xl font-bold">
-            {planningJob?.status === "queued" ? "Queued" : null}
+            {planningJob?.status === "queued" ? t("ai.queued") : null}
             {planningJob?.status === "running" ? t("ai.generating") : null}
             {planningJob?.status === "succeeded" ? t("ai.generated") : null}
-            {planningJob?.status === "failed" ? t("common.actionFailed") : null}
+            {planningJob?.status === "failed" ? t("ai.failed") : null}
             {!planningJob ? t("ai.generate") : null}
           </h3>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-sand/20">

@@ -470,6 +470,63 @@
 
 ---
 
+## Manual TODO（需你提供金鑰/環境設定）
+
+> 下列為目前要把剩餘 Phase 3 對接完全落地所需的人工決策與金鑰配置，請完成後我會繼續把剩餘項目全部實作與驗證。
+
+### 1) 前端執行環境（Vite）
+
+- 檔案：`apps/web/.env.local`（由 `apps/web/.env.example` 複製）
+- 必填/建議欄位：
+  - `VITE_API_BASE_URL=http://localhost:8080`（或你的 API 網域）
+  - `VITE_MAPBOX_ACCESS_TOKEN=<Mapbox public token>`（若要啟用真實 Mapbox SDK）
+  - `VITE_FIREBASE_API_KEY=<firebase web api key>`
+  - `VITE_FIREBASE_AUTH_DOMAIN=<project>.firebaseapp.com`
+  - `VITE_FIREBASE_PROJECT_ID=<firebase project id>`
+  - `VITE_FIREBASE_STORAGE_BUCKET=<firebase storage bucket>`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID=<sender id>`
+  - `VITE_FIREBASE_APP_ID=<firebase app id>`
+  - `VITE_FIREBASE_VAPID_KEY=<web push vapid key>`
+  - `VITE_OAUTH_PROVIDERS=google`（或你要露出的 provider 清單）
+  - `VITE_ENABLE_MAGIC_LINK_AUTH=true|false`（正式環境建議 `false`）
+
+### 2) 後端執行環境（API/Worker）
+
+- 檔案：專案根目錄 `.env`（由 `.env.example` 複製）
+- 需你提供/確認：
+  - `GOOGLE_MAPS_API_KEY` 或 `MAPBOX_API_KEY`（後端地圖 provider 真實呼叫）
+  - `FCM_SERVER_KEY`（後端推播真實送達）
+  - `OAUTH_GOOGLE_CLIENT_ID` + `OAUTH_GOOGLE_CLIENT_SECRET`（Google OAuth 真實交換）
+  - `DB_*` 連線參數（對應你使用的 PostgreSQL / Supabase）
+  - `JWT_SECRET`, `LLM_ENCRYPTION_KEY`（正式環境安全金鑰）
+
+### 3) Firebase Console 設定（前後端串接必要）
+
+- 建立 Web App，取得上面 `VITE_FIREBASE_*` 參數
+- 啟用 Cloud Messaging，取得 Web Push 憑證（VAPID）
+- 將 `firebase-messaging-sw.js` 服務 worker scope 註冊於可存取網域
+- 後端填入 `FCM_SERVER_KEY` 後，驗證 `POST /api/v1/fcm-tokens` + 推送流程
+
+### 4) 第三方 OAuth 設定（若你要上線第三方登入）
+
+- 在 Google Cloud Console 建立 OAuth Client
+- 加入授權 redirect URI（依部署網域）
+- 將 client id / secret 填入根目錄 `.env` 對應欄位
+- 前端 `VITE_OAUTH_PROVIDERS` 同步開啟對應 provider
+
+### 5) CI/CD 與本機 Node 執行環境修復
+
+- 目前阻塞：本機 Node 啟動缺少 `libicui18n.74.dylib`
+- 需你處理任一方案：
+  1. 重新安裝 Node（與目前 icu4c 版本相容）
+  2. 或補齊對應 ICU 動態庫版本
+- 修復後我會立即執行：
+  - `cd apps/web && npm run lint`
+  - `cd apps/web && npm run test`
+  - `cd apps/web && npm run build`
+
+---
+
 ## FE-P3-08｜Accessibility 補足
 
 - [x] 所有互動元素 `aria-label` / `aria-describedby`
