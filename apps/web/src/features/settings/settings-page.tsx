@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import {
   useCreateMyLlmProviderMutation,
+  useDeleteMyAccountMutation,
   useDeleteMyLlmProviderMutation,
   useMyLlmProvidersQuery,
   useMyNotificationPreferencesQuery,
@@ -19,6 +20,7 @@ import { llmProviderSchema, validationMessages } from "../../lib/schemas";
 import { isPushConfigured, setupPushMessaging } from "../../lib/fcm-messaging";
 import { oauthProviders } from "../../lib/oauth-providers";
 import type { Locale } from "../../lib/translations";
+import { useSessionStore } from "../../store/session-store";
 
 interface ProfileFormValues {
   displayName: string;
@@ -70,6 +72,8 @@ export function SettingsPage() {
   const putNotificationPreferences = usePutMyNotificationPreferencesMutation();
   const createProvider = useCreateMyLlmProviderMutation();
   const deleteProvider = useDeleteMyLlmProviderMutation();
+  const deleteMyAccount = useDeleteMyAccountMutation();
+  const clearUser = useSessionStore((state) => state.clearUser);
 
   const profileForm = useForm<ProfileFormValues>({
     values: profile
@@ -202,6 +206,8 @@ export function SettingsPage() {
   };
 
   const onDeleteAccount = async () => {
+    await deleteMyAccount.mutateAsync();
+    clearUser();
     pushToast(t("settings.accountDeleted"));
   };
 

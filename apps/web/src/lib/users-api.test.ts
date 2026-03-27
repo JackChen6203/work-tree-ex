@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getMyNotificationPreferences, listMyLlmProviders, patchMyProfile, putMyNotificationPreferences } from "./users-api";
+import { deleteMyAccount, getMyNotificationPreferences, listMyLlmProviders, patchMyProfile, putMyNotificationPreferences } from "./users-api";
 
 describe("users api", () => {
   beforeEach(() => {
@@ -115,5 +115,20 @@ describe("users api", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8080/api/v1/users/me/llm-providers", expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8080/api/v1/users/me/llm-providers?provider=openai", expect.anything());
+  });
+
+  it("deletes current account", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: null })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteMyAccount();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/users/me",
+      expect.objectContaining({ method: "DELETE" })
+    );
   });
 });

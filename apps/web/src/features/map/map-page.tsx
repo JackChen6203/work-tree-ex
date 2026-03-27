@@ -245,17 +245,31 @@ export function MapPage() {
       return;
     }
 
-    await createItem.mutateAsync({
-      dayId: targetDay,
-      title: point.title,
-      itemType: "place_visit",
-      allDay: false,
-      note: point.location,
-      placeId: point.placeId,
-      lat: point.lat,
-      lng: point.lng
-    });
-    pushToast(t("map.poiAdded"));
+    try {
+      const created = await createItem.mutateAsync({
+        dayId: targetDay,
+        title: point.title,
+        itemType: "place_visit",
+        allDay: false,
+        note: point.location,
+        placeId: point.placeId,
+        lat: point.lat,
+        lng: point.lng
+      });
+      if (created.warnings && created.warnings.length > 0) {
+        pushToast({
+          type: "warning",
+          message: t("itinerary.serverConflictWarning").replace("{items}", created.warnings.join(", "))
+        });
+      } else {
+        pushToast(t("map.poiAdded"));
+      }
+    } catch (error) {
+      pushToast({
+        type: "error",
+        message: error instanceof Error ? error.message : t("common.actionFailed")
+      });
+    }
   };
 
   return (
