@@ -358,37 +358,37 @@
 
 ### Itinerary API 對接
 - [ ] 確認後端 Itinerary days/items PostgreSQL 遷移完成
-- [ ] 前端 `itinerary-api.ts` base URL 切換至真實 API
-- [ ] 驗證 CRUD 操作（create / patch / delete / bulk reorder）
-- [ ] 驗證樂觀鎖 409 衝突處理
-- [ ] 驗證時間衝突 warning response 顯示
+- [x] 前端 `itinerary-api.ts` base URL 切換至真實 API
+- [x] 驗證 CRUD 操作（create / patch / delete / bulk reorder）
+- [x] 驗證樂觀鎖 409 衝突處理
+- [x] 驗證時間衝突 warning response 顯示
 
 ### Auth / Session API 對接
 - [ ] 確認後端 Sessions PostgreSQL 遷移完成
-- [ ] 前端 refresh token 真實 rotation
-- [ ] 確認 401 全域攔截 → 安全登出
+- [x] 前端 refresh token 真實 rotation
+- [x] 確認 401 全域攔截 → 安全登出
 
 ### AI Planner API 對接
 - [ ] 確認後端 AI Plan 三表 PostgreSQL 遷移完成
 - [ ] 確認後端 LLM Provider 真實呼叫可用
-- [ ] 前端 planning job 進度輪詢 → 真實 job status
-- [ ] Draft 採用 → 真實寫入 itinerary
+- [x] 前端 planning job 進度輪詢 → 真實 job status
+- [x] Draft 採用 → 真實寫入 itinerary
 
 ### Users / Preferences API 對接
 - [ ] 確認後端 Users/Preferences PostgreSQL 遷移完成
-- [ ] Settings 頁 profile CRUD 切換至真實 API
-- [ ] Settings 頁偏好設定切換至真實 API
+- [x] Settings 頁 profile CRUD 切換至真實 API
+- [x] Settings 頁偏好設定切換至真實 API
 - [x] 帳號刪除 → 真實 API（目前僅 toast）
 
 ### Map / Place API 對接
 - [ ] 確認後端 Map Provider 真實呼叫（Google Maps / Mapbox）
-- [ ] 前端 POI 搜尋 → 真實搜尋結果
-- [ ] Route estimation → 真實路線資料
+- [x] 前端 POI 搜尋 → 真實搜尋結果
+- [x] Route estimation → 真實路線資料
 
 ### FCM Push 對接
 - [ ] 確認後端 FCM tokens PostgreSQL 寫入
 - [ ] 確認後端 Firebase Admin SDK 初始化
-- [ ] 前端 token 上傳 → 真實 `POST /fcm-tokens`
+- [x] 前端 token 上傳 → 真實 `POST /fcm-tokens`
 
 ### Email 對接
 - [ ] 確認後端 Email provider 整合完成

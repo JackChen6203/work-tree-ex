@@ -64,6 +64,18 @@ function isDayContainerId(id: string) {
   return id.startsWith(DAY_CONTAINER_PREFIX);
 }
 
+function toApiError(error: unknown): { status?: number; code?: string; message: string } {
+  if (error instanceof Error) {
+    const maybeApiError = error as Error & { status?: number; code?: string };
+    return {
+      status: maybeApiError.status,
+      code: maybeApiError.code,
+      message: error.message
+    };
+  }
+  return { message: "Unknown error" };
+}
+
 function cloneDays(days: ItineraryDayApi[]) {
   return days.map((day) => ({ ...day, items: [...day.items] }));
 }
@@ -494,19 +506,42 @@ export function ItineraryPage() {
 
   const addItem = async () => {
     const targetDay = localDays[0]?.dayId ?? "day-1";
-    await createItem.mutateAsync({
-      dayId: targetDay,
-      title: t("itinerary.addItem"),
-      itemType: "custom",
-      allDay: false,
-      note: ""
-    });
-    pushToast(t("itinerary.addItem"));
+    try {
+      const created = await createItem.mutateAsync({
+        dayId: targetDay,
+        title: t("itinerary.addItem"),
+        itemType: "custom",
+        allDay: false,
+        note: ""
+      });
+      if (created.warnings && created.warnings.length > 0) {
+        pushToast({
+          type: "warning",
+          message: t("itinerary.serverConflictWarning").replace("{items}", created.warnings.join(", "))
+        });
+      } else {
+        pushToast(t("itinerary.addItem"));
+      }
+    } catch (error) {
+      const apiError = toApiError(error);
+      pushToast({
+        type: "error",
+        message: apiError.message || t("common.actionFailed")
+      });
+    }
   };
 
   const removeItem = async (itemId: string) => {
-    await deleteItem.mutateAsync(itemId);
-    pushToast(t("common.delete"));
+    try {
+      await deleteItem.mutateAsync(itemId);
+      pushToast(t("common.delete"));
+    } catch (error) {
+      const apiError = toApiError(error);
+      pushToast({
+        type: "error",
+        message: apiError.message || t("common.actionFailed")
+      });
+    }
   };
 
   const announceReorder = (message: string) => {
@@ -549,9 +584,10 @@ export function ItineraryPage() {
       announceReorder(buildReorderAnnouncement(nextDays, itemId, targetDayId, targetSortOrder));
     } catch (error) {
       setLocalDays(fallbackDays);
+      const apiError = toApiError(error);
       pushToast({
         type: "error",
-        message: error instanceof Error ? error.message : t("common.actionFailed")
+        message: apiError.status === 409 ? t("itinerary.versionConflict") : (apiError.message || t("common.actionFailed"))
       });
     }
   };
@@ -644,19 +680,27 @@ export function ItineraryPage() {
       }
     }
 
-    await patchItem.mutateAsync({
-      itemId,
-      version,
-      input: {
-        title: nextTitle,
-        note: editingNote.trim(),
-        allDay: editingAllDay,
-        startAt: nextStartAt,
-        endAt: nextEndAt
-      }
-    });
-    cancelEdit();
-    pushToast(t("common.save"));
+    try {
+      await patchItem.mutateAsync({
+        itemId,
+        version,
+        input: {
+          title: nextTitle,
+          note: editingNote.trim(),
+          allDay: editingAllDay,
+          startAt: nextStartAt,
+          endAt: nextEndAt
+        }
+      });
+      cancelEdit();
+      pushToast(t("common.save"));
+    } catch (error) {
+      const apiError = toApiError(error);
+      pushToast({
+        type: "error",
+        message: apiError.status === 409 ? t("itinerary.versionConflict") : (apiError.message || t("common.actionFailed"))
+      });
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {

@@ -18,6 +18,7 @@ export interface ItineraryItemApi {
   estimatedCostAmount?: number;
   estimatedCostCurrency?: string;
   version: number;
+  warnings?: string[];
 }
 
 export interface ItineraryDayApi {
@@ -34,7 +35,10 @@ interface ItineraryItemCreatePayload {
 
 function normalizeCreatePayload(payload: ItineraryItemApi | ItineraryItemCreatePayload): ItineraryItemApi {
   if (payload && typeof payload === "object" && "item" in payload && payload.item) {
-    return payload.item;
+    return {
+      ...payload.item,
+      warnings: payload.warnings
+    };
   }
   return payload as ItineraryItemApi;
 }

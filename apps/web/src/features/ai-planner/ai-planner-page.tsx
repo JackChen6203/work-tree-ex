@@ -29,7 +29,6 @@ interface AiConstraintFormValues {
 interface PlanningJobState {
   jobId: string;
   status: "queued" | "running" | "succeeded" | "failed";
-  baselineDraftCount: number;
   pollCount: number;
   acceptedAt: string;
 }
@@ -120,11 +119,11 @@ export function AiPlannerPage() {
       return;
     }
 
-    if (drafts.length > planningJob.baselineDraftCount) {
+    if (drafts.some((draft) => draft.id === planningJob.jobId)) {
       setPlanningJob((current) => (current ? { ...current, status: "succeeded" } : current));
       pushToast(t("ai.generated"));
     }
-  }, [drafts.length, planningJob, pushToast, t]);
+  }, [drafts, planningJob, pushToast, t]);
 
   const runPlan = form.handleSubmit(async (values) => {
     const result = await createPlan.mutateAsync({
@@ -144,8 +143,7 @@ export function AiPlannerPage() {
 
     setPlanningJob({
       jobId: result.jobId,
-      status: result.status === "queued" ? "queued" : "running",
-      baselineDraftCount: drafts.length,
+      status: result.status === "failed" ? "failed" : result.status === "succeeded" ? "succeeded" : (result.status === "queued" ? "queued" : "running"),
       pollCount: 0,
       acceptedAt: result.acceptedAt
     });
