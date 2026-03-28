@@ -30,7 +30,7 @@ interface CreateAiPlanInput {
 
 interface CreateAiPlanResponse {
   jobId: string;
-  status: string;
+  status: "queued" | "running" | "succeeded" | "failed";
   acceptedAt: string;
 }
 

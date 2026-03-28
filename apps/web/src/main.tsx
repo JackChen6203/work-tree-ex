@@ -7,7 +7,11 @@ import { SessionSyncBridge } from "./app/session-sync-bridge";
 import { queryClient } from "./lib/query-client";
 import { I18nProvider } from "./lib/i18n";
 import { router } from "./app/router";
+import { getSupabaseBrowserClient } from "./lib/supabase-client";
 import "./styles.css";
+
+// Initialize optional browser Supabase client with anon key config.
+getSupabaseBrowserClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

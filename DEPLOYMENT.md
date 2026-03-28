@@ -5,14 +5,14 @@
 - `web`: static frontend served by nginx, proxies `/api` to the API container
 - `api`: Go Gin HTTP API
 - `worker`: background worker
-- `postgres`: Postgres / PostGIS
+- `postgres`: Postgres / PostGIS (local profile)
 - `redis`: queue/cache support
 
 ## Local run
 
-1. Copy `.env.example` to `.env`
-2. If you run Vite directly, also copy `apps/web/.env.example` to `apps/web/.env.local`
-3. Read `docs/env-guide.md` for the full variable inventory and setup notes
+1. Copy `.env.example` to `.env`.
+2. If you run Vite directly, also copy `apps/web/.env.example` to `apps/web/.env.local`.
+3. Read `docs/env-guide.md` for the full variable inventory and setup notes.
 4. Start backend stack:
    - `docker compose up -d postgres redis`
    - `docker compose --profile tools run --rm migrate`
@@ -21,17 +21,56 @@
    - Web: `http://localhost`
    - API health: `http://localhost/healthz`
 
-## GitHub Actions secrets
+## Supabase local dev bridge (`supabase start`)
 
-Create these repository secrets before enabling deployment:
+1. Ensure Supabase CLI is installed.
+2. Run:
+   - `make supabase-start`
+3. This command starts local Supabase and generates:
+   - `.env.supabase.local` (backend/compose bridge)
+   - `apps/web/.env.supabase.local` (frontend bridge)
+4. Run migrations and stack with generated env:
+   - `make docker-migrate-supabase`
+   - `make docker-up-supabase`
 
-- `ORACLE_SSH_KEY`: private key content for the VPS
-- `APP_ENV_FILE`: full production `.env` file contents
-- `MIGRATE_DATABASE_URL`: production database URL for GitHub Actions migrations
+## CI/CD pipeline
 
-The deploy workflow now:
+Workflow: `.github/workflows/deploy.yml`
 
-1. validates the frontend
-2. runs migrations against `MIGRATE_DATABASE_URL`
-3. pushes the repository over SSH
-4. runs `docker compose up -d --build redis api worker web`
+- `push main`:
+  - verify frontend
+  - run staging migration
+  - deploy staging (rolling)
+- `workflow_dispatch`:
+  - `target=production` with strategy `rolling` / `blue-green` / `canary`
+  - `target=rollback` for emergency rollback
+
+For single-host deployment, `blue-green` / `canary` use a candidate stack on alternate port first, then promote to primary stack after health checks.
+
+## Required GitHub Actions secrets
+
+Minimum (existing production path):
+
+- `ORACLE_SSH_KEY`
+- `APP_ENV_FILE`
+- `MIGRATE_DATABASE_URL`
+
+Recommended per environment:
+
+- Staging:
+  - `STAGING_SSH_KEY`
+  - `STAGING_APP_ENV_FILE`
+  - `STAGING_MIGRATE_DATABASE_URL`
+- Production:
+  - `PRODUCTION_SSH_KEY`
+  - `PRODUCTION_APP_ENV_FILE`
+  - `PRODUCTION_MIGRATE_DATABASE_URL`
+
+If staging/production-specific secrets are not set, workflow falls back to the existing production secret names.
+
+## Rollback
+
+Use `workflow_dispatch` with `target=rollback` and optional `rollback_ref`.
+
+- If `rollback_ref` is empty, workflow uses `.deploy/previous_successful_sha` on server.
+- Detailed procedure: `docs/rollback-playbook.md`.
