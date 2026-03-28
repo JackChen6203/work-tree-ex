@@ -53,6 +53,17 @@ Required secrets:
 - `APP_ENV_FILE`
 - `MIGRATE_DATABASE_URL`
 
+Recommended environment-specific secrets:
+
+- Staging:
+  - `STAGING_SSH_KEY`
+  - `STAGING_APP_ENV_FILE`
+  - `STAGING_MIGRATE_DATABASE_URL`
+- Production:
+  - `PRODUCTION_SSH_KEY`
+  - `PRODUCTION_APP_ENV_FILE`
+  - `PRODUCTION_MIGRATE_DATABASE_URL`
+
 ### Terraform inputs
 
 Used by:
@@ -172,6 +183,12 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `ORACLE_SSH_KEY` | Yes for deploy | `deploy.yml` | Private SSH key for server login |
 | `APP_ENV_FILE` | Yes for deploy | `deploy.yml` | Full production root `.env` contents |
 | `MIGRATE_DATABASE_URL` | Yes for external production DB | `deploy.yml` | Full Postgres migration URL used by GitHub Actions before deploy |
+| `STAGING_SSH_KEY` | Optional | `deploy.yml` staging job | Overrides SSH key for staging |
+| `STAGING_APP_ENV_FILE` | Optional | `deploy.yml` staging job | Overrides staging runtime `.env` body |
+| `STAGING_MIGRATE_DATABASE_URL` | Optional | `deploy.yml` staging migration job | Overrides staging migration DB URL |
+| `PRODUCTION_SSH_KEY` | Optional | `deploy.yml` production/rollback job | Overrides SSH key for production |
+| `PRODUCTION_APP_ENV_FILE` | Optional | `deploy.yml` production job | Overrides production runtime `.env` body |
+| `PRODUCTION_MIGRATE_DATABASE_URL` | Optional | `deploy.yml` production migration job | Overrides production migration DB URL |
 
 ### Terraform inputs
 
@@ -233,6 +250,26 @@ In this mode you usually do not need `apps/web/.env.local`, because nginx proxie
    - `apps/web/.env.local`:
      - `VITE_API_BASE_URL=http://localhost:8080`
 4. Run backend and frontend separately.
+
+### Option C: Run app containers against Supabase local stack
+
+1. Ensure Supabase CLI is installed.
+2. Start Supabase + generate bridge env files:
+
+```bash
+make supabase-start
+```
+
+3. Run migrations and app stack:
+
+```bash
+make docker-migrate-supabase
+make docker-up-supabase
+```
+
+4. Generated files:
+   - `.env.supabase.local` (for Docker Compose API/worker)
+   - `apps/web/.env.supabase.local` (for Vite frontend)
 
 ## 4. How to obtain each secret/value
 
@@ -297,6 +334,13 @@ ssh-keygen -t ed25519 -C "github-actions-deploy"
 2. Put the public key on your server user's `~/.ssh/authorized_keys`.
 3. Put the private key contents into the GitHub repository secret `ORACLE_SSH_KEY`.
 
+For environment-specific keys:
+
+- staging: `STAGING_SSH_KEY`
+- production: `PRODUCTION_SSH_KEY`
+
+If these are not provided, workflow falls back to `ORACLE_SSH_KEY`.
+
 #### `APP_ENV_FILE`
 
 This should be the full contents of your production root `.env`.
@@ -311,6 +355,13 @@ Recommended flow:
    - `CORS_ALLOWED_ORIGINS=https://your-domain`
    - managed DB / Redis connection values
 4. Copy the full file contents into the GitHub repository secret `APP_ENV_FILE`.
+
+For environment-specific env bodies:
+
+- staging: `STAGING_APP_ENV_FILE`
+- production: `PRODUCTION_APP_ENV_FILE`
+
+If these are not provided, workflow falls back to `APP_ENV_FILE`.
 
 #### `MIGRATE_DATABASE_URL`
 
@@ -327,6 +378,13 @@ Notes:
 - Replace `<project-ref>` with your Supabase project ref.
 - If your Supabase password contains characters such as `@`, `:`, `/`, or `?`, URL-encode it before putting it into the URL.
 - Store the final full URL in the GitHub repository secret `MIGRATE_DATABASE_URL`.
+
+For environment-specific migration URLs:
+
+- staging: `STAGING_MIGRATE_DATABASE_URL`
+- production: `PRODUCTION_MIGRATE_DATABASE_URL`
+
+If these are not provided, workflow falls back to `MIGRATE_DATABASE_URL`.
 
 RLS setup notes:
 

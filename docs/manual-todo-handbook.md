@@ -1,196 +1,213 @@
-# Manual TODO 操作手冊（Frontend + Backend）
+# Manual Todo 操作手冊
 
-本手冊對應 `frontend-todo.md` 的 Manual TODO，逐項說明要去哪裡申請金鑰、要填到哪個檔案、以及如何驗證是否生效。
-
----
-
-## 0) 先備：建立環境檔
-
-1. 複製後端環境檔  
-   - `cp .env.example .env`
-2. 複製前端環境檔  
-   - `cp apps/web/.env.example apps/web/.env.local`
+本手冊對應 [`manual-todo.md`](../manual-todo.md) 每一項待辦，提供實際操作路徑與申請網址。
 
 ---
 
-## 1) 前端 Vite 參數（`apps/web/.env.local`）
+## 1) GitHub Actions deployment secrets
 
-### 1.1 API 與登入顯示控制
+### 1.1 `ORACLE_SSH_KEY`
 
-- `VITE_API_BASE_URL=http://localhost:8080`（本機）或你的 API 網域
-- `VITE_OAUTH_PROVIDERS=google`（可多個，逗號分隔）
-- `VITE_ENABLE_MAGIC_LINK_AUTH=false`（正式建議）
-
-### 1.2 Mapbox（前端地圖 SDK）
-
-申請位置：
-- https://www.mapbox.com/  → Sign up / Sign in  
-- Token 管理頁（Dashboard > Access tokens）
+用途：讓 GitHub Actions 可 SSH 進入 `opc@217.142.247.83` 執行部署。
 
 步驟：
-1. 建立或使用既有 public token（pk 開頭）。
-2. 將 token 填到：`VITE_MAPBOX_ACCESS_TOKEN=...`
-3. 重新啟動前端：`cd apps/web && npm run dev`
 
-驗證：
-- 打開地圖頁，確認不是 fallback 地址清單，而是 Mapbox 地圖畫面。
+1. 在本機產生 deploy key（建議專用）：
+   ```bash
+   ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_actions_deploy
+   ```
+2. 把公鑰內容加到伺服器 `~/.ssh/authorized_keys`：
+   ```bash
+   cat ~/.ssh/github_actions_deploy.pub
+   ```
+3. 把私鑰內容貼到 GitHub Secret `ORACLE_SSH_KEY`：
+   - Repo Secrets 頁面：
+     [https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions](https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions)
+   - 內容來源：
+     ```bash
+     cat ~/.ssh/github_actions_deploy
+     ```
 
-### 1.3 Firebase Web Push（前端）
+### 1.2 `APP_ENV_FILE`
 
-申請位置：
-- Firebase Console: https://console.firebase.google.com/
+用途：部署流程會把這個值完整寫到伺服器的 `.env`。
 
 步驟：
-1. 建立/選擇 Firebase 專案。
-2. Project Settings > General > Your apps > 新增 Web app。
-3. 取得並填入：
+
+1. 以專案根目錄 `.env.example` 為基礎建立 production 版 `.env`。
+2. 逐項替換敏感值（DB/Redis/JWT/API keys）。
+3. 將完整檔案內容貼到 GitHub Secret `APP_ENV_FILE`。
+   - URL：
+     [https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions](https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions)
+
+### 1.3 `MIGRATE_DATABASE_URL`
+
+用途：GitHub Actions 在部署前跑 migration。
+
+步驟：
+
+1. 準備完整 PostgreSQL 連線字串：
+   ```text
+   postgresql://<user>:<url-encoded-password>@<host>:<port>/<db>?sslmode=require
+   ```
+2. 若密碼含 `@:/?`，先 URL encode。
+3. 將字串貼到 `MIGRATE_DATABASE_URL`（同上 Secrets 頁）。
+
+---
+
+## 2) Staging / Production 分流 Secrets（建議）
+
+對應欄位：
+- `STAGING_SSH_KEY`
+- `STAGING_APP_ENV_FILE`
+- `STAGING_MIGRATE_DATABASE_URL`
+- `PRODUCTION_SSH_KEY`
+- `PRODUCTION_APP_ENV_FILE`
+- `PRODUCTION_MIGRATE_DATABASE_URL`
+
+步驟：
+
+1. 到同一 Secrets 頁面建立上述 key：
+   [https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions](https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions)
+2. staging 與 production 使用不同主機金鑰與不同 DB URL。
+3. 若不設定，workflow 會 fallback 到 `ORACLE_SSH_KEY / APP_ENV_FILE / MIGRATE_DATABASE_URL`。
+
+---
+
+## 3) Supabase（RLS + 前端 anon key）
+
+### 3.1 取得 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+
+步驟：
+
+1. 登入 Supabase Dashboard：
+   [https://supabase.com/dashboard](https://supabase.com/dashboard)
+2. 進入你的 Project。
+3. `Project Settings` → `API`。
+4. 讀取：
+   - `Project URL` → `VITE_SUPABASE_URL`
+   - `anon public` key → `VITE_SUPABASE_ANON_KEY`
+5. 寫入 `apps/web/.env.local`（本機）或前端部署環境變數。
+
+### 3.2 `SUPABASE_SERVICE_ROLE_KEY`（後端專用）
+
+步驟：
+
+1. 同樣在 `Project Settings` → `API` 取得 `service_role` key。
+2. 只放在後端 `.env` / Secret Manager。
+3. 禁止放在任何 `VITE_*` 或前端 bundle 可讀位置。
+
+---
+
+## 4) 外部服務金鑰（Map / Push / Email）
+
+### 4.1 Google Maps API (`GOOGLE_MAPS_API_KEY`)
+
+申請入口：
+- [https://console.cloud.google.com/](https://console.cloud.google.com/)
+
+步驟：
+
+1. 建立或選擇 GCP Project。
+2. 啟用 APIs（至少）：
+   - Places API
+   - Geocoding API
+   - Directions API / Routes API（依你實作）
+3. `APIs & Services` → `Credentials` → `Create credentials` → `API key`。
+4. 設定 key restrictions（HTTP referrer / IP / API allow list）。
+5. 寫入根目錄 `.env` 的 `GOOGLE_MAPS_API_KEY`。
+
+### 4.2 Mapbox API (`MAPBOX_API_KEY`)
+
+申請入口：
+- [https://account.mapbox.com/](https://account.mapbox.com/)
+
+步驟：
+
+1. 登入 Mapbox。
+2. 進 `Access tokens`。
+3. 建立 token（建議建立專用 token + scope 限制）。
+4. 寫入根目錄 `.env`：`MAPBOX_API_KEY`。
+
+### 4.3 Firebase Push（後端 + 前端）
+
+入口：
+- Firebase Console: [https://console.firebase.google.com/](https://console.firebase.google.com/)
+- GCP Service Accounts: [https://console.cloud.google.com/iam-admin/serviceaccounts](https://console.cloud.google.com/iam-admin/serviceaccounts)
+
+步驟（後端）：
+
+1. 在 Firebase 專案啟用 Cloud Messaging。
+2. 建立 service account（或使用既有 account），下載 JSON key。
+3. 擇一設定後端 `.env`：
+   - `FCM_SERVICE_ACCOUNT_FILE`（檔案路徑），或
+   - `FCM_SERVICE_ACCOUNT_JSON`（JSON 字串）
+4. 視需要設定 `FCM_PROJECT_ID`。
+
+步驟（前端）：
+
+1. Firebase 專案 `Project settings` → `General` → Web app config。
+2. 取得並填入 `apps/web/.env.local`：
    - `VITE_FIREBASE_API_KEY`
    - `VITE_FIREBASE_AUTH_DOMAIN`
    - `VITE_FIREBASE_PROJECT_ID`
    - `VITE_FIREBASE_STORAGE_BUCKET`
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
-4. Cloud Messaging > Web configuration 取得 VAPID key，填入：
    - `VITE_FIREBASE_VAPID_KEY`
-5. 重新啟動前端。
 
-驗證：
-- 設定頁啟用 push 後可成功拿到 token，且前端可呼叫 `POST /api/v1/fcm-tokens`。
+### 4.4 Email Provider（Resend / SendGrid）
 
----
+Resend：
+- 註冊/控制台：[https://resend.com/](https://resend.com/)
 
-## 2) 後端參數（`.env`）
+SendGrid：
+- 註冊/控制台：[https://app.sendgrid.com/](https://app.sendgrid.com/)
 
-### 2.1 資料庫（PostgreSQL / Supabase）
+步驟（共通）：
 
-填寫：
-- `DB_HOST`
-- `DB_PORT`
-- `DB_USER`
-- `DB_PASSWORD`
-- `DB_NAME`
-- `DB_SSLMODE`
-- （建議）`MIGRATE_DATABASE_URL`
-
-驗證：
-1. `docker compose --profile tools run --rm migrate`
-2. API 啟動後無 DB 連線錯誤。
-
-### 2.2 JWT 與加密
-
-填寫：
-- `JWT_SECRET`（長字串隨機值）
-- `LLM_ENCRYPTION_KEY`（32-byte raw 或 base64 32-byte）
-
-建議：
-- 用密碼管理器或 KMS 生成，不要把明碼 commit 到 repo。
-
-### 2.3 Google OAuth（後端交換 code）
-
-申請位置：
-- Google Cloud Console: https://console.cloud.google.com/
-
-步驟：
-1. 建立/選擇 GCP 專案。
-2. APIs & Services > OAuth consent screen 完成設定。
-3. Credentials > Create Credentials > OAuth client ID（Web application）。
-4. 設定 Authorized redirect URI（對應部署網域）。
-5. 填入 `.env`：
-   - `OAUTH_GOOGLE_CLIENT_ID=...`
-   - `OAUTH_GOOGLE_CLIENT_SECRET=...`
-
-驗證：
-- 走 `/api/v1/auth/oauth/google/start`，完成登入並能回到前端。
-
-### 2.4 地圖 Provider（後端真實呼叫）
-
-Google Maps key 申請：
-- https://console.cloud.google.com/ （啟用 Places / Geocoding / Directions 對應 API）
-
-Mapbox key 申請：
-- https://www.mapbox.com/
-
-填寫 `.env`（至少一個）：
-- `GOOGLE_MAPS_API_KEY=...`
-- `MAPBOX_API_KEY=...`
-- `MAP_PRIMARY_PROVIDER=google` 或 `mapbox`
-
-驗證：
-- API `GET /api/v1/maps/search`、`POST /api/v1/maps/routes` 回傳真實 provider 結果。
-
-### 2.5 FCM 推播（後端）
-
-建議新制（Firebase Admin SDK）：
-- `FCM_SERVICE_ACCOUNT_JSON` 或 `FCM_SERVICE_ACCOUNT_FILE`
-- `FCM_PROJECT_ID`
-
-舊制 fallback（可選）：
-- `FCM_SERVER_KEY`
-
-步驟（Admin SDK）：
-1. Firebase Console > Project settings > Service accounts。
-2. 產生 service account key JSON（妥善保管）。
-3. 將 JSON 放到安全位置（或直接填 `FCM_SERVICE_ACCOUNT_JSON`）。
-4. 設定 `FCM_PROJECT_ID`。
-
-驗證：
-- API/worker log 出現 Firebase Admin gateway 啟用訊息。
-- 測試通知可送達，且無效 token 會被正確處理。
-
-### 2.6 Email Provider（Magic Link / Invite）
-
-Resend 申請：
-- https://resend.com/
-
-SendGrid 申請：
-- https://sendgrid.com/
-
-填寫 `.env`：
-- `EMAIL_PROVIDER_PRIMARY=resend` 或 `sendgrid`
-- `EMAIL_PROVIDER_FALLBACK=...`（可選）
-- `EMAIL_FROM=no-reply@your-domain.com`
-- `RESEND_API_KEY=...` 或 `SENDGRID_API_KEY=...`
-
-驗證：
-- request magic link 會寄出真實 email（非 console log）。
-- trip invite 會寄送邀請信。
+1. 建立 API key。
+2. 驗證寄件網域（SPF/DKIM）。
+3. 在根 `.env` 設定：
+   - `EMAIL_PROVIDER_PRIMARY=resend` 或 `sendgrid`
+   - `RESEND_API_KEY` 或 `SENDGRID_API_KEY`
+   - `EMAIL_FROM=<verified-sender>`
+4. 若要備援，設定 `EMAIL_PROVIDER_FALLBACK`。
 
 ---
 
-## 3) CI/CD 與部署 Secrets
+## 5) Rollback readiness（演練）
 
-GitHub repo secrets（依 `DEPLOYMENT.md`）：
-- `ORACLE_SSH_KEY`
-- `APP_ENV_FILE`（完整 production `.env` 內容）
-- `MIGRATE_DATABASE_URL`
+### 5.1 確認 production 路徑
 
-步驟：
-1. GitHub Repo > Settings > Secrets and variables > Actions。
-2. 新增以上 secrets。
-3. 觸發 workflow，確認 migration + deploy 成功。
+1. SSH 到主機：
+   ```bash
+   ssh opc@217.142.247.83
+   ```
+2. 確認專案存在：
+   ```bash
+   ls -la /home/opc/apps/work-tree-ex
+   ```
 
----
+### 5.2 確認 Docker Compose / 連線
 
-## 4) 本機 CI 執行阻塞修復（目前已知）
+```bash
+docker compose version
+docker network ls
+```
 
-現況：Node 啟動缺 `libicui18n.74.dylib`。
+### 5.3 執行一次 production deploy dry-run
 
-建議處理：
-1. 重新安裝與當前 Homebrew ICU 相容的 Node（或重裝 Node）。
-2. 確認 `node -v` 可正常執行後，再跑：
-   - `cd apps/web && npm run lint`
-   - `cd apps/web && npm run test`
-   - `cd apps/web && npm run build`
+1. 到 GitHub Actions：
+   [https://github.com/JackChen6203/work-tree-ex/actions/workflows/deploy.yml](https://github.com/JackChen6203/work-tree-ex/actions/workflows/deploy.yml)
+2. `Run workflow`：
+   - `target=production`
+   - `strategy=rolling`
 
----
+### 5.4 執行一次 rollback dry-run
 
-## 5) 最後驗收清單
-
-1. 前端可正常登入（Magic Link / OAuth）
-2. Itinerary CRUD + 409 衝突提示正常
-3. AI Planner 建立與採用正常
-4. Map 搜尋/路線回傳真實資料
-5. FCM token 註冊與推播可用
-6. Email（magic link/invite）實際寄送成功
-7. Lighthouse（FE-P3-07）分數達標（>=90）
+1. 同一 workflow `Run workflow`：
+   - `target=rollback`
+   - `rollback_ref` 可先留空（使用 previous successful sha）
+2. 觀察 workflow 完成且 `/healthz` 正常。
 

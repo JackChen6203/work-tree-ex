@@ -3,14 +3,46 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        default: production
+        type: choice
+        options:
+          - staging
+          - production
+          - rollback
+      strategy:
+        description: Deployment strategy (ignored for staging/rollback)
+        required: true
+        default: blue-green
+        type: choice
+        options:
+          - rolling
+          - blue-green
+          - canary
+      canary_minutes:
+        description: Canary synthetic probe minutes (strategy=canary)
+        required: false
+        default: "10"
+        type: string
+      rollback_ref:
+        description: Commit/tag/sha to rollback (blank uses previous_successful_sha)
+        required: false
+        type: string
 
 env:
-  DEPLOY_PATH: /home/opc/apps/work-tree-ex
+  NODE_VERSION: "24"
   DEPLOY_HOST: 217.142.247.83
   DEPLOY_USER: opc
+  DEPLOY_PATH_STAGING: /home/opc/apps/work-tree-ex-staging
+  DEPLOY_PATH_PRODUCTION: /home/opc/apps/work-tree-ex
 
 jobs:
   verify-frontend:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.target != 'rollback'
     name: Verify Frontend Before Deploy
     runs-on: ubuntu-latest
     steps:
@@ -18,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
@@ -46,7 +78,99 @@ jobs:
         working-directory: apps/web
         run: npm run e2e
 
+  migrate-staging:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging')
+    name: Run Staging Migrations
+    runs-on: ubuntu-latest
+    needs: verify-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install golang-migrate
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Run migrations (staging)
+        run: |
+          DB_URL='${{ secrets.STAGING_MIGRATE_DATABASE_URL }}'
+          if [ -z "$DB_URL" ]; then
+            DB_URL='${{ secrets.MIGRATE_DATABASE_URL }}'
+          fi
+          test -n "$DB_URL"
+          MIGRATE_DATABASE_URL="$DB_URL" ./scripts/migrate.sh up
+
+  deploy-staging:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging')
+    name: Deploy To Staging
+    runs-on: ubuntu-latest
+    needs:
+      - verify-frontend
+      - migrate-staging
+    environment: staging
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          SSH_KEY='${{ secrets.STAGING_SSH_KEY }}'
+          if [ -z "$SSH_KEY" ]; then
+            SSH_KEY='${{ secrets.ORACLE_SSH_KEY }}'
+          fi
+          test -n "$SSH_KEY"
+          printf "%s" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Verify SSH access
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo connected"
+
+      - name: Sync repository on server
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            mkdir -p ${DEPLOY_PATH} &&
+            if [ ! -d ${DEPLOY_PATH}/.git ]; then
+              git clone https://github.com/${{ github.repository }}.git ${DEPLOY_PATH};
+            else
+              cd ${DEPLOY_PATH} &&
+              git fetch --all --prune &&
+              git checkout -B main origin/main &&
+              git reset --hard origin/main;
+            fi
+          "
+
+      - name: Write staging env file
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
+        run: |
+          APP_ENV_CONTENT='${{ secrets.STAGING_APP_ENV_FILE }}'
+          if [ -z "$APP_ENV_CONTENT" ]; then
+            APP_ENV_CONTENT='${{ secrets.APP_ENV_FILE }}'
+          fi
+          test -n "$APP_ENV_CONTENT"
+          printf "%s" "$APP_ENV_CONTENT" | ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat > ${DEPLOY_PATH}/.env"
+
+      - name: Deploy staging (rolling)
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            cd ${DEPLOY_PATH} &&
+            ./scripts/deploy/remote-deploy.sh rolling 0 ${DEPLOY_PATH}
+          "
+
   migrate-production:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
     name: Run Production Migrations
     runs-on: ubuntu-latest
     needs: verify-frontend
@@ -58,56 +182,110 @@ jobs:
           curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
           sudo mv migrate /usr/local/bin/migrate
 
-      - name: Run migrations against Supabase
-        env:
-          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+      - name: Run migrations (production)
         run: |
-          test -n "$MIGRATE_DATABASE_URL"
-          ./scripts/migrate.sh up
+          DB_URL='${{ secrets.PRODUCTION_MIGRATE_DATABASE_URL }}'
+          if [ -z "$DB_URL" ]; then
+            DB_URL='${{ secrets.MIGRATE_DATABASE_URL }}'
+          fi
+          test -n "$DB_URL"
+          MIGRATE_DATABASE_URL="$DB_URL" ./scripts/migrate.sh up
 
-  deploy:
-    name: Deploy To Oracle VPS
+  deploy-production:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
+    name: Deploy To Production
     runs-on: ubuntu-latest
     needs:
       - verify-frontend
       - migrate-production
+    environment: production
     permissions:
       contents: read
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Write deploy SSH key
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/oracle_vps_key
-          chmod 600 ~/.ssh/oracle_vps_key
+          SSH_KEY='${{ secrets.PRODUCTION_SSH_KEY }}'
+          if [ -z "$SSH_KEY" ]; then
+            SSH_KEY='${{ secrets.ORACLE_SSH_KEY }}'
+          fi
+          test -n "$SSH_KEY"
+          printf "%s" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
       - name: Verify SSH access
         run: |
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo connected"
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo connected"
 
       - name: Sync repository on server
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_PRODUCTION }}
         run: |
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
-            mkdir -p ${{ env.DEPLOY_PATH }} &&
-            if [ ! -d ${{ env.DEPLOY_PATH }}/.git ]; then
-              git clone https://github.com/JackChen6203/work-tree-ex.git ${{ env.DEPLOY_PATH }};
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            mkdir -p ${DEPLOY_PATH} &&
+            if [ ! -d ${DEPLOY_PATH}/.git ]; then
+              git clone https://github.com/${{ github.repository }}.git ${DEPLOY_PATH};
             else
-              cd ${{ env.DEPLOY_PATH }} &&
+              cd ${DEPLOY_PATH} &&
               git fetch --all --prune &&
+              git checkout -B main origin/main &&
               git reset --hard origin/main;
             fi
           "
 
-      - name: Write server env file
+      - name: Write production env file
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_PRODUCTION }}
         run: |
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}"
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat > ${{ env.DEPLOY_PATH }}/.env" <<'EOF'
-          ${{ secrets.APP_ENV_FILE }}
-          EOF
+          APP_ENV_CONTENT='${{ secrets.PRODUCTION_APP_ENV_FILE }}'
+          if [ -z "$APP_ENV_CONTENT" ]; then
+            APP_ENV_CONTENT='${{ secrets.APP_ENV_FILE }}'
+          fi
+          test -n "$APP_ENV_CONTENT"
+          printf "%s" "$APP_ENV_CONTENT" | ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cat > ${DEPLOY_PATH}/.env"
 
-      - name: Deploy with Docker Compose
+      - name: Deploy production with selected strategy
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_PRODUCTION }}
+          STRATEGY: ${{ github.event.inputs.strategy }}
+          CANARY_MINUTES: ${{ github.event.inputs.canary_minutes }}
         run: |
-          ssh -i ~/.ssh/oracle_vps_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && docker compose pull || true && docker compose up -d --build redis api worker web"
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            cd ${DEPLOY_PATH} &&
+            ./scripts/deploy/remote-deploy.sh ${STRATEGY} ${CANARY_MINUTES} ${DEPLOY_PATH}
+          "
+
+  rollback-production:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'rollback'
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          SSH_KEY='${{ secrets.PRODUCTION_SSH_KEY }}'
+          if [ -z "$SSH_KEY" ]; then
+            SSH_KEY='${{ secrets.ORACLE_SSH_KEY }}'
+          fi
+          test -n "$SSH_KEY"
+          printf "%s" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback release
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_PRODUCTION }}
+          ROLLBACK_REF: ${{ github.event.inputs.rollback_ref }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            cd ${DEPLOY_PATH} &&
+            ./scripts/deploy/remote-rollback.sh '${ROLLBACK_REF}' ${DEPLOY_PATH}
+          "

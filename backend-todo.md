@@ -1,7 +1,7 @@
 # 🖥️ 後端開發進度 Todo List
 
 > 依據 `backend-contruction.md` 規格文件，追蹤各模組開發進度。
-> 更新日期：2026-03-27
+> 更新日期：2026-03-28
 
 ---
 
@@ -302,7 +302,7 @@
 - [x] 定義 policy：expenses 只能 trip member 存取
 - [x] 定義 policy：notifications 只能本人存取
 - [x] Service role key 用於 backend API → bypass RLS
-- [ ] 前端 Supabase client 使用 anon key → 受 RLS 限制
+- [x] 前端 Supabase client 使用 anon key → 受 RLS 限制
 
 ---
 
@@ -378,7 +378,7 @@
 ## BE-P2-09｜Docker Compose 本地開發
 
 - [x] docker-compose.yml（Go API + PostgreSQL + Redis）
-- [ ] 配合 Supabase local dev（supabase start）
+- [x] 配合 Supabase local dev（supabase start）
 - [x] Hot reload（air 或 CompileDaemon）
 - [x] .env.local 範例檔
 - [x] Seed data 腳本
@@ -390,15 +390,15 @@
 - [x] GitHub Actions：lint + test + build
 - [x] Docker image build + push to registry
 - [x] Database migration 自動化
-- [ ] Staging 環境部署
-- [ ] Production 環境部署（Blue-green / Canary）
-- [ ] Rollback playbook
+- [x] Staging 環境部署
+- [x] Production 環境部署（Blue-green / Canary）
+- [x] Rollback playbook
 
 # 🖥️ 後端開發進度 Todo List — Phase 2（持久化 + 真實整合）
 
 > Phase 1 所有 14 個模組均已完成（in-memory store）。
 > Phase 2 目標：將 in-memory 切換至 PostgreSQL 持久化，整合真實外部服務。
-> 更新日期：2026-03-27
+> 更新日期：2026-03-28
 
 ---
 
@@ -460,7 +460,7 @@
 - [x] 定義 policy：notifications 只能本人存取
 - [x] 定義 policy：user_preferences 只能本人存取
 - [x] Service role key 用於 backend API → bypass RLS
-- [ ] 前端 Supabase client 使用 anon key → 受 RLS 限制
+- [x] 前端 Supabase client 使用 anon key → 受 RLS 限制
 
 ---
 
@@ -599,11 +599,11 @@
 
 ## BE-P2-09｜Docker Compose 本地開發
 
-- [ ] docker-compose.yml
+- [x] docker-compose.yml
   - [x] Go API service（含 air hot reload）
   - [x] PostgreSQL 15+
   - [x] Redis 7+
-  - [ ] Supabase local dev（`supabase start`）
+  - [x] Supabase local dev（`supabase start`）
 - [x] 開發配置
   - [x] .env.local 範例檔
   - [x] Volume mount for hot reload
@@ -630,8 +630,8 @@
   - [x] 自動化 migration（golang-migrate）
   - [x] Migration dry-run 驗證
   - [x] Rollback 腳本
-- [ ] 部署
-  - [ ] Staging 環境部署
-  - [ ] Production 環境部署（Blue-green / Canary）
-  - [ ] Rollback playbook
+- [x] 部署
+  - [x] Staging 環境部署
+  - [x] Production 環境部署（Blue-green / Canary）
+  - [x] Rollback playbook
   - [x] Health check + readiness probe
