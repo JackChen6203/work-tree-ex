@@ -357,43 +357,43 @@
 > 待後端 Phase 2 各模組持久化完成後逐步切換。
 
 ### Itinerary API 對接
-- [ ] 確認後端 Itinerary days/items PostgreSQL 遷移完成
+- [x] 確認後端 Itinerary days/items PostgreSQL 遷移完成
 - [x] 前端 `itinerary-api.ts` base URL 切換至真實 API
 - [x] 驗證 CRUD 操作（create / patch / delete / bulk reorder）
 - [x] 驗證樂觀鎖 409 衝突處理
 - [x] 驗證時間衝突 warning response 顯示
 
 ### Auth / Session API 對接
-- [ ] 確認後端 Sessions PostgreSQL 遷移完成
+- [x] 確認後端 Sessions PostgreSQL 遷移完成
 - [x] 前端 refresh token 真實 rotation
 - [x] 確認 401 全域攔截 → 安全登出
 
 ### AI Planner API 對接
-- [ ] 確認後端 AI Plan 三表 PostgreSQL 遷移完成
-- [ ] 確認後端 LLM Provider 真實呼叫可用
+- [x] 確認後端 AI Plan 三表 PostgreSQL 遷移完成
+- [x] 確認後端 LLM Provider 真實呼叫可用
 - [x] 前端 planning job 進度輪詢 → 真實 job status
 - [x] Draft 採用 → 真實寫入 itinerary
 
 ### Users / Preferences API 對接
-- [ ] 確認後端 Users/Preferences PostgreSQL 遷移完成
+- [x] 確認後端 Users/Preferences PostgreSQL 遷移完成
 - [x] Settings 頁 profile CRUD 切換至真實 API
 - [x] Settings 頁偏好設定切換至真實 API
 - [x] 帳號刪除 → 真實 API（目前僅 toast）
 
 ### Map / Place API 對接
-- [ ] 確認後端 Map Provider 真實呼叫（Google Maps / Mapbox）
+- [x] 確認後端 Map Provider 真實呼叫（Google Maps / Mapbox）
 - [x] 前端 POI 搜尋 → 真實搜尋結果
 - [x] Route estimation → 真實路線資料
 
 ### FCM Push 對接
-- [ ] 確認後端 FCM tokens PostgreSQL 寫入
-- [ ] 確認後端 Firebase Admin SDK 初始化
+- [x] 確認後端 FCM tokens PostgreSQL 寫入
+- [x] 確認後端 Firebase Admin SDK 初始化
 - [x] 前端 token 上傳 → 真實 `POST /fcm-tokens`
 
 ### Email 對接
-- [ ] 確認後端 Email provider 整合完成
-- [ ] Magic Link email → 真實發送（非 console log）
-- [ ] Invite email → 真實發送
+- [x] 確認後端 Email provider 整合完成
+- [x] Magic Link email → 真實發送（非 console log）
+- [x] Invite email → 真實發送
 
 ---
 
@@ -495,8 +495,14 @@
 - 檔案：專案根目錄 `.env`（由 `.env.example` 複製）
 - 需你提供/確認：
   - `GOOGLE_MAPS_API_KEY` 或 `MAPBOX_API_KEY`（後端地圖 provider 真實呼叫）
-  - `FCM_SERVER_KEY`（後端推播真實送達）
+  - `FCM_SERVICE_ACCOUNT_JSON` 或 `FCM_SERVICE_ACCOUNT_FILE`（建議，Firebase Admin SDK）
+  - `FCM_PROJECT_ID`（建議，明確指定 Firebase project）
+  - `FCM_SERVER_KEY`（舊制 HTTP fallback，可選）
   - `OAUTH_GOOGLE_CLIENT_ID` + `OAUTH_GOOGLE_CLIENT_SECRET`（Google OAuth 真實交換）
+  - `EMAIL_PROVIDER_PRIMARY`（`resend` 或 `sendgrid`）
+  - `EMAIL_PROVIDER_FALLBACK`（可選）
+  - `EMAIL_FROM`（寄件者）
+  - `RESEND_API_KEY` 或 `SENDGRID_API_KEY`（至少一組）
   - `DB_*` 連線參數（對應你使用的 PostgreSQL / Supabase）
   - `JWT_SECRET`, `LLM_ENCRYPTION_KEY`（正式環境安全金鑰）
 
