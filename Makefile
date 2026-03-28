@@ -1,6 +1,7 @@
 .PHONY: build run-api run-worker test lint fmt \
        migrate-up migrate-down migrate-create \
        docker-up docker-down docker-build docker-logs \
+       supabase-start supabase-stop docker-up-supabase docker-migrate-supabase \
        help
 
 # ── Variables ───────────────────────────────────────────────
@@ -70,6 +71,18 @@ docker-logs: ## Tail logs from all services
 
 docker-migrate: ## Run migrations via Docker
 	docker compose run --rm migrate
+
+supabase-start: ## Start Supabase local dev and generate bridge env files
+	./scripts/supabase-local-start.sh
+
+supabase-stop: ## Stop Supabase local dev stack
+	supabase stop
+
+docker-up-supabase: ## Start app stack against Supabase local DB
+	docker compose --env-file .env --env-file .env.supabase.local up -d redis api worker web
+
+docker-migrate-supabase: ## Run migrations against Supabase local DB
+	docker compose --env-file .env --env-file .env.supabase.local --profile tools run --rm migrate
 
 # ── Help ────────────────────────────────────────────────────
 help: ## Show this help
