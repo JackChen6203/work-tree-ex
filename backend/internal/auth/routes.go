@@ -49,7 +49,10 @@ type codeEntry struct {
 	FailedAttempts int
 }
 
-const sessionCookieName = "tt_session"
+const (
+	sessionCookieName = "tt_session"
+	csrfCookieName    = "tt_csrf"
+)
 
 // accessTokenTTL is the default JWT access token duration.
 const accessTokenTTL = 15 * time.Minute
@@ -476,6 +479,13 @@ func getSession(c *gin.Context) {
 		response.JSON(c, http.StatusOK, gin.H{"user": nil, "roles": []string{}})
 		return
 	}
+	if err := ensureCSRFCookie(c); err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to issue csrf token", nil)
+		return
+	}
 
 	response.JSON(c, http.StatusOK, gin.H{"user": user, "roles": []string{"owner"}})
 }
@@ -493,6 +503,7 @@ func logout(c *gin.Context) {
 	}
 
 	clearSessionCookie(c)
+	clearCSRFCookie(c)
 
 	response.NoContent(c)
 }
@@ -579,9 +590,14 @@ func upsertSessionLocked(c *gin.Context, user *sessionUser) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	csrfToken, err := generateOpaqueToken(32)
+	if err != nil {
+		return "", err
+	}
 
 	sessions[sessionID] = user
 	setSessionCookie(c, sessionID)
+	setCSRFCookie(c, csrfToken)
 	return sessionID, nil
 }
 
@@ -598,6 +614,31 @@ func setSessionCookie(c *gin.Context, sessionID string) {
 	})
 }
 
+func ensureCSRFCookie(c *gin.Context) error {
+	if token, err := c.Cookie(csrfCookieName); err == nil && strings.TrimSpace(token) != "" {
+		return nil
+	}
+	csrfToken, err := generateOpaqueToken(32)
+	if err != nil {
+		return err
+	}
+	setCSRFCookie(c, csrfToken)
+	return nil
+}
+
+func setCSRFCookie(c *gin.Context, token string) {
+	isSecure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(webSessionTTL.Seconds()),
+	})
+}
+
 func clearSessionCookie(c *gin.Context) {
 	isSecure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
 	http.SetCookie(c.Writer, &http.Cookie{
@@ -605,6 +646,19 @@ func clearSessionCookie(c *gin.Context) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
+
+func clearCSRFCookie(c *gin.Context) {
+	isSecure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: false,
 		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
