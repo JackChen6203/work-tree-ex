@@ -87,6 +87,7 @@ jobs:
     name: Run Staging Migrations
     runs-on: ubuntu-latest
     needs: verify-frontend
+    environment: staging
     steps:
       - uses: actions/checkout@v4
 
@@ -96,12 +97,18 @@ jobs:
           sudo mv migrate /usr/local/bin/migrate
 
       - name: Run migrations (staging)
+        env:
+          STAGING_MIGRATE_DATABASE_URL: ${{ secrets.STAGING_MIGRATE_DATABASE_URL }}
+          FALLBACK_MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
         run: |
-          DB_URL='${{ secrets.STAGING_MIGRATE_DATABASE_URL }}'
+          DB_URL="$STAGING_MIGRATE_DATABASE_URL"
           if [ -z "$DB_URL" ]; then
-            DB_URL='${{ secrets.MIGRATE_DATABASE_URL }}'
+            DB_URL="$FALLBACK_MIGRATE_DATABASE_URL"
           fi
-          test -n "$DB_URL"
+          if [ -z "$DB_URL" ]; then
+            echo "::error::STAGING_MIGRATE_DATABASE_URL or MIGRATE_DATABASE_URL must be configured for staging migrations"
+            exit 1
+          fi
           MIGRATE_DATABASE_URL="$DB_URL" ./scripts/migrate.sh up
 
   deploy-staging:
@@ -178,6 +185,7 @@ jobs:
     name: Run Production Migrations
     runs-on: ubuntu-latest
     needs: verify-frontend
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -187,12 +195,18 @@ jobs:
           sudo mv migrate /usr/local/bin/migrate
 
       - name: Run migrations (production)
+        env:
+          PRODUCTION_MIGRATE_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATE_DATABASE_URL }}
+          FALLBACK_MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
         run: |
-          DB_URL='${{ secrets.PRODUCTION_MIGRATE_DATABASE_URL }}'
+          DB_URL="$PRODUCTION_MIGRATE_DATABASE_URL"
           if [ -z "$DB_URL" ]; then
-            DB_URL='${{ secrets.MIGRATE_DATABASE_URL }}'
+            DB_URL="$FALLBACK_MIGRATE_DATABASE_URL"
           fi
-          test -n "$DB_URL"
+          if [ -z "$DB_URL" ]; then
+            echo "::error::PRODUCTION_MIGRATE_DATABASE_URL or MIGRATE_DATABASE_URL must be configured for production migrations"
+            exit 1
+          fi
           MIGRATE_DATABASE_URL="$DB_URL" ./scripts/migrate.sh up
 
   deploy-production:
