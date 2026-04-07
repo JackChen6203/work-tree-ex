@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, frontend]
     tags: ["v*"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, frontend]
 
 env:
   GO_VERSION: "1.25.0"
