@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SurfaceCard } from "../../components/surface-card";
 import { StatusPill } from "../../components/status-pill";
-import { useCreateTripMutation, useMapPlacesQuery, useNotificationsQuery, useTripsQuery } from "../../lib/queries";
+import { useCreateTripMutation, useMapPlacesQuery, useNotificationsQuery, useTripsQuery, useWorkspaceSummaryQuery } from "../../lib/queries";
 import { analyticsEventNames, trackEvent } from "../../lib/analytics";
 import { useI18n } from "../../lib/i18n";
 import { useUiStore } from "../../store/ui-store";
@@ -44,6 +44,7 @@ export function DashboardPage() {
   const { t, locale } = useI18n();
   const msgs = validationMessages[locale as Locale] ?? validationMessages.en;
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
   const [wizardStep, setWizardStep] = useState<TripWizardStep>(1);
@@ -55,6 +56,7 @@ export function DashboardPage() {
   const [tripCoverById, setTripCoverById] = useState<Record<string, string>>(() => listTripCoverImages());
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
+  const { data: workspaceSummary } = useWorkspaceSummaryQuery();
   const { data: departureCandidates = [], isFetching: isDepartureSearching } = useMapPlacesQuery(departureKeyword);
   const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
   const createTrip = useCreateTripMutation();
@@ -83,7 +85,9 @@ export function DashboardPage() {
   const departureField = form.register("departureText");
   const destinationField = form.register("destinationText");
   const { formState: { errors } } = form;
-  const recentActivities = notifications.slice(0, 4);
+  const recentActivities = workspaceSummary?.recentActivities.length
+    ? workspaceSummary.recentActivities.slice(0, 4)
+    : notifications.slice(0, 4);
 
   const recentTripIds = Array.from(
     new Set(
@@ -96,11 +100,12 @@ export function DashboardPage() {
     )
   );
 
-  const quickAccessTrips = (recentTripIds.length > 0
+  const fallbackQuickAccessTrips = (recentTripIds.length > 0
     ? recentTripIds
       .map((id) => trips.find((trip) => trip.id === id))
       .filter(Boolean)
     : trips.slice(0, 3)) as typeof trips;
+  const quickAccessTrips = workspaceSummary?.quickAccessTrips.length ? workspaceSummary.quickAccessTrips : fallbackQuickAccessTrips;
 
   const nextWizardStep = async () => {
     const fields = wizardStepFields[wizardStep];
@@ -140,18 +145,25 @@ export function DashboardPage() {
   const onSubmit = form.handleSubmit(async (values) => {
     const departureText = values.departureText.trim();
     const destinationText = values.destinationText.trim();
-    const trip = await createTrip.mutateAsync({
-      name: values.name.trim(),
-      departureText,
-      destinationText,
-      destinations: [departureText, destinationText],
-      startDate: values.startDate,
-      endDate: values.endDate,
-      timezone: values.timezone,
-      currency: values.currency,
-      pace: values.pace,
-      travelersCount: values.travelersCount
-    });
+    let trip;
+    try {
+      trip = await createTrip.mutateAsync({
+        name: values.name.trim(),
+        departureText,
+        destinationText,
+        destinations: [departureText, destinationText],
+        startDate: values.startDate,
+        endDate: values.endDate,
+        timezone: values.timezone,
+        currency: values.currency,
+        pace: values.pace,
+        travelersCount: values.travelersCount
+      });
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim().length > 0 ? error.message : t("common.actionFailed");
+      pushToast({ type: "error", message });
+      return;
+    }
 
     if (typeof values.totalBudget === "number") {
       try {
@@ -203,6 +215,19 @@ export function DashboardPage() {
     { id: 2, title: t("trip.wizard.step2") },
     { id: 3, title: t("trip.wizard.step3") }
   ];
+
+  useEffect(() => {
+    if (searchParams.get("openCreateTrip") !== "1") {
+      return;
+    }
+    setShowForm(true);
+    setWizardStep(1);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("openCreateTrip");
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -606,7 +631,7 @@ export function DashboardPage() {
         <SurfaceCard eyebrow={t("dashboard.workspace")} title={t("dashboard.upcomingTrip")}>
           {(() => {
             const today = new Date().toISOString().slice(0, 10);
-            const upcomingTrip = trips.find((trip) => trip.startDate > today);
+            const upcomingTrip = workspaceSummary?.upcomingTrip ?? trips.find((trip) => trip.startDate > today);
             const currentTrip = trips.find((trip) => trip.startDate <= today && trip.endDate >= today);
             if (currentTrip) {
               return (

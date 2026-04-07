@@ -92,6 +92,7 @@ func RegisterRoutes(v1 *gin.RouterGroup) {
 }
 
 func listNotifications(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	unreadOnly := strings.EqualFold(strings.TrimSpace(c.Query("unreadOnly")), "true")
 	cursor := strings.TrimSpace(c.Query("cursor"))
 	limit := 20
@@ -105,7 +106,7 @@ func listNotifications(c *gin.Context) {
 	}
 
 	if getPool() != nil {
-		copyItems, err := listNotificationsPostgres(c.Request.Context(), unreadOnly, cursor, limit)
+		copyItems, err := listNotificationsPostgres(c.Request.Context(), userID, unreadOnly, cursor, limit)
 		if err != nil {
 			if errors.Is(err, ErrCursorNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "cursor not found", gin.H{"cursor": cursor})
@@ -155,6 +156,7 @@ func listNotifications(c *gin.Context) {
 }
 
 func markRead(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	notificationID := strings.TrimSpace(c.Param("notificationId"))
 	if notificationID == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "notificationId is required", nil)
@@ -162,7 +164,7 @@ func markRead(c *gin.Context) {
 	}
 
 	if getPool() != nil {
-		if err := markReadPostgres(c.Request.Context(), notificationID); err != nil {
+		if err := markReadPostgres(c.Request.Context(), userID, notificationID); err != nil {
 			if errors.Is(err, ErrNotificationNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 				return
@@ -194,6 +196,7 @@ func markRead(c *gin.Context) {
 }
 
 func markUnread(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	notificationID := strings.TrimSpace(c.Param("notificationId"))
 	if notificationID == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "notificationId is required", nil)
@@ -201,7 +204,7 @@ func markUnread(c *gin.Context) {
 	}
 
 	if getPool() != nil {
-		if err := markUnreadPostgres(c.Request.Context(), notificationID); err != nil {
+		if err := markUnreadPostgres(c.Request.Context(), userID, notificationID); err != nil {
 			if errors.Is(err, ErrNotificationNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 				return
@@ -232,8 +235,9 @@ func markUnread(c *gin.Context) {
 }
 
 func markAllRead(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	if getPool() != nil {
-		if err := markAllReadPostgres(c.Request.Context()); err != nil {
+		if err := markAllReadPostgres(c.Request.Context(), userID); err != nil {
 			if response.DatabaseUnavailable(c, err) {
 				return
 			}
@@ -256,8 +260,9 @@ func markAllRead(c *gin.Context) {
 }
 
 func cleanupRead(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	if getPool() != nil {
-		deletedCount, err := cleanupReadPostgres(c.Request.Context())
+		deletedCount, err := cleanupReadPostgres(c.Request.Context(), userID)
 		if err != nil {
 			if response.DatabaseUnavailable(c, err) {
 				return
@@ -287,6 +292,7 @@ func cleanupRead(c *gin.Context) {
 }
 
 func deleteNotification(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
 	notificationID := strings.TrimSpace(c.Param("notificationId"))
 	if notificationID == "" {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "notificationId is required", nil)
@@ -294,7 +300,7 @@ func deleteNotification(c *gin.Context) {
 	}
 
 	if getPool() != nil {
-		if err := deleteNotificationPostgres(c.Request.Context(), notificationID); err != nil {
+		if err := deleteNotificationPostgres(c.Request.Context(), userID, notificationID); err != nil {
 			if errors.Is(err, ErrNotificationNotFound) {
 				response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "notification not found", gin.H{"notificationId": notificationID})
 				return

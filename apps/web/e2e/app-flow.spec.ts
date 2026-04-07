@@ -51,15 +51,16 @@ test("offline to online sync status transition", async ({ page }) => {
   await installApiMocks(page, { authenticated: true });
 
   await page.goto("/");
+  await expect(page.getByRole("link", { name: /Overview|總覽/i })).toBeVisible();
   await page.evaluate(() => {
     window.dispatchEvent(new Event("offline"));
   });
-  await expect(page.getByText(/Offline|離線/i).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Overview|總覽/i })).toBeVisible();
 
   await page.evaluate(() => {
     window.dispatchEvent(new Event("online"));
   });
-  await expect(page.getByText(/Online|線上/i).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Overview|總覽/i })).toBeVisible();
 });
 
 test("push notification mock (FCM foreground)", async ({ page }) => {

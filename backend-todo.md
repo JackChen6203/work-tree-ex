@@ -5,6 +5,34 @@
 
 ---
 
+## BE-MENU-2026-04-07｜Menu 尚未實作功能（後端）
+
+- [ ] `總覽` 新增 `GET /api/v1/workspace/summary`
+- [ ] `總覽` summary.recentActivities 由 `notifications` 查詢（user_id + created_at desc + limit）
+- [ ] `總覽` summary.upcomingTrip 由 `trips` 查詢（start_date >= today，最早一筆）
+- [ ] `總覽` summary.quickAccessTrips 由通知 link 解析 trip_id 回填，fallback 最新 trips
+- [ ] `旅程` `GET /trips/:tripId` 回傳欄位固定化（name/destinationText/startDate/endDate/timezone/currency/travelersCount/status/version）
+- [ ] `旅程` members/invitations/share-links response schema 固定化（欄位命名與前端一致）
+- [ ] `旅程` add/patch/delete member 的 403/404/409 error code 對齊
+- [ ] `旅程` create/revoke invitation 重複呼叫 idempotency 行為補測
+- [ ] `行程` reorder 跨日交易一致性測試（同時變更 day_id + sort_order + version）
+- [ ] `行程` create/patch/delete item 在 archived trip 時統一 403
+- [ ] `預算` 無 budget profile 時 `GET /budget` 回空物件（非 500）
+- [ ] `預算` 無 expenses 時 `GET /expenses` 回空陣列（非 500）
+- [ ] `預算` rates API 無快照時回可預期空值（非 500）
+- [ ] `地圖` search/routes/place detail 錯誤碼標準化（timeout/quota/provider invalid）
+- [ ] `地圖` add-to-itinerary 串接時 provider_place_id 與 lat/lng 欄位寫入一致
+- [ ] `AI` create/list/get/adopt 的 status 枚舉與 warning payload 欄位固定化
+- [ ] `AI` adopt 在衝突時回 409 + machine-readable conflict payload
+- [ ] `收件匣` list/read/unread/read-all/cleanup/delete 皆補 user_id 限定測試
+- [ ] `收件匣` deep-link payload contract（link/type/trip_id）補齊文件與測試
+- [ ] `設定` `GET/PATCH /users/me` 欄位與 `users` table 映射測試
+- [ ] `設定` preferences/notification-preferences 欄位 schema 對齊測試
+- [ ] `設定` llm provider create/list/delete 欄位與 maskedKey 規格測試
+- [ ] menu 全域整合測試：每個 menu 至少 1 happy path + 1 edge case（403/404/409/empty）
+
+---
+
 ## BE-01｜API Gateway / HTTP Layer
 
 - [x] 統一 request_id / correlation_id 注入（`requestIDMiddleware`）

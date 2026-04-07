@@ -29,11 +29,19 @@ import {
 import { flushSyncMutations, getSyncBootstrap } from "./sync-api";
 import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trips-api";
 import { trackQueuedMutation } from "./mutation-queue";
+import { getWorkspaceSummary } from "./workspace-api";
 
 export function useTripsQuery() {
   return useQuery({
     queryKey: ["trips"],
     queryFn: listTrips
+  });
+}
+
+export function useWorkspaceSummaryQuery() {
+  return useQuery({
+    queryKey: ["workspace-summary"],
+    queryFn: getWorkspaceSummary
   });
 }
 

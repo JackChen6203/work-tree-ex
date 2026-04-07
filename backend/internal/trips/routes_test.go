@@ -141,6 +141,33 @@ func TestPatchTripVersionConflict(t *testing.T) {
 	}
 }
 
+func TestGetWorkspaceSummary(t *testing.T) {
+	r := setupRouter()
+	_ = createTripForTest(t, r, "idem-summary-1")
+	_ = createTripForTest(t, r, "idem-summary-2")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspace/summary", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+
+	var payload struct {
+		Data struct {
+			UpcomingTrip     map[string]any   `json:"upcomingTrip"`
+			RecentActivities []map[string]any `json:"recentActivities"`
+			QuickAccessTrips []map[string]any `json:"quickAccessTrips"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode summary response: %v", err)
+	}
+	if len(payload.Data.QuickAccessTrips) == 0 {
+		t.Fatalf("expected quickAccessTrips to include created trips")
+	}
+}
+
 func TestAddAndListTripMembers(t *testing.T) {
 	r := setupRouter()
 	tripID := createTripForTest(t, r, "idem-members")

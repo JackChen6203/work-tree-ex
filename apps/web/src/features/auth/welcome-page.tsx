@@ -23,9 +23,6 @@ export function WelcomePage() {
                 <Link className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-sand transition hover:bg-pine" to="/login">
                   {t("welcome.ctaLogin")}
                 </Link>
-                <Link className="rounded-full bg-white px-5 py-3 text-sm font-medium text-ink transition hover:bg-sand" to="/">
-                  {t("welcome.ctaWorkspace")}
-                </Link>
               </div>
               <div className="mt-6 grid gap-2 sm:grid-cols-2">
                 {oauthProviders.map((provider) => (

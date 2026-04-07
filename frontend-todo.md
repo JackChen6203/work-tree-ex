@@ -5,6 +5,38 @@
 
 ---
 
+## FE-MENU-2026-04-07｜Menu 尚未實作功能
+
+- [ ] `總覽` 建立旅程 Wizard：三步欄位驗證與錯誤訊息逐欄驗收
+- [ ] `總覽` `name/departureText/destinationText/startDate/endDate/timezone/currency/pace/travelersCount/totalBudget` 全欄位保存流程驗收
+- [ ] `總覽` 建立旅程成功後導頁 `/trips/:tripId` + toast + query refresh
+- [ ] `總覽` 近期活動卡片點擊 deep-link 行為驗收
+- [ ] `旅程` metadata 編輯欄位（name/destination/date/timezone/currency/travelers/status）逐欄保存驗收
+- [ ] `旅程` 成員管理按鈕（新增/改角色/移除）每個按鈕各自驗收
+- [ ] `旅程` 邀請管理按鈕（送出/撤銷/重新邀請）每個按鈕各自驗收
+- [ ] `旅程` 分享連結按鈕（建立/撤銷）與複製行為驗收
+- [ ] `行程` 新增行程項目欄位（title/type/time/allDay/note）逐欄驗收
+- [ ] `行程` 編輯/刪除/拖拉排序（含跨日）按鈕行為驗收
+- [ ] `行程` fallback 上移/下移按鈕行為驗收
+- [ ] `預算` 預算主表單欄位（total/perPerson/perDay/currency/categories）逐欄驗收
+- [ ] `預算` 支出按鈕（新增/編輯/刪除）逐按鈕驗收
+- [ ] `預算` 匯率按鈕（refresh）與 stale 提示驗收
+- [ ] `地圖` 搜尋、估算路線、加入行程三個主按鈕驗收
+- [ ] `地圖` map fallback 模式下清單仍可操作驗收
+- [ ] `AI` 條件欄位（budget/currency/pace/transport/wake/density/mustVisit/avoid）逐欄送出驗收
+- [ ] `AI` 產生規劃按鈕與草案採用按鈕（含 warning confirm）驗收
+- [ ] `收件匣` 按鈕（全部已讀/僅未讀/標已讀未讀/刪除/清除已讀）逐按鈕驗收
+- [ ] `收件匣` deep-link 點擊：有效 trip 導頁、無效 trip toast 驗收
+- [ ] `設定` 個人資料儲存按鈕驗收
+- [ ] `設定` 偏好儲存按鈕驗收
+- [ ] `設定` 通知偏好儲存按鈕驗收（含 quiet hours 格式）
+- [ ] `設定` provider 新增/刪除按鈕驗收
+- [ ] `設定` 刪除帳號按鈕驗收（confirm 流程）
+- [ ] 桌機 header menu / 行動版 sheet menu 每個入口導頁一致性驗收
+- [ ] E2E：8 個 menu 頁面各 1 條 happy path + 1 條 edge case
+
+---
+
 ## FE-01｜App Shell
 
 - [x] Session hydration（啟動時檢查登入狀態）

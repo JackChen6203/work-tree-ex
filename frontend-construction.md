@@ -2,6 +2,181 @@
 
 ---
 
+## FE-12｜Menu 尚未實作功能補齊
+
+**模式**：完成頂部 Menu 各入口的可用行為與對應頁面互動
+
+### 頁面欄位/按鈕矩陣（前端必做）
+
+#### A. `總覽`（`/`）
+
+主要顯示欄位  
+- 旅程卡片：`name`、`destination`、`dateRange`、`timezone`、`members`、`currency`
+- 近期活動：`title`、`body`、`createdAt`
+- 即將出發：以 `startDate` 計算倒數天數
+- 快速存取：從最近通知關聯 trip 或 trips 前三筆
+
+欄位來源  
+- `useTripsQuery()` → `GET /api/v1/trips`
+- `useNotificationsQuery()` → `GET /api/v1/notifications`
+- DB 最終來源：`trips`、`notifications`
+
+按鈕功能  
+- `建立旅程`：開啟 Wizard（本地 UI state）
+- Wizard `下一步/上一步/送出`：驗證後 `useCreateTripMutation()` → `POST /api/v1/trips`
+- `前往 Google Maps / Gemini`：外連，不打 API
+- Trip 卡片點擊：導向 `/trips/:tripId`
+
+#### B. `旅程`（`/trips/:tripId`）
+
+主要顯示欄位  
+- Trip metadata：`name/destination/dateRange/timezone/version/status`
+- 成員清單：`displayName/email/role/status`
+- 邀請清單：`inviteeEmail/role/status/expiresAt/createdAt`
+- 分享連結：`accessScope/expiresAt/revokedAt`
+
+欄位來源  
+- `useTripQuery`、`useTripMembersQuery`、`useTripInvitationsQuery`、`useTripShareLinksQuery`
+- DB 最終來源：`trips`、`trip_memberships`、`users`、`trip_invitations`、`share_links`
+
+按鈕功能  
+- `更新旅程`：`PATCH /api/v1/trips/:tripId`
+- `新增成員`：`POST /api/v1/trips/:tripId/members`
+- `移除成員`：`DELETE /api/v1/trips/:tripId/members/:memberId`
+- `更新角色`：`PATCH /api/v1/trips/:tripId/members/:memberId`
+- `送出邀請`：`POST /api/v1/trips/:tripId/invitations`
+- `撤銷邀請`：`POST /api/v1/trips/:tripId/invitations/:invitationId/revoke`
+- `重新邀請`：同送出邀請（同 email）
+- `建立分享連結`：`POST /api/v1/trips/:tripId/share-links`
+- `撤銷分享連結`：`POST /api/v1/trips/:tripId/share-links/:linkId/revoke`
+
+#### C. `行程`（`/trips/:tripId/itinerary`）
+
+主要顯示欄位  
+- Days：`dayId/date/dayIndex`
+- Items：`title/itemType/startAt/endAt/allDay/note/sortOrder/version`
+- 路線摘要：`distanceKm/durationMin/estimatedCost`
+
+欄位來源  
+- `useItineraryDaysQuery`（含 items）
+- DB 最終來源：`itinerary_days`、`itinerary_items`、`place_snapshots`、`route_snapshots`
+
+按鈕功能  
+- `新增行程項目`：`POST /api/v1/trips/:tripId/items`
+- `編輯/儲存`：`PATCH /api/v1/trips/:tripId/items/:itemId`
+- `刪除`：`DELETE /api/v1/trips/:tripId/items/:itemId`
+- `拖拉排序`：`POST /api/v1/trips/:tripId/items/reorder`
+- `上移/下移 fallback`：同 reorder API
+
+#### D. `預算`（`/trips/:tripId/budget`）
+
+主要顯示欄位  
+- `totalBudget/perPersonBudget/perDayBudget/currency`
+- 分類預算：`categories[].plannedAmount`
+- 支出列表：`category/amount/currency/expenseAt/note/linkedItemId`
+- 匯率資訊：`source/fetchedAt/rates`
+
+欄位來源  
+- `useBudgetProfileQuery`、`useExpensesQuery`、`useBudgetRatesQuery`、`useItineraryDaysQuery`
+- DB 最終來源：`budget_profiles`、`expenses`、`itinerary_items`
+
+按鈕功能  
+- `儲存預算`：`PUT /api/v1/trips/:tripId/budget`
+- `新增支出`：`POST /api/v1/trips/:tripId/expenses`
+- `儲存支出編輯`：`PATCH /api/v1/trips/:tripId/expenses/:expenseId`
+- `刪除支出`：`DELETE /api/v1/trips/:tripId/expenses/:expenseId`
+- `更新匯率`：`POST /api/v1/trips/:tripId/budget/rates/refresh`
+- `以預算生成行程`：導向 `/trips/:tripId/ai-planner`
+
+#### E. `地圖`（`/trips/:tripId/map`）
+
+主要顯示欄位  
+- 搜尋結果：`name/address/categories/lat/lng/providerPlaceId`
+- 行程點位：由 itinerary items 聚合
+- 路線估算：`distanceKm/durationMin/provider/estimatedCost`
+
+欄位來源  
+- `useMapPlacesQuery`、`useItineraryDaysQuery`
+- DB 最終來源：搜尋/路線多為 provider；加入行程後落地於 `itinerary_items`
+
+按鈕功能  
+- `搜尋`：`GET /api/v1/maps/search`
+- `估算路線`：`POST /api/v1/maps/routes`
+- `加入行程`：`POST /api/v1/trips/:tripId/items`
+- `聚焦點位`：本地 map state 更新
+
+#### F. `AI 規劃`（`/trips/:tripId/ai-planner`）
+
+主要顯示欄位  
+- Constraints form：`totalBudget/currency/pace/transportPreference/wakePattern/poiDensity/mustVisit/avoid`
+- Draft list：`id/title/status/summary/warnings`
+- Job progress：`queued/running/succeeded/failed`
+
+欄位來源  
+- `useAiPlansQuery`、`useAiPlanQuery`、`useBudgetProfileQuery`、`useMyPreferencesQuery`
+- DB 最終來源：`ai_plan_requests`、`ai_plan_drafts`、`ai_plan_validation_results`、`budget_profiles`、`user_preferences`
+
+按鈕功能  
+- `產生規劃`：`POST /api/v1/trips/:tripId/ai/plans`
+- `採用草案`：`POST /api/v1/trips/:tripId/ai/plans/:planId/adopt`
+- `新增/移除 mustVisit/avoid tag`：本地 form state
+
+#### G. `收件匣`（`/notifications`）
+
+主要顯示欄位  
+- `title/body/type/link/readAt/createdAt`
+- unread 狀態 badge
+
+欄位來源  
+- `useNotificationsQuery(unreadOnly)`、`useTripsQuery`（檢查 deep-link trip 是否存在）
+- DB 最終來源：`notifications`、`trips`
+
+按鈕功能  
+- `全部已讀`：`POST /api/v1/notifications/read-all`
+- `僅看未讀`：本地 state 過濾（重新 query）
+- `標記已讀/未讀`：`POST /api/v1/notifications/:id/read|unread`
+- `刪除`：`DELETE /api/v1/notifications/:id`
+- `清除已讀`：`POST /api/v1/notifications/cleanup-read`
+- `點擊通知`：先標已讀再導頁；失效 trip 顯示 toast
+
+#### H. `設定`（`/settings`）
+
+主要顯示欄位  
+- Profile：`displayName/locale/timezone/currency`
+- Preferences：`tripPace/wakePattern/transportPreference/foodPreference/avoidTags`
+- Notification prefs：`pushEnabled/emailEnabled/digestFrequency/quietHoursStart/quietHoursEnd/tripUpdates/budgetAlerts/aiPlanReadyAlerts`
+- LLM provider list：`provider/label/model/maskedKey/createdAt`
+
+欄位來源  
+- `useMyProfileQuery`、`useMyPreferencesQuery`、`useMyNotificationPreferencesQuery`、`useMyLlmProvidersQuery`
+- DB 最終來源：`users`、`user_preferences`、`llm_provider_configs`
+
+按鈕功能  
+- `儲存個人資料`：`PATCH /api/v1/users/me`
+- `儲存偏好`：`PUT /api/v1/users/me/preferences`
+- `儲存通知設定`：`PUT /api/v1/users/me/notification-preferences`
+- `新增 provider`：`POST /api/v1/users/me/llm-providers`
+- `刪除 provider`：`DELETE /api/v1/users/me/llm-providers/:providerId`
+- `測試連線`：目前本地模擬（後續可接真實測試 API）
+- `刪除帳號`：`DELETE /api/v1/users/me`
+
+### 邊界個案（Menu 共通）
+- 初次登入無 trip：`旅程/行程/預算/地圖/AI` 路由按鈕導向 `/?openCreateTrip=1`
+- route 直入不存在 trip：顯示錯誤卡，不使整頁崩潰
+- 行動版 bottom-sheet 導覽與桌機 header 導覽行為一致
+- 語系切換後 label 與按鈕功能不可脫鉤
+
+### 資料結構
+
+```typescript
+interface MenuRouteState {
+  activeTripId?: string;
+  fallbackCreateTripPath: string; // "/?openCreateTrip=1"
+}
+```
+
+---
+
 ## FE-01｜App Shell
 
 **模式**：全域容器、路由守衛、PWA 安裝入口
@@ -671,4 +846,3 @@ interface OfflineDB {
 - 橫向 bar chart：category → planned vs actual
 - Gauge chart：total spend / total budget %
 - 數字 summary card：每人/每日平均
-

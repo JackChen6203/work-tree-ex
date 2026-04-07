@@ -3,6 +3,7 @@ package trips
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,13 +14,13 @@ import (
 	platformdb "github.com/solidityDeveloper/time_tree_ex/backend/internal/platform/database"
 )
 
-const defaultOwnerUserID = "00000000-0000-0000-0000-000000000001"
-
 var errTripCreateIdempotencyConflict = errors.New("trip create idempotency conflict")
 
 type postgresRepository struct {
 	pool *pgxpool.Pool
 }
+
+const defaultOwnerUserID = "00000000-0000-0000-0000-000000000001"
 
 func NewPostgresRepository(pool *pgxpool.Pool) Repository {
 	return &postgresRepository{pool: pool}
@@ -62,6 +63,7 @@ func (r *postgresRepository) Create(ctx context.Context, in tripCreateInput, ide
 	}
 
 	for attempt := 1; ; attempt++ {
+		ownerUserID, ownerEmail := normalizeTripOwnerIdentity(in.OwnerUserID, in.OwnerEmail)
 		opCtx, cancel := platformdb.WithOperationTimeout(ctx)
 		t, err := func() (trip, error) {
 			tx, err := r.pool.BeginTx(opCtx, pgx.TxOptions{})
@@ -88,12 +90,25 @@ func (r *postgresRepository) Create(ctx context.Context, in tripCreateInput, ide
 
 			tripID := uuid.NewString()
 			now := time.Now().UTC()
+			if err := ensureTripOwnerUserTx(opCtx, tx, ownerUserID, ownerEmail); err != nil {
+				return trip{}, err
+			}
 			_, err = tx.Exec(opCtx, `
 				INSERT INTO trips (
 					id, owner_user_id, name, destination_text, start_date, end_date,
 					timezone, currency, travelers_count, status, version, tags, created_at, updated_at
 				) VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8, $9, 'draft', 1, '[]'::jsonb, $10, $10)
-			`, tripID, defaultOwnerUserID, in.Name, in.Destination, in.StartDate, in.EndDate, in.Timezone, in.Currency, in.Travelers, now)
+			`, tripID, ownerUserID, in.Name, in.Destination, in.StartDate, in.EndDate, in.Timezone, in.Currency, in.Travelers, now)
+			if err != nil {
+				return trip{}, err
+			}
+			_, err = tx.Exec(opCtx, `
+				INSERT INTO trip_memberships (
+					trip_id, user_id, role, status, joined_at, created_at, updated_at
+				) VALUES ($1::uuid, $2::uuid, 'owner', 'active', $3, $3, $3)
+				ON CONFLICT (trip_id, user_id)
+				DO UPDATE SET role = 'owner', status = 'active', joined_at = COALESCE(trip_memberships.joined_at, EXCLUDED.joined_at), updated_at = EXCLUDED.updated_at
+			`, tripID, ownerUserID, now)
 			if err != nil {
 				return trip{}, err
 			}
@@ -145,6 +160,39 @@ func (r *postgresRepository) Create(ctx context.Context, in tripCreateInput, ide
 		}
 		return trip{}, err
 	}
+}
+
+func normalizeTripOwnerIdentity(rawUserID, rawEmail string) (string, string) {
+	ownerUserID := strings.TrimSpace(rawUserID)
+	ownerEmail := strings.ToLower(strings.TrimSpace(rawEmail))
+	if _, err := uuid.Parse(ownerUserID); err != nil {
+		seed := ownerEmail
+		if seed == "" {
+			seed = "anonymous@time-tree.local"
+		}
+		ownerUserID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("trip-owner|"+seed)).String()
+	}
+	if ownerEmail == "" {
+		ownerEmail = "user-" + ownerUserID + "@time-tree.local"
+	}
+	return ownerUserID, ownerEmail
+}
+
+func ensureTripOwnerUserTx(ctx context.Context, tx pgx.Tx, ownerUserID, ownerEmail string) error {
+	displayName := "User"
+	if at := strings.Index(ownerEmail, "@"); at > 0 {
+		displayName = ownerEmail[:at]
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO users (id, email, display_name, locale, timezone, default_currency, created_at, updated_at)
+		VALUES ($1::uuid, $2, $3, 'zh-TW', 'Asia/Taipei', 'TWD', now(), now())
+		ON CONFLICT (id)
+		DO UPDATE SET
+			email = EXCLUDED.email,
+			display_name = EXCLUDED.display_name,
+			updated_at = now()
+	`, ownerUserID, ownerEmail, displayName)
+	return err
 }
 
 func (r *postgresRepository) getByIdempotencyKey(ctx context.Context, idempotencyKey string) (trip, error) {

@@ -62,13 +62,14 @@ describe("BottomSheetHost", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("shows disabled trip sections when no trip is available", () => {
+  it("routes trip sections to create flow when no trip is available", () => {
     mockTripsQuery([]);
     useUiStore.getState().openSheet("mobile-nav");
 
     renderBottomSheetHost("/");
 
-    expect(screen.queryByRole("link", { name: "Trip" })).toBeNull();
-    expect(screen.getByText("Trip").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("link", { name: "Trip" }).getAttribute("href")).toBe("/?openCreateTrip=1");
+    expect(screen.getByRole("link", { name: "Itinerary" }).getAttribute("href")).toBe("/?openCreateTrip=1");
+    expect(screen.getByRole("link", { name: "Budget" }).getAttribute("href")).toBe("/?openCreateTrip=1");
   });
 });

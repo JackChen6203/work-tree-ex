@@ -46,10 +46,9 @@ describe("ShellNav", () => {
     renderShellNav("/");
 
     expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/");
-    expect(screen.queryByRole("link", { name: "Trip" })).toBeNull();
-    expect(screen.getByText("Trip").getAttribute("aria-disabled")).toBe("true");
-    expect(screen.queryByRole("link", { name: "Itinerary" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Budget" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Trip" }).getAttribute("href")).toBe("/?openCreateTrip=1");
+    expect(screen.getByRole("link", { name: "Itinerary" }).getAttribute("href")).toBe("/?openCreateTrip=1");
+    expect(screen.getByRole("link", { name: "Budget" }).getAttribute("href")).toBe("/?openCreateTrip=1");
   });
 
   it("marks only the exact trip child route as active", () => {

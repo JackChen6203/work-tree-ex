@@ -70,32 +70,22 @@ export function BottomSheetHost() {
         </div>
 
         <nav className="mt-5 grid gap-2">
-          {items.map((item) =>
-            item.to ? (
-              <NavLink
-                key={item.id}
-                end
-                to={item.to}
-                className={({ isActive }) =>
-                  clsx(
-                    "rounded-[20px] px-4 py-3 text-sm font-medium transition",
-                    isActive ? "bg-ink text-sand" : "border border-ink/10 bg-white text-ink/75"
-                  )
-                }
-                onClick={closeSheet}
-              >
-                {item.label}
-              </NavLink>
-            ) : (
-              <span
-                key={item.id}
-                aria-disabled="true"
-                className="cursor-not-allowed rounded-[20px] border border-ink/8 bg-white/40 px-4 py-3 text-sm font-medium text-ink/35"
-              >
-                {item.label}
-              </span>
-            )
-          )}
+          {items.map((item) => (
+            <NavLink
+              key={item.id}
+              end
+              to={item.to ?? "/"}
+              className={({ isActive }) =>
+                clsx(
+                  "rounded-[20px] px-4 py-3 text-sm font-medium transition",
+                  isActive ? "bg-ink text-sand" : "border border-ink/10 bg-white text-ink/75"
+                )
+              }
+              onClick={closeSheet}
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="mt-5 rounded-[24px] border border-ink/10 bg-white px-4 py-4">

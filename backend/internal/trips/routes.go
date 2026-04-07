@@ -1,8 +1,10 @@
 package trips
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +41,8 @@ type tripCreateInput struct {
 	Timezone     string   `json:"timezone"`
 	Currency     string   `json:"currency"`
 	Travelers    int      `json:"travelersCount"`
+	OwnerUserID  string   `json:"-"`
+	OwnerEmail   string   `json:"-"`
 }
 
 type tripPatchInput struct {
@@ -75,6 +79,22 @@ type patchTripMemberInput struct {
 	Role string `json:"role"`
 }
 
+type workspaceActivity struct {
+	ID        string     `json:"id"`
+	Type      string     `json:"type"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	Link      string     `json:"link"`
+	ReadAt    *time.Time `json:"readAt,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+}
+
+type workspaceSummary struct {
+	UpcomingTrip     *trip               `json:"upcomingTrip,omitempty"`
+	RecentActivities []workspaceActivity `json:"recentActivities"`
+	QuickAccessTrips []trip              `json:"quickAccessTrips"`
+}
+
 var (
 	membersMu      sync.RWMutex
 	tripMembers    = map[string][]tripMember{}
@@ -82,6 +102,7 @@ var (
 )
 
 func RegisterRoutes(v1 *gin.RouterGroup) {
+	v1.GET("/workspace/summary", getWorkspaceSummary)
 	v1.GET("/trips", listTrips)
 	v1.POST("/trips", createTrip)
 	v1.GET("/trips/:tripId", getTrip)
@@ -116,6 +137,129 @@ func listTrips(c *gin.Context) {
 	response.JSON(c, http.StatusOK, items)
 }
 
+func getWorkspaceSummary(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("userID"))
+	items, err := activeRepository.List(c.Request.Context())
+	if err != nil {
+		if response.DatabaseUnavailable(c, err) {
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to build workspace summary", nil)
+		return
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+
+	nowDate := time.Now().In(time.UTC).Format("2006-01-02")
+	var upcoming *trip
+	for i := range items {
+		if items[i].StartDate < nowDate {
+			continue
+		}
+		if upcoming == nil || items[i].StartDate < upcoming.StartDate {
+			copyItem := items[i]
+			upcoming = &copyItem
+		}
+	}
+
+	activities := listWorkspaceRecentActivities(c.Request.Context(), userID, 4)
+	quickAccess := buildQuickAccessTrips(items, activities, 3)
+
+	response.JSON(c, http.StatusOK, workspaceSummary{
+		UpcomingTrip:     upcoming,
+		RecentActivities: activities,
+		QuickAccessTrips: quickAccess,
+	})
+}
+
+func listWorkspaceRecentActivities(ctx context.Context, userID string, limit int) []workspaceActivity {
+	pool := getCollaborationPool()
+	if pool == nil {
+		return []workspaceActivity{}
+	}
+	userID = strings.TrimSpace(userID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultOwnerUserID
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT id::text, type, title, body, COALESCE(link, ''), read_at, created_at
+		FROM notifications
+		WHERE user_id = $1::uuid
+		ORDER BY created_at DESC
+		LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return []workspaceActivity{}
+	}
+	defer rows.Close()
+
+	items := make([]workspaceActivity, 0, limit)
+	for rows.Next() {
+		var row workspaceActivity
+		if scanErr := rows.Scan(&row.ID, &row.Type, &row.Title, &row.Body, &row.Link, &row.ReadAt, &row.CreatedAt); scanErr != nil {
+			return []workspaceActivity{}
+		}
+		items = append(items, row)
+	}
+	return items
+}
+
+func buildQuickAccessTrips(trips []trip, activities []workspaceActivity, limit int) []trip {
+	if limit <= 0 {
+		return []trip{}
+	}
+	tripByID := make(map[string]trip, len(trips))
+	for _, item := range trips {
+		tripByID[item.ID] = item
+	}
+
+	seen := map[string]struct{}{}
+	result := make([]trip, 0, limit)
+	for _, activity := range activities {
+		tripID := extractTripIDFromWorkspaceLink(activity.Link)
+		if tripID == "" {
+			continue
+		}
+		if _, ok := seen[tripID]; ok {
+			continue
+		}
+		tripItem, ok := tripByID[tripID]
+		if !ok {
+			continue
+		}
+		seen[tripID] = struct{}{}
+		result = append(result, tripItem)
+		if len(result) == limit {
+			return result
+		}
+	}
+
+	for _, item := range trips {
+		if _, ok := seen[item.ID]; ok {
+			continue
+		}
+		result = append(result, item)
+		if len(result) == limit {
+			break
+		}
+	}
+	return result
+}
+
+func extractTripIDFromWorkspaceLink(link string) string {
+	value := strings.TrimSpace(link)
+	if !strings.HasPrefix(value, "/trips/") {
+		return ""
+	}
+	parts := strings.Split(strings.TrimPrefix(value, "/trips/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return ""
+	}
+	return parts[0]
+}
+
 func createTrip(c *gin.Context) {
 	idempotencyKey := c.GetHeader("Idempotency-Key")
 	if idempotencyKey == "" {
@@ -133,6 +277,8 @@ func createTrip(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, err.Error(), nil)
 		return
 	}
+	in.OwnerUserID = strings.TrimSpace(c.GetString("userID"))
+	in.OwnerEmail = strings.TrimSpace(c.GetString("userEmail"))
 
 	t, err := activeRepository.Create(c.Request.Context(), in, idempotencyKey)
 	if err != nil {

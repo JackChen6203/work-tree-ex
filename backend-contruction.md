@@ -10,6 +10,167 @@
 
 ---
 
+## BE-15｜Menu 功能補齊（後端契約）
+
+**模式**：支援頂部 Menu（總覽/旅程/行程/預算/地圖/AI 規劃/收件匣/設定）的完整 API 契約
+
+### 1) `總覽`（Dashboard）
+
+讀取 API（新增）  
+- `GET /api/v1/workspace/summary`
+
+欄位來源（DB）
+- `upcomingTrip.id/name/start_date/end_date/timezone/currency/status/version` ← `trips`
+- `recentActivities.id/type/title/body/link/read_at/created_at` ← `notifications`
+- `quickAccessTrips.*` ← `trips`（依 `notifications.link` 命中 trip_id，若不足補最新 trips）
+
+按鈕行為（後端）
+- `建立旅程`：`POST /api/v1/trips`，寫入 `trips`、`trip_idempotency_keys`、`trip_memberships(owner)`
+- `建立旅程後預算初始化`：`PUT /api/v1/trips/:tripId/budget`，寫入 `budget_profiles`
+
+### 2) `旅程`（Trip Overview）
+
+讀取 API  
+- `GET /api/v1/trips/:tripId`
+- `GET /api/v1/trips/:tripId/members`
+- `GET /api/v1/trips/:tripId/invitations`
+- `GET /api/v1/trips/:tripId/share-links`
+
+欄位來源（DB）
+- Trip metadata：`trips.name/destination_text/start_date/end_date/timezone/currency/travelers_count/status/version`
+- Members：`trip_memberships.role/status/joined_at` + `users.email/display_name`
+- Invitations：`trip_invitations.invitee_email/role/status/expires_at/created_at`
+- Share links：`share_links.access_scope/expires_at/revoked_at/created_at`
+
+按鈕行為（後端）
+- `儲存旅程資料`：`PATCH /api/v1/trips/:tripId`（更新 `trips`，使用 `If-Match-Version`）
+- `新增成員`：`POST /api/v1/trips/:tripId/members`（寫入 `trip_memberships`）
+- `更新角色`：`PATCH /api/v1/trips/:tripId/members/:memberId`（更新 `trip_memberships.role`）
+- `移除成員`：`DELETE /api/v1/trips/:tripId/members/:memberId`（更新 `trip_memberships.status=removed` 或刪除）
+- `送出邀請`：`POST /api/v1/trips/:tripId/invitations`（寫入 `trip_invitations`）
+- `撤銷邀請`：`POST /api/v1/trips/:tripId/invitations/:invitationId/revoke`（更新 `trip_invitations.status=revoked`）
+- `建立分享連結`：`POST /api/v1/trips/:tripId/share-links`（寫入 `share_links`）
+- `撤銷分享連結`：`POST /api/v1/trips/:tripId/share-links/:linkId/revoke`（更新 `share_links.revoked_at`）
+
+### 3) `行程`（Itinerary）
+
+讀取 API  
+- `GET /api/v1/trips/:tripId/days`
+
+欄位來源（DB）
+- Day：`itinerary_days.id/trip_date/day_index/sort_order/version`
+- Item：`itinerary_items.title/item_type/start_at/end_at/all_day/sort_order/note/provider_place_id/lat/lng/estimated_cost_amount/estimated_cost_currency/version`
+- Place/route 快照：`place_snapshots.*`、`route_snapshots.*`（由 `itinerary_items.place_snapshot_id/route_snapshot_id` 連接）
+
+按鈕行為（後端）
+- `新增行程項目`：`POST /api/v1/trips/:tripId/items`（寫入 `itinerary_items`）
+- `編輯項目`：`PATCH /api/v1/trips/:tripId/items/:itemId`（更新 `itinerary_items`，需 version）
+- `刪除項目`：`DELETE /api/v1/trips/:tripId/items/:itemId`（soft delete：`deleted_at`）
+- `拖拉/上下移`：`POST /api/v1/trips/:tripId/items/reorder`（同交易更新多筆 `day_id/sort_order/version`）
+
+### 4) `預算`（Budget）
+
+讀取 API  
+- `GET /api/v1/trips/:tripId/budget`
+- `GET /api/v1/trips/:tripId/expenses`
+- `GET /api/v1/trips/:tripId/budget/rates`
+
+欄位來源（DB）
+- 預算主檔：`budget_profiles.total_budget/per_person_budget/per_day_budget/currency/category_plan/version`
+- 支出：`expenses.category/amount/currency/expense_at/note/linked_item_id/created_at/updated_at`
+
+按鈕行為（後端）
+- `儲存預算`：`PUT /api/v1/trips/:tripId/budget`（upsert `budget_profiles`）
+- `新增支出`：`POST /api/v1/trips/:tripId/expenses`（寫入 `expenses`）
+- `更新支出`：`PATCH /api/v1/trips/:tripId/expenses/:expenseId`（更新 `expenses`）
+- `刪除支出`：`DELETE /api/v1/trips/:tripId/expenses/:expenseId`（soft delete `deleted_at`）
+- `更新匯率`：`POST /api/v1/trips/:tripId/budget/rates/refresh`
+
+### 5) `地圖`（Map）
+
+讀取 API  
+- `GET /api/v1/maps/search`
+- `POST /api/v1/maps/routes`
+- `GET /api/v1/maps/places/:placeId`
+
+欄位來源（DB）
+- 地圖查詢結果預設不落地（provider response）
+- 當「加入行程」時，最終寫入 `itinerary_items`，必要時帶 `provider_place_id/lat/lng`
+
+按鈕行為（後端）
+- `估算路線`：`POST /api/v1/maps/routes`（讀 provider，不寫 DB）
+- `加入行程`：`POST /api/v1/trips/:tripId/items`（寫入 `itinerary_items`）
+
+### 6) `AI 規劃`（AI Planner）
+
+讀取 API  
+- `GET /api/v1/trips/:tripId/ai/plans`
+- `GET /api/v1/trips/:tripId/ai/plans/:planId`
+
+欄位來源（DB）
+- Request：`ai_plan_requests.status/prompt_tokens/completion_tokens/estimated_cost/failure_code/failure_message`
+- Draft：`ai_plan_drafts.title/status/draft_payload/summary_payload/version`
+- Validation：`ai_plan_validation_results.severity/rule_code/message/details`
+
+按鈕行為（後端）
+- `開始規劃`：`POST /api/v1/trips/:tripId/ai/plans`（寫 `ai_plan_requests`，完成後寫 `ai_plan_drafts`）
+- `採用草案`：`POST /api/v1/trips/:tripId/ai/plans/:planId/adopt`（依草案覆蓋 `itinerary_items`，必要時需 warning confirm）
+
+### 7) `收件匣`（Notifications）
+
+讀取 API  
+- `GET /api/v1/notifications`
+
+欄位來源（DB）
+- `notifications.id/type/title/body/link/read_at/created_at/payload`
+
+按鈕行為（後端）
+- `全部已讀`：`POST /api/v1/notifications/read-all`（更新 `notifications.read_at`）
+- `標記已讀`：`POST /api/v1/notifications/:notificationId/read`
+- `標記未讀`：`POST /api/v1/notifications/:notificationId/unread`
+- `清除已讀`：`POST /api/v1/notifications/cleanup-read`（刪除已讀）
+- `刪除通知`：`DELETE /api/v1/notifications/:notificationId`
+
+### 8) `設定`（Settings）
+
+讀取 API  
+- `GET /api/v1/users/me`
+- `GET /api/v1/users/me/preferences`
+- `GET /api/v1/users/me/notification-preferences`
+- `GET /api/v1/users/me/llm-providers`
+
+欄位來源（DB）
+- Profile：`users.display_name/locale/timezone/default_currency`
+- Preferences：`user_preferences.explicit_preferences/inferred_preferences/version`
+- Notification preferences：`user_preferences.explicit_preferences.notifications.*`（目前以 users 模組儲存策略為準）
+- LLM providers：`llm_provider_configs.provider/label/model/encrypted_key/is_active/created_at`
+
+按鈕行為（後端）
+- `儲存個人資料`：`PATCH /api/v1/users/me`
+- `儲存偏好`：`PUT /api/v1/users/me/preferences`
+- `儲存通知偏好`：`PUT /api/v1/users/me/notification-preferences`
+- `新增模型`：`POST /api/v1/users/me/llm-providers`
+- `移除模型`：`DELETE /api/v1/users/me/llm-providers/:providerId`
+- `刪除帳號`：`DELETE /api/v1/users/me`
+
+### 邊界個案（Menu 共通）
+- 無 trip：所有 `trips/:tripId/*` 前需由前端導向建立流程；後端回應應為 404/403，不回 500。
+- 版本衝突：Trip/Itinerary/Budget 更新統一回 409。
+- 權限不足：統一 403 + error envelope。
+- deep-link 已失效：通知 `link` 指向不存在 trip 時仍能正常開啟收件匣，不崩潰。
+
+### 資料結構（Go）
+
+```go
+type WorkspaceSummary struct {
+    UpcomingTrip     *trip                 `json:"upcomingTrip,omitempty"`
+    RecentActivities []notificationPreview `json:"recentActivities"`
+    QuickAccessTrips []trip                `json:"quickAccessTrips"`
+}
+```
+
+---
+
 ## BE-01｜API Gateway / HTTP Layer
 
 **模式**：REST 入口、中介軟體層、統一請求/回應處理

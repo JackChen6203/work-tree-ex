@@ -37,19 +37,24 @@ func getPool() *pgxpool.Pool {
 	return pool
 }
 
-func listNotificationsPostgres(ctx context.Context, unreadOnly bool, cursor string, limit int) ([]notification, error) {
+func listNotificationsPostgres(ctx context.Context, userID string, unreadOnly bool, cursor string, limit int) ([]notification, error) {
 	p := getPool()
 	if p == nil {
 		return nil, errors.New("postgres notifications store not configured")
+	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
 	}
 
 	query := `
 		SELECT id::text, type, title, body, COALESCE(link, ''), read_at, created_at
 		FROM notifications
 	`
-	args := []any{}
+	args := []any{userID}
+	query += " WHERE user_id = $1::uuid "
 	if unreadOnly {
-		query += "WHERE read_at IS NULL "
+		query += " AND read_at IS NULL "
 	}
 	query += "ORDER BY created_at DESC, id DESC"
 
@@ -103,17 +108,22 @@ func listNotificationsPostgres(ctx context.Context, unreadOnly bool, cursor stri
 	return items, nil
 }
 
-func markReadPostgres(ctx context.Context, notificationID string) error {
+func markReadPostgres(ctx context.Context, userID, notificationID string) error {
 	p := getPool()
 	if p == nil {
 		return errors.New("postgres notifications store not configured")
+	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
 	}
 
 	res, err := p.Exec(ctx, `
 		UPDATE notifications
 		SET read_at = $2
 		WHERE id = $1::uuid
-	`, notificationID, time.Now().UTC())
+		  AND user_id = $3::uuid
+	`, notificationID, time.Now().UTC(), userID)
 	if err != nil {
 		return err
 	}
@@ -123,17 +133,22 @@ func markReadPostgres(ctx context.Context, notificationID string) error {
 	return nil
 }
 
-func markUnreadPostgres(ctx context.Context, notificationID string) error {
+func markUnreadPostgres(ctx context.Context, userID, notificationID string) error {
 	p := getPool()
 	if p == nil {
 		return errors.New("postgres notifications store not configured")
+	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
 	}
 
 	res, err := p.Exec(ctx, `
 		UPDATE notifications
 		SET read_at = NULL
 		WHERE id = $1::uuid
-	`, notificationID)
+		  AND user_id = $2::uuid
+	`, notificationID, userID)
 	if err != nil {
 		return err
 	}
@@ -143,43 +158,58 @@ func markUnreadPostgres(ctx context.Context, notificationID string) error {
 	return nil
 }
 
-func markAllReadPostgres(ctx context.Context) error {
+func markAllReadPostgres(ctx context.Context, userID string) error {
 	p := getPool()
 	if p == nil {
 		return errors.New("postgres notifications store not configured")
+	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
 	}
 	_, err := p.Exec(ctx, `
 		UPDATE notifications
 		SET read_at = $1
 		WHERE read_at IS NULL
-	`, time.Now().UTC())
+		  AND user_id = $2::uuid
+	`, time.Now().UTC(), userID)
 	return err
 }
 
-func cleanupReadPostgres(ctx context.Context) (int, error) {
+func cleanupReadPostgres(ctx context.Context, userID string) (int, error) {
 	p := getPool()
 	if p == nil {
 		return 0, errors.New("postgres notifications store not configured")
 	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
+	}
 	res, err := p.Exec(ctx, `
 		DELETE FROM notifications
 		WHERE read_at IS NOT NULL
-	`)
+		  AND user_id = $1::uuid
+	`, userID)
 	if err != nil {
 		return 0, err
 	}
 	return int(res.RowsAffected()), nil
 }
 
-func deleteNotificationPostgres(ctx context.Context, notificationID string) error {
+func deleteNotificationPostgres(ctx context.Context, userID, notificationID string) error {
 	p := getPool()
 	if p == nil {
 		return errors.New("postgres notifications store not configured")
 	}
+	userID = stringsTrimOrDefault(userID, defaultNotificationUserID)
+	if _, err := uuid.Parse(userID); err != nil {
+		userID = defaultNotificationUserID
+	}
 	res, err := p.Exec(ctx, `
 		DELETE FROM notifications
 		WHERE id = $1::uuid
-	`, notificationID)
+		  AND user_id = $2::uuid
+	`, notificationID, userID)
 	if err != nil {
 		return err
 	}
