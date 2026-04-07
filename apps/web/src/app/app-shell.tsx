@@ -6,7 +6,6 @@ import { LoadingOverlay } from "../components/loading-overlay";
 import { LocaleSwitcher } from "../components/locale-switcher";
 import { NotificationBell } from "../components/notification-bell";
 import { ShellNav } from "../components/shell-nav";
-import { SyncStatusBar } from "../components/sync-status-bar";
 import { ToastRegion } from "../components/toast-region";
 import { OfflineBanner } from "../features/offline/offline-banner";
 import { useFcmPush } from "../features/notifications/use-fcm-push";
@@ -106,7 +105,6 @@ export function AppShell() {
             </div>
           </div>
         </header>
-        <SyncStatusBar />
         <main className="flex-1" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>

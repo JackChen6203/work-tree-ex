@@ -47,19 +47,19 @@ test("trip create -> itinerary edit -> budget setup flow", async ({ page }) => {
   await expect(page.getByText(/3,200/).first()).toBeVisible();
 });
 
-test("offline to online sync status transition", async ({ page }) => {
+test("offline to online connection toasts", async ({ page }) => {
   await installApiMocks(page, { authenticated: true });
 
   await page.goto("/");
   await page.evaluate(() => {
     window.dispatchEvent(new Event("offline"));
   });
-  await expect(page.getByText(/Offline|離線/i).first()).toBeVisible();
+  await expect(page.getByText(/Offline mode|已切換離線模式/i).first()).toBeVisible();
 
   await page.evaluate(() => {
     window.dispatchEvent(new Event("online"));
   });
-  await expect(page.getByText(/Online|線上/i).first()).toBeVisible();
+  await expect(page.getByText(/Connection restored|已恢復連線/i).first()).toBeVisible();
 });
 
 test("push notification mock (FCM foreground)", async ({ page }) => {
