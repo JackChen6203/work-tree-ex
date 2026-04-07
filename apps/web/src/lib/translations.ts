@@ -4,7 +4,7 @@ export const dictionaries = {
   "zh-TW": {
     // App
     "app.name": "旅行規劃",
-    "app.tagline": "離線優先 PWA",
+    "app.tagline": "協作旅行規劃",
 
     // Nav
     "nav.overview": "總覽",
@@ -19,17 +19,6 @@ export const dictionaries = {
     // Sync
     "sync.online": "線上",
     "sync.offline": "離線",
-    "sync.queue": "待同步佇列",
-    "sync.authoritative": "伺服器權威同步已啟用",
-    "sync.syncing": "同步中...",
-    "sync.serverChanges": "伺服器變更",
-    "sync.lastSync": "上次同步",
-    "sync.flushing": "送出中...",
-    "sync.flushNow": "立即送出佇列",
-    "sync.flushResult": "送出結果",
-    "sync.accepted": "成功",
-    "sync.conflicts": "衝突",
-    "sync.queueScopes": "佇列範圍",
     "sync.connectionRestored": "已恢復連線，正在同步...",
     "sync.offlineMode": "已切換離線模式，編輯將在恢復連線後同步。",
 
@@ -95,7 +84,7 @@ export const dictionaries = {
     "welcome.feature.1": "多人共享旅程與權限",
     "welcome.feature.2": "預算反推每日安排",
     "welcome.feature.3": "AI 草案採用前驗證",
-    "welcome.feature.4": "離線可用，連線後自動同步",
+    "welcome.feature.4": "恢復連線後順暢同步",
 
     // Common
     "common.guest": "訪客",
@@ -154,11 +143,11 @@ export const dictionaries = {
     "trip.name": "旅程名稱",
     "trip.departure": "出發地點",
     "trip.destination": "目的地",
-    "trip.destinationSearchHint": "可直接輸入，或從下方候選地點快速選取。",
-    "trip.destinationSearching": "正在搜尋地點...",
-    "trip.destinationNoMatch": "沒有找到完全符合的地點，可改用 Google Maps 或 Gemini。",
-    "trip.destinationCoord": "已定位座標：{lat}, {lng}",
-    "trip.destinationExternalHelp": "沒有您想要的地方嗎？可交由外部地圖或 AI 協助推薦。",
+    "trip.placeSearchHint": "可直接輸入，或從下方候選地點快速選取。",
+    "trip.placeSearching": "正在搜尋地點...",
+    "trip.placeNoMatch": "沒有找到完全符合的地點，可改用 Google Maps 或 Gemini。",
+    "trip.placeCoord": "已定位座標：{lat}, {lng}",
+    "trip.placeExternalHelp": "沒有您想要的地方嗎？可交由外部地圖或 AI 協助推薦。",
     "trip.openGoogleMaps": "前往 Google Maps",
     "trip.openGemini": "前往 Gemini",
     "trip.startDate": "開始日期",
@@ -492,7 +481,7 @@ export const dictionaries = {
   en: {
     // App
     "app.name": "Travel Planner",
-    "app.tagline": "Offline-first PWA",
+    "app.tagline": "Collaborative travel planning",
 
     // Nav
     "nav.overview": "Overview",
@@ -507,17 +496,6 @@ export const dictionaries = {
     // Sync
     "sync.online": "Online",
     "sync.offline": "Offline",
-    "sync.queue": "Sync queue",
-    "sync.authoritative": "Server sync enabled",
-    "sync.syncing": "Syncing...",
-    "sync.serverChanges": "Server changes",
-    "sync.lastSync": "Last sync",
-    "sync.flushing": "Flushing...",
-    "sync.flushNow": "Flush now",
-    "sync.flushResult": "Flush result",
-    "sync.accepted": "accepted",
-    "sync.conflicts": "conflicts",
-    "sync.queueScopes": "Queue scopes",
     "sync.connectionRestored": "Connection restored, syncing...",
     "sync.offlineMode": "Offline mode. Edits will sync when reconnected.",
 
@@ -583,7 +561,7 @@ export const dictionaries = {
     "welcome.feature.1": "Shared trips with role-based access",
     "welcome.feature.2": "Budget-driven daily planning",
     "welcome.feature.3": "Validation before AI draft adoption",
-    "welcome.feature.4": "Offline-first with auto resync",
+    "welcome.feature.4": "Works smoothly after reconnecting",
 
     // Common
     "common.guest": "Guest",
@@ -642,11 +620,11 @@ export const dictionaries = {
     "trip.name": "Trip name",
     "trip.departure": "Departure",
     "trip.destination": "Destination",
-    "trip.destinationSearchHint": "Type directly or pick a suggested place below.",
-    "trip.destinationSearching": "Searching places...",
-    "trip.destinationNoMatch": "No exact match found. Try Google Maps or Gemini.",
-    "trip.destinationCoord": "Pinned coordinates: {lat}, {lng}",
-    "trip.destinationExternalHelp": "Can't find your place? Use an external map or AI recommendation.",
+    "trip.placeSearchHint": "Type directly or pick a suggested place below.",
+    "trip.placeSearching": "Searching places...",
+    "trip.placeNoMatch": "No exact match found. Try Google Maps or Gemini.",
+    "trip.placeCoord": "Pinned coordinates: {lat}, {lng}",
+    "trip.placeExternalHelp": "Can't find your place? Use an external map or AI recommendation.",
     "trip.openGoogleMaps": "Open Google Maps",
     "trip.openGemini": "Open Gemini",
     "trip.startDate": "Start date",

@@ -10,7 +10,6 @@ export function AppLogo() {
       </div>
       <div>
         <p className="font-display text-lg font-bold text-ink">{t("app.name")}</p>
-        <p className="text-xs uppercase tracking-[0.24em] text-ink/50">{t("app.tagline")}</p>
       </div>
     </div>
   );
