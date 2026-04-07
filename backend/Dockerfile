@@ -31,6 +31,7 @@ RUN apk add --no-cache ca-certificates tzdata curl
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=builder /out/api /usr/local/bin/api
+COPY --from=builder /src/migrations /migrations
 
 USER appuser
 EXPOSE 8080
