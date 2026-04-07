@@ -1,5 +1,5 @@
 import { useSessionStore } from "../store/session-store";
-import { apiBaseUrl } from "./api";
+import { apiFetch } from "./api";
 import {
   clearOfflineExpiredData,
   deletePersistedMutation,
@@ -147,13 +147,8 @@ export async function replayPendingMutations(
 }
 
 async function executeQueuedMutation(item: MutationQueueItem) {
-  const url = item.endpoint.startsWith("http://") || item.endpoint.startsWith("https://")
-    ? item.endpoint
-    : `${apiBaseUrl}${item.endpoint}`;
-
-  const response = await fetch(url, {
+  const response = await apiFetch(item.endpoint, {
     method: item.method,
-    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       "Idempotency-Key": item.idempotencyKey,

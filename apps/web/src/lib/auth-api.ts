@@ -50,15 +50,10 @@ export function oauthStartUrl(provider: string) {
   return `${apiBaseUrl}/api/v1/auth/oauth/${provider}/start`;
 }
 
-export async function logout() {
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-    credentials: "include"
+export function logout() {
+  return apiRequest<void>("/api/v1/auth/logout", {
+    method: "POST"
   });
-
-  if (!response.ok) {
-    throw new Error(`Logout failed with status ${response.status}`);
-  }
 }
 
 // ---------- Redirect hint helpers ----------
@@ -71,4 +66,3 @@ export function getRedirectAfterLogin(): string | null {
 export function clearRedirectAfterLogin(): void {
   localStorage.removeItem(REDIRECT_KEY);
 }
-
