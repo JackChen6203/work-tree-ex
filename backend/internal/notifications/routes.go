@@ -22,6 +22,7 @@ type notification struct {
 	Title     string     `json:"title"`
 	Body      string     `json:"body"`
 	Link      string     `json:"link"`
+	TripID    *string    `json:"tripId,omitempty"`
 	ReadAt    *time.Time `json:"readAt,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
 }
@@ -118,7 +119,7 @@ func listNotifications(c *gin.Context) {
 			response.Error(c, http.StatusInternalServerError, perrors.CodeInternalError, "failed to list notifications", nil)
 			return
 		}
-		response.JSON(c, http.StatusOK, copyItems)
+		response.JSON(c, http.StatusOK, withTripContract(copyItems))
 		return
 	}
 
@@ -152,7 +153,7 @@ func listNotifications(c *gin.Context) {
 		}
 	}
 
-	response.JSON(c, http.StatusOK, copyItems)
+	response.JSON(c, http.StatusOK, withTripContract(copyItems))
 }
 
 func markRead(c *gin.Context) {
@@ -397,6 +398,7 @@ func triggerNotification(c *gin.Context) {
 				Title:     in.Title,
 				Body:      in.Body,
 				Link:      in.Link,
+				TripID:    extractTripIDFromNotificationLink(in.Link),
 				CreatedAt: now,
 			}
 			items = append(items, notif)
@@ -462,6 +464,37 @@ func triggerNotification(c *gin.Context) {
 		"channels":       channels,
 		"skipped":        false,
 	})
+}
+
+func withTripContract(items []notification) []notification {
+	out := make([]notification, 0, len(items))
+	for _, item := range items {
+		copyItem := item
+		if copyItem.TripID == nil {
+			copyItem.TripID = extractTripIDFromNotificationLink(copyItem.Link)
+		}
+		out = append(out, copyItem)
+	}
+	return out
+}
+
+func extractTripIDFromNotificationLink(link string) *string {
+	normalized := strings.TrimSpace(link)
+	if !strings.HasPrefix(normalized, "/trips/") {
+		return nil
+	}
+	tripID := strings.TrimPrefix(normalized, "/trips/")
+	if idx := strings.Index(tripID, "/"); idx >= 0 {
+		tripID = tripID[:idx]
+	}
+	if idx := strings.Index(tripID, "?"); idx >= 0 {
+		tripID = tripID[:idx]
+	}
+	tripID = strings.TrimSpace(tripID)
+	if tripID == "" {
+		return nil
+	}
+	return &tripID
 }
 
 func resolveDeliveryPrefs(userID, eventType string) DeliveryPrefs {

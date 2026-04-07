@@ -6,6 +6,7 @@ export interface NotificationItemApi {
   title: string;
   body: string;
   link: string;
+  tripId?: string;
   readAt?: string;
   createdAt?: string;
 }

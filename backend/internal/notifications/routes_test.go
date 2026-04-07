@@ -158,6 +158,9 @@ func TestListNotificationsPagination(t *testing.T) {
 	if len(secondPage.Data) != 2 || secondPage.Data[0].ID != "n-2" || secondPage.Data[1].ID != "n-3" {
 		t.Fatalf("expected n-2 and n-3 after cursor, got %+v", secondPage.Data)
 	}
+	if secondPage.Data[1].TripID == nil || *secondPage.Data[1].TripID != "t-1" {
+		t.Fatalf("expected n-3 tripId=t-1, got %+v", secondPage.Data[1].TripID)
+	}
 }
 
 func TestListNotificationsInvalidPagination(t *testing.T) {
