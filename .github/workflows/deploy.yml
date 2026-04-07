@@ -39,6 +39,8 @@ env:
   DEPLOY_USER: opc
   DEPLOY_PATH_STAGING: /home/opc/apps/work-tree-ex-staging
   DEPLOY_PATH_PRODUCTION: /home/opc/apps/work-tree-ex
+  STAGING_WEB_PORT: "18081"
+  STAGING_REDIS_PORT: "16380"
 
 jobs:
   verify-frontend:
@@ -163,10 +165,12 @@ jobs:
       - name: Deploy staging (rolling)
         env:
           DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
+          WEB_PORT: ${{ env.STAGING_WEB_PORT }}
+          REDIS_PORT: ${{ env.STAGING_REDIS_PORT }}
         run: |
           ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
             cd ${DEPLOY_PATH} &&
-            ./scripts/deploy/remote-deploy.sh rolling 0 ${DEPLOY_PATH}
+            WEB_PORT=${WEB_PORT} REDIS_PORT=${REDIS_PORT} ./scripts/deploy/remote-deploy.sh rolling 0 ${DEPLOY_PATH}
           "
 
   migrate-production:
