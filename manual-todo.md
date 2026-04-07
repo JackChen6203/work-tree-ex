@@ -18,7 +18,7 @@
 
 - [ ] Add `STAGING_SSH_KEY` (optional, fallback to `ORACLE_SSH_KEY`).
 - [ ] Add `STAGING_APP_ENV_FILE` (optional, fallback to `APP_ENV_FILE`).
-- [ ] Add `STAGING_MIGRATE_DATABASE_URL` (optional, fallback to `MIGRATE_DATABASE_URL`).
+- [ ] Add `STAGING_MIGRATE_DATABASE_URL` (optional; staging migrations are skipped when empty).
 - [ ] Add `PRODUCTION_SSH_KEY` (optional, fallback to `ORACLE_SSH_KEY`).
 - [ ] Add `PRODUCTION_APP_ENV_FILE` (optional, fallback to `APP_ENV_FILE`).
 - [ ] Add `PRODUCTION_MIGRATE_DATABASE_URL` (optional, fallback to `MIGRATE_DATABASE_URL`).

@@ -67,7 +67,7 @@ Recommended per environment:
   - `PRODUCTION_APP_ENV_FILE`
   - `PRODUCTION_MIGRATE_DATABASE_URL`
 
-If staging/production-specific secrets are not set, workflow falls back to the existing production secret names. Prefer `STAGING_MIGRATE_DATABASE_URL` for staging so push deploys do not touch the production migration connection.
+If staging/production-specific SSH or app env secrets are not set, workflow falls back to the existing production secret names. Staging migrations only run when `STAGING_MIGRATE_DATABASE_URL` is configured; otherwise they are skipped so push deploys do not touch the production/shared migration connection. Production migrations can still fall back to `MIGRATE_DATABASE_URL`.
 
 ## Rollback
 

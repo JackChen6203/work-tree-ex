@@ -95,7 +95,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check staging migration configuration
+        id: staging-migration
+        env:
+          STAGING_MIGRATE_DATABASE_URL: ${{ secrets.STAGING_MIGRATE_DATABASE_URL }}
+        run: |
+          if [ -z "$STAGING_MIGRATE_DATABASE_URL" ]; then
+            echo "::warning::STAGING_MIGRATE_DATABASE_URL is not configured; skipping staging migrations to avoid using the production/shared MIGRATE_DATABASE_URL"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Write deploy SSH key
+        if: steps.staging-migration.outputs.enabled == 'true'
         run: |
           mkdir -p ~/.ssh
           SSH_KEY='${{ secrets.STAGING_SSH_KEY }}'
@@ -108,6 +121,7 @@ jobs:
           ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
       - name: Stop staging app services before migration
+        if: steps.staging-migration.outputs.enabled == 'true'
         env:
           DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
         run: |
@@ -121,25 +135,17 @@ jobs:
           "
 
       - name: Install golang-migrate
+        if: steps.staging-migration.outputs.enabled == 'true'
         run: |
           curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
           sudo mv migrate /usr/local/bin/migrate
 
       - name: Run migrations (staging)
+        if: steps.staging-migration.outputs.enabled == 'true'
         env:
           STAGING_MIGRATE_DATABASE_URL: ${{ secrets.STAGING_MIGRATE_DATABASE_URL }}
-          FALLBACK_MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
         run: |
-          DB_URL="$STAGING_MIGRATE_DATABASE_URL"
-          if [ -z "$DB_URL" ]; then
-            echo "::warning::STAGING_MIGRATE_DATABASE_URL is not configured; falling back to MIGRATE_DATABASE_URL"
-            DB_URL="$FALLBACK_MIGRATE_DATABASE_URL"
-          fi
-          if [ -z "$DB_URL" ]; then
-            echo "::error::STAGING_MIGRATE_DATABASE_URL or MIGRATE_DATABASE_URL must be configured for staging migrations"
-            exit 1
-          fi
-          MIGRATE_DATABASE_URL="$DB_URL" ./scripts/migrate.sh up
+          MIGRATE_DATABASE_URL="$STAGING_MIGRATE_DATABASE_URL" ./scripts/migrate.sh up
 
   deploy-staging:
     if: |

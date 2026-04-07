@@ -186,7 +186,7 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `MIGRATE_DATABASE_URL` | Yes for external production DB | `deploy.yml` | Full Postgres migration URL used by GitHub Actions before deploy |
 | `STAGING_SSH_KEY` | Optional | `deploy.yml` staging job | Overrides SSH key for staging |
 | `STAGING_APP_ENV_FILE` | Optional | `deploy.yml` staging job | Overrides staging runtime `.env` body |
-| `STAGING_MIGRATE_DATABASE_URL` | Optional | `deploy.yml` staging migration job | Overrides staging migration DB URL |
+| `STAGING_MIGRATE_DATABASE_URL` | Optional | `deploy.yml` staging migration job | Enables staging migrations. When empty, staging migrations are skipped instead of falling back to the shared migration URL. |
 | `PRODUCTION_SSH_KEY` | Optional | `deploy.yml` production/rollback job | Overrides SSH key for production |
 | `PRODUCTION_APP_ENV_FILE` | Optional | `deploy.yml` production job | Overrides production runtime `.env` body |
 | `PRODUCTION_MIGRATE_DATABASE_URL` | Optional | `deploy.yml` production migration job | Overrides production migration DB URL |
@@ -385,7 +385,7 @@ For environment-specific migration URLs:
 - staging: `STAGING_MIGRATE_DATABASE_URL`
 - production: `PRODUCTION_MIGRATE_DATABASE_URL`
 
-If these are not provided, workflow falls back to `MIGRATE_DATABASE_URL`. Prefer setting `STAGING_MIGRATE_DATABASE_URL` when staging uses its own database; otherwise staging push deploys use the shared migration URL.
+Production deploys fall back to `MIGRATE_DATABASE_URL` when `PRODUCTION_MIGRATE_DATABASE_URL` is not provided. Staging deploys do not fall back to `MIGRATE_DATABASE_URL`; set `STAGING_MIGRATE_DATABASE_URL` when staging should run migrations.
 
 RLS setup notes:
 

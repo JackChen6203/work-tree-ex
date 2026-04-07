@@ -70,7 +70,7 @@
 1. 到同一 Secrets 頁面建立上述 key：
    [https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions](https://github.com/JackChen6203/work-tree-ex/settings/secrets/actions)
 2. staging 與 production 使用不同主機金鑰與不同 DB URL。
-3. 若不設定，workflow 會 fallback 到 `ORACLE_SSH_KEY / APP_ENV_FILE / MIGRATE_DATABASE_URL`。
+3. 若不設定 staging/prod 專用 SSH key 或 app env，workflow 會 fallback 到 `ORACLE_SSH_KEY / APP_ENV_FILE`。`PRODUCTION_MIGRATE_DATABASE_URL` 可 fallback 到 `MIGRATE_DATABASE_URL`；`STAGING_MIGRATE_DATABASE_URL` 不設定時 staging migration 會略過。
 
 ---
 
@@ -210,4 +210,3 @@ docker network ls
    - `target=rollback`
    - `rollback_ref` 可先留空（使用 previous successful sha）
 2. 觀察 workflow 完成且 `/healthz` 正常。
-
