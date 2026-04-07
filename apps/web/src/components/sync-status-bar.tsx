@@ -25,6 +25,7 @@ export function SyncStatusBar() {
       }),
     [flushMutation.data, pendingMutationRecords, syncData?.changedDays, syncData?.changedNotifications, syncData?.changedTrips]
   );
+  const syncStatusText = syncSnapshot.changedTotal > 0 ? `${t("sync.cloudUpdates")}: ${syncSnapshot.changedTotal}` : t("sync.upToDate");
 
   const flushNow = async () => {
     if (!primaryTripId) {
@@ -50,10 +51,10 @@ export function SyncStatusBar() {
         <StatusPill tone={isOnline ? "success" : "danger"}>{isOnline ? t("sync.online") : t("sync.offline")}</StatusPill>
         {pendingMutations > 0 ? (
           <span>
-            {t("sync.queue")}: {pendingMutations}
+            {t("sync.pendingUploads")}: {pendingMutations}
           </span>
         ) : null}
-        <span>{syncLoading ? t("sync.syncing") : `${t("sync.serverChanges")}: ${syncSnapshot.changedTotal}`}</span>
+        <span>{syncLoading ? t("sync.syncing") : syncStatusText}</span>
         {syncData?.serverTime ? <span>{t("sync.lastSync")}: {new Date(syncData.serverTime).toLocaleTimeString()}</span> : null}
         {pendingMutations > 0 ? (
           <button
