@@ -130,3 +130,13 @@ test("menu navigation flow after trip creation", async ({ page }) => {
   await page.getByRole("link", { name: /Settings|設定/i }).click();
   await expect(page).toHaveURL(/\/settings$/);
 });
+
+test("menu routes to create wizard when no trip exists", async ({ page }) => {
+  await installApiMocks(page, { authenticated: true });
+
+  await page.goto("/");
+  await page.getByRole("link", { name: /Trip|旅程/i }).click();
+  await expect(page).toHaveURL(/\/\?openCreateTrip=1|\/$/);
+  await expect(page.locator('input[name="name"]')).toBeVisible();
+  await expect(page.getByText(/Step 1/i)).toBeVisible();
+});
