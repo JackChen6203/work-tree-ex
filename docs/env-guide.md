@@ -81,7 +81,7 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `APP_ENV` | Yes | API, worker | `dev`, `staging`, `prod` |
 | `TRIPS_STORE` | Yes | API, worker | `postgres` for real persistence, `memory` for quick local API-only dev |
 | `RUNTIME_MODE` | No | API, worker | `single` (default, single-host priority) or `distributed` (enable Redis-backed distributed features). |
-| `AUTO_RUN_MIGRATIONS` | No | API | Controls API startup migrations. Defaults to `true` outside `APP_ENV=prod` and `false` in `prod`; production deploys should use the deployment migration job. |
+| `AUTO_RUN_MIGRATIONS` | No | API | Controls API startup migrations. The API binary defaults to `true` outside `APP_ENV=prod`, but the deployed compose service defaults this to `false` so CI/CD migration jobs are the single migration runner. |
 | `HTTP_HOST` | Yes | API | Usually `0.0.0.0` |
 | `HTTP_PORT` | Yes | API | Default `8080` |
 | `HTTP_READ_TIMEOUT_SEC` | No | API | Default `10` |
@@ -385,7 +385,7 @@ For environment-specific migration URLs:
 - staging: `STAGING_MIGRATE_DATABASE_URL`
 - production: `PRODUCTION_MIGRATE_DATABASE_URL`
 
-If these are not provided, workflow falls back to `MIGRATE_DATABASE_URL`.
+If these are not provided, workflow falls back to `MIGRATE_DATABASE_URL`. Prefer setting `STAGING_MIGRATE_DATABASE_URL` when staging uses its own database; otherwise staging push deploys use the shared migration URL.
 
 RLS setup notes:
 

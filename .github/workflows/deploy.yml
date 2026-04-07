@@ -42,6 +42,10 @@ env:
   STAGING_WEB_PORT: "18081"
   STAGING_REDIS_PORT: "16380"
 
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'staging' }}
+  cancel-in-progress: false
+
 jobs:
   verify-frontend:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.target != 'rollback'
@@ -91,6 +95,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Write deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          SSH_KEY='${{ secrets.STAGING_SSH_KEY }}'
+          if [ -z "$SSH_KEY" ]; then
+            SSH_KEY='${{ secrets.ORACLE_SSH_KEY }}'
+          fi
+          test -n "$SSH_KEY"
+          printf "%s" "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Stop staging app services before migration
+        env:
+          DEPLOY_PATH: ${{ env.DEPLOY_PATH_STAGING }}
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "
+            if [ -d ${DEPLOY_PATH}/.git ]; then
+              cd ${DEPLOY_PATH} &&
+              docker compose stop api worker || true;
+            else
+              echo 'staging checkout not found; skipping service stop';
+            fi
+          "
+
       - name: Install golang-migrate
         run: |
           curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
@@ -103,6 +132,7 @@ jobs:
         run: |
           DB_URL="$STAGING_MIGRATE_DATABASE_URL"
           if [ -z "$DB_URL" ]; then
+            echo "::warning::STAGING_MIGRATE_DATABASE_URL is not configured; falling back to MIGRATE_DATABASE_URL"
             DB_URL="$FALLBACK_MIGRATE_DATABASE_URL"
           fi
           if [ -z "$DB_URL" ]; then

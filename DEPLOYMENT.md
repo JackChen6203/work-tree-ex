@@ -39,12 +39,13 @@ Workflow: `.github/workflows/deploy.yml`
 
 - `push main`:
   - verify frontend
-  - run staging migration
+  - stop staging `api`/`worker`, then run staging migration
   - deploy staging (rolling)
 - `workflow_dispatch`:
   - `target=production` with strategy `rolling` / `blue-green` / `canary`
   - `target=rollback` for emergency rollback
 
+Deployment runs are serialized by workflow concurrency so two migrations/deploys do not race on the same database and host.
 For single-host deployment, `blue-green` / `canary` use a candidate stack on alternate port first, then promote to primary stack after health checks.
 
 ## Required GitHub Actions secrets
@@ -66,7 +67,7 @@ Recommended per environment:
   - `PRODUCTION_APP_ENV_FILE`
   - `PRODUCTION_MIGRATE_DATABASE_URL`
 
-If staging/production-specific secrets are not set, workflow falls back to the existing production secret names.
+If staging/production-specific secrets are not set, workflow falls back to the existing production secret names. Prefer `STAGING_MIGRATE_DATABASE_URL` for staging so push deploys do not touch the production migration connection.
 
 ## Rollback
 
