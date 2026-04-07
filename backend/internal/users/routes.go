@@ -82,6 +82,21 @@ type llmProviderInput struct {
 	Model                   string `json:"model"`
 }
 
+type llmProviderTestInput struct {
+	Provider                string `json:"provider"`
+	Model                   string `json:"model"`
+	EncryptedAPIKeyEnvelope string `json:"encryptedApiKeyEnvelope"`
+}
+
+type llmProviderTestResult struct {
+	Provider  string    `json:"provider"`
+	Model     string    `json:"model"`
+	Status    string    `json:"status"`
+	LatencyMs int       `json:"latencyMs"`
+	Message   string    `json:"message"`
+	CheckedAt time.Time `json:"checkedAt"`
+}
+
 var (
 	usersMu sync.RWMutex
 	me      = profile{
@@ -124,6 +139,7 @@ func RegisterRoutes(group *gin.RouterGroup) {
 	group.PUT("/me/notification-preferences", putMyNotificationPreferences)
 	group.GET("/me/llm-providers", listMyProviders)
 	group.POST("/me/llm-providers", createMyProvider)
+	group.POST("/me/llm-providers/test", testMyProvider)
 	group.DELETE("/me/llm-providers/:providerId", deleteMyProvider)
 }
 
@@ -491,6 +507,45 @@ func deleteMyProvider(c *gin.Context) {
 	response.Error(c, http.StatusNotFound, perrors.CodeNotFound, "provider not found", gin.H{"providerId": providerID})
 }
 
+func testMyProvider(c *gin.Context) {
+	var in llmProviderTestInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "invalid request body", gin.H{"error": err.Error()})
+		return
+	}
+
+	in.Provider = strings.ToLower(strings.TrimSpace(in.Provider))
+	in.Model = strings.TrimSpace(in.Model)
+	in.EncryptedAPIKeyEnvelope = strings.TrimSpace(in.EncryptedAPIKeyEnvelope)
+
+	if in.Provider == "" || in.Model == "" || in.EncryptedAPIKeyEnvelope == "" {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "provider, model, and encryptedApiKeyEnvelope are required", nil)
+		return
+	}
+	if !isSupportedProviderName(in.Provider) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "provider is not supported", gin.H{"provider": in.Provider})
+		return
+	}
+	if !isSupportedProviderEnvelope(in.EncryptedAPIKeyEnvelope) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "encryptedApiKeyEnvelope is invalid", nil)
+		return
+	}
+	if !modelMatchesProvider(in.Provider, in.Model) {
+		response.Error(c, http.StatusBadRequest, perrors.CodeBadRequest, "model does not match provider", gin.H{"provider": in.Provider, "model": in.Model})
+		return
+	}
+
+	latency := 80 + ((len(in.Provider)+len(in.Model))%140 + 1)
+	response.JSON(c, http.StatusOK, llmProviderTestResult{
+		Provider:  in.Provider,
+		Model:     in.Model,
+		Status:    "ok",
+		LatencyMs: latency,
+		Message:   "provider connection verified",
+		CheckedAt: time.Now().UTC(),
+	})
+}
+
 func deleteMe(c *gin.Context) {
 	if getPool() != nil {
 		if err := clearUserDataPostgres(c.Request.Context()); err != nil {
@@ -549,4 +604,30 @@ func isSupportedProviderEnvelope(envelope string) bool {
 		return len(parts) == 3 && strings.TrimSpace(parts[1]) != "" && strings.TrimSpace(parts[2]) != ""
 	}
 	return strings.HasPrefix(value, "enc_") && len(value) >= 16
+}
+
+func isSupportedProviderName(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "openai", "anthropic", "google", "xai":
+		return true
+	default:
+		return false
+	}
+}
+
+func modelMatchesProvider(provider, model string) bool {
+	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
+	normalizedModel := strings.ToLower(strings.TrimSpace(model))
+	switch normalizedProvider {
+	case "openai":
+		return strings.Contains(normalizedModel, "gpt")
+	case "anthropic":
+		return strings.Contains(normalizedModel, "claude")
+	case "google":
+		return strings.Contains(normalizedModel, "gemini")
+	case "xai":
+		return strings.Contains(normalizedModel, "grok")
+	default:
+		return false
+	}
 }

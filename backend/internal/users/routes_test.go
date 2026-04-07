@@ -235,6 +235,56 @@ func TestDeleteProvider(t *testing.T) {
 	}
 }
 
+func TestTestMyProvider(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"provider":                "openai",
+		"model":                   "gpt-4.1-mini",
+		"encryptedApiKeyEnvelope": "enc_test_1234567890",
+	}
+	b, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/llm-providers/test", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+			Status   string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Data.Provider != "openai" || resp.Data.Model != "gpt-4.1-mini" || resp.Data.Status != "ok" {
+		t.Fatalf("unexpected payload: %+v", resp.Data)
+	}
+}
+
+func TestTestMyProviderRejectsMismatchedModel(t *testing.T) {
+	r := newUsersRouter()
+
+	payload := map[string]any{
+		"provider":                "openai",
+		"model":                   "claude-3-7-sonnet",
+		"encryptedApiKeyEnvelope": "enc_test_1234567890",
+	}
+	b, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/llm-providers/test", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGetAndPutNotificationPreferences(t *testing.T) {
 	r := newUsersRouter()
 

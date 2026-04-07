@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteMyAccount, getMyNotificationPreferences, listMyLlmProviders, patchMyProfile, putMyNotificationPreferences } from "./users-api";
+import {
+  deleteMyAccount,
+  getMyNotificationPreferences,
+  listMyLlmProviders,
+  patchMyProfile,
+  putMyNotificationPreferences,
+  testMyLlmProviderConnection
+} from "./users-api";
 
 describe("users api", () => {
   beforeEach(() => {
@@ -115,6 +122,43 @@ describe("users api", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8080/api/v1/users/me/llm-providers", expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8080/api/v1/users/me/llm-providers?provider=openai", expect.anything());
+  });
+
+  it("tests llm provider connection", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          provider: "openai",
+          model: "gpt-4.1-mini",
+          status: "ok",
+          latencyMs: 120,
+          message: "provider connection verified",
+          checkedAt: "2026-04-07T07:10:00Z"
+        }
+      })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await testMyLlmProviderConnection({
+      provider: "openai",
+      label: "Personal",
+      model: "gpt-4.1-mini",
+      encryptedApiKeyEnvelope: "enc_test_1234567890"
+    });
+
+    expect(result.status).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/users/me/llm-providers/test",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "openai",
+          model: "gpt-4.1-mini",
+          encryptedApiKeyEnvelope: "enc_test_1234567890"
+        })
+      })
+    );
   });
 
   it("deletes current account", async () => {

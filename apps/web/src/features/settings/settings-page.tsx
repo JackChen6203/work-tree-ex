@@ -10,6 +10,7 @@ import {
   useMyNotificationPreferencesQuery,
   useMyPreferencesQuery,
   useMyProfileQuery,
+  useTestMyLlmProviderConnectionMutation,
   usePutMyNotificationPreferencesMutation,
   usePatchMyProfileMutation,
   usePutMyPreferencesMutation
@@ -59,7 +60,6 @@ export function SettingsPage() {
   const { t } = useI18n();
   const pushToast = useUiStore((state) => state.pushToast);
   const openConfirmModal = useUiStore((state) => state.openConfirmModal);
-  const [testingConnection, setTestingConnection] = useState(false);
   const [linkedProviders, setLinkedProviders] = useState<string[]>([]);
 
   const { data: profile, isLoading: profileLoading } = useMyProfileQuery();
@@ -71,6 +71,7 @@ export function SettingsPage() {
   const putPreferences = usePutMyPreferencesMutation();
   const putNotificationPreferences = usePutMyNotificationPreferencesMutation();
   const createProvider = useCreateMyLlmProviderMutation();
+  const testProviderConnection = useTestMyLlmProviderConnectionMutation();
   const deleteProvider = useDeleteMyLlmProviderMutation();
   const deleteMyAccount = useDeleteMyAccountMutation();
   const clearUser = useSessionStore((state) => state.clearUser);
@@ -229,12 +230,15 @@ export function SettingsPage() {
     });
   };
 
-  const onTestConnection = async () => {
-    setTestingConnection(true);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setTestingConnection(false);
-    pushToast(t("settings.testSuccess"));
-  };
+  const onTestConnection = providerForm.handleSubmit(async (values) => {
+    try {
+      await testProviderConnection.mutateAsync(values);
+      pushToast(t("settings.testSuccess"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("settings.testFailed");
+      pushToast(message || t("settings.testFailed"));
+    }
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -470,11 +474,11 @@ export function SettingsPage() {
             </button>
             <button
               className="rounded-full border border-ink/20 px-5 py-3 text-sm font-medium text-ink transition hover:bg-sand"
-              disabled={testingConnection}
+              disabled={testProviderConnection.isPending}
               onClick={() => { void onTestConnection(); }}
               type="button"
             >
-              {testingConnection ? t("settings.testing") : t("settings.testConnection")}
+              {testProviderConnection.isPending ? t("settings.testing") : t("settings.testConnection")}
             </button>
           </div>
         </form>

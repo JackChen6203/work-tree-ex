@@ -72,6 +72,15 @@ export interface CreateLlmProviderInput {
   encryptedApiKeyEnvelope: string;
 }
 
+export interface TestLlmProviderConnectionResult {
+  provider: string;
+  model: string;
+  status: "ok";
+  latencyMs: number;
+  message: string;
+  checkedAt: string;
+}
+
 export function getMyProfile() {
   return apiRequest<UserProfile>("/api/v1/users/me");
 }
@@ -117,6 +126,17 @@ export function createMyLlmProvider(input: CreateLlmProviderInput) {
   return apiRequest<LlmProviderConfig>("/api/v1/users/me/llm-providers", {
     method: "POST",
     body: JSON.stringify(input)
+  });
+}
+
+export function testMyLlmProviderConnection(input: CreateLlmProviderInput) {
+  return apiRequest<TestLlmProviderConnectionResult>("/api/v1/users/me/llm-providers/test", {
+    method: "POST",
+    body: JSON.stringify({
+      provider: input.provider,
+      model: input.model,
+      encryptedApiKeyEnvelope: input.encryptedApiKeyEnvelope
+    })
   });
 }
 

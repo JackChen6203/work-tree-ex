@@ -23,6 +23,7 @@ import {
   getMyProfile,
   listMyLlmProviders,
   patchMyProfile,
+  testMyLlmProviderConnection,
   putMyNotificationPreferences,
   putMyPreferences
 } from "./users-api";
@@ -606,6 +607,12 @@ export function useCreateMyLlmProviderMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", "llm-providers"] });
     }
+  });
+}
+
+export function useTestMyLlmProviderConnectionMutation() {
+  return useMutation({
+    mutationFn: testMyLlmProviderConnection
   });
 }
 

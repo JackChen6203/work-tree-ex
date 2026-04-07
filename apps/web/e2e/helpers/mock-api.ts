@@ -751,6 +751,21 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
         return;
       }
 
+      if (path === "/api/v1/users/me/llm-providers/test" && method === "POST") {
+        const body = await parseBody(route);
+        await route.fulfill(
+          json({
+            provider: String(body.provider ?? "openai"),
+            model: String(body.model ?? "gpt-4.1-mini"),
+            status: "ok",
+            latencyMs: 120,
+            message: "provider connection verified",
+            checkedAt: new Date().toISOString()
+          })
+        );
+        return;
+      }
+
       if (method === "PUT" || method === "PATCH" || method === "POST" || method === "DELETE") {
         await route.fulfill(json({}));
         return;
