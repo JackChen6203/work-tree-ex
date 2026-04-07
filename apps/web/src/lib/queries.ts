@@ -32,6 +32,10 @@ import type { AddTripMemberInput, CreateTripInput, PatchTripInput } from "./trip
 import { trackQueuedMutation } from "./mutation-queue";
 import { getWorkspaceSummary } from "./workspace-api";
 
+function invalidateWorkspaceSummary(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["workspace-summary"] });
+}
+
 export function useTripsQuery() {
   return useQuery({
     queryKey: ["trips"],
@@ -61,6 +65,7 @@ export function useCreateTripMutation() {
     mutationFn: (input: CreateTripInput) => trackQueuedMutation("trips.create", () => createTrip(input)),
     onSuccess: (trip) => {
       queryClient.invalidateQueries({ queryKey: ["trips"] });
+      invalidateWorkspaceSummary(queryClient);
       queryClient.setQueryData(["trips", trip.id], trip);
     }
   });
@@ -73,6 +78,7 @@ export function usePatchTripMutation(tripId: string) {
     mutationFn: ({ version, input }: { version: number; input: PatchTripInput }) => trackQueuedMutation("trips.patch", () => patchTrip(tripId, version, input)),
     onSuccess: (trip) => {
       queryClient.invalidateQueries({ queryKey: ["trips"] });
+      invalidateWorkspaceSummary(queryClient);
       queryClient.setQueryData(["trips", trip.id], trip);
     }
   });
@@ -368,6 +374,7 @@ export function useMarkNotificationReadMutation() {
     mutationFn: (notificationId: string) => trackQueuedMutation("notifications.read", () => markNotificationRead(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      invalidateWorkspaceSummary(queryClient);
     }
   });
 }
@@ -379,6 +386,7 @@ export function useMarkNotificationUnreadMutation() {
     mutationFn: (notificationId: string) => trackQueuedMutation("notifications.unread", () => markNotificationUnread(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      invalidateWorkspaceSummary(queryClient);
     }
   });
 }
@@ -390,6 +398,7 @@ export function useMarkAllNotificationsReadMutation() {
     mutationFn: () => trackQueuedMutation("notifications.read-all", () => markAllNotificationsRead()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      invalidateWorkspaceSummary(queryClient);
     }
   });
 }
@@ -401,6 +410,7 @@ export function useDeleteNotificationMutation() {
     mutationFn: (notificationId: string) => trackQueuedMutation("notifications.delete", () => deleteNotification(notificationId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      invalidateWorkspaceSummary(queryClient);
     }
   });
 }
@@ -412,6 +422,7 @@ export function useCleanupReadNotificationsMutation() {
     mutationFn: () => trackQueuedMutation("notifications.cleanup-read", () => cleanupReadNotifications()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      invalidateWorkspaceSummary(queryClient);
     }
   });
 }
