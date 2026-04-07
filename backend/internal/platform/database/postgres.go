@@ -20,6 +20,9 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, err
 	poolCfg.MinConns = int32(cfg.MaxIdleConns)
 	poolCfg.MaxConnLifetime = cfg.ConnMaxLifetime
 	poolCfg.MaxConnIdleTime = 5 * time.Minute
+	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	poolCfg.ConnConfig.StatementCacheCapacity = 0
+	poolCfg.ConnConfig.DescriptionCacheCapacity = 0
 	if role := strings.TrimSpace(cfg.AppRole); role != "" {
 		poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 			_, err := conn.Exec(ctx, "SELECT set_config('app.role', $1, false)", role)

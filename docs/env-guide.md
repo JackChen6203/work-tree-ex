@@ -81,6 +81,7 @@ These are not read from the app runtime `.env`. Set them in `terraform.tfvars` o
 | `APP_ENV` | Yes | API, worker | `dev`, `staging`, `prod` |
 | `TRIPS_STORE` | Yes | API, worker | `postgres` for real persistence, `memory` for quick local API-only dev |
 | `RUNTIME_MODE` | No | API, worker | `single` (default, single-host priority) or `distributed` (enable Redis-backed distributed features). |
+| `AUTO_RUN_MIGRATIONS` | No | API | Controls API startup migrations. Defaults to `true` outside `APP_ENV=prod` and `false` in `prod`; production deploys should use the deployment migration job. |
 | `HTTP_HOST` | Yes | API | Usually `0.0.0.0` |
 | `HTTP_PORT` | Yes | API | Default `8080` |
 | `HTTP_READ_TIMEOUT_SEC` | No | API | Default `10` |

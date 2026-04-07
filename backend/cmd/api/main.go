@@ -47,9 +47,13 @@ func main() {
 	}
 
 	if cfg.TripsStore == "postgres" {
-		if err := database.RunMigrations(ctx, cfg.Database); err != nil {
-			logger.Error("failed to run database migrations", "error", err)
-			os.Exit(1)
+		if autoRunMigrations(cfg.Environment) {
+			if err := database.RunMigrations(ctx, cfg.Database); err != nil {
+				logger.Error("failed to run database migrations", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			logger.Info("database migrations skipped during api startup")
 		}
 		pool, err := database.Connect(ctx, cfg.Database)
 		if err != nil {
@@ -117,6 +121,10 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func autoRunMigrations(environment string) bool {
+	return getEnvBool("AUTO_RUN_MIGRATIONS", !strings.EqualFold(strings.TrimSpace(environment), "prod"))
 }
 
 func getEnvBool(key string, fallback bool) bool {
