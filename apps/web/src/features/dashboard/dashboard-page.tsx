@@ -47,12 +47,15 @@ export function DashboardPage() {
   const pushToast = useUiStore((state) => state.pushToast);
   const [showForm, setShowForm] = useState(false);
   const [wizardStep, setWizardStep] = useState<TripWizardStep>(1);
+  const [departureKeyword, setDepartureKeyword] = useState("");
   const [destinationKeyword, setDestinationKeyword] = useState("");
+  const [selectedDeparturePoint, setSelectedDeparturePoint] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedDestinationPoint, setSelectedDestinationPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [coverPreviewDataUrl, setCoverPreviewDataUrl] = useState<string | null>(null);
   const [tripCoverById, setTripCoverById] = useState<Record<string, string>>(() => listTripCoverImages());
   const { data: trips = [], isLoading, error } = useTripsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
+  const { data: departureCandidates = [], isFetching: isDepartureSearching } = useMapPlacesQuery(departureKeyword);
   const { data: destinationCandidates = [], isFetching: isDestinationSearching } = useMapPlacesQuery(destinationKeyword);
   const createTrip = useCreateTripMutation();
   const form = useForm<CreateTripFormValues>({
@@ -70,10 +73,14 @@ export function DashboardPage() {
       travelersCount: 2
     }
   });
+  const departureValue = form.watch("departureText");
   const destinationValue = form.watch("destinationText");
   const paceValue = form.watch("pace");
+  const departureSuggestions = useMemo(() => departureCandidates.slice(0, 6), [departureCandidates]);
   const destinationSuggestions = useMemo(() => destinationCandidates.slice(0, 6), [destinationCandidates]);
+  const departureSearchActive = departureValue.trim().length > 0;
   const destinationSearchActive = destinationValue.trim().length > 0;
+  const departureField = form.register("departureText");
   const destinationField = form.register("destinationText");
   const { formState: { errors } } = form;
   const recentActivities = notifications.slice(0, 4);
@@ -182,7 +189,9 @@ export function DashboardPage() {
       pace: "balanced",
       travelersCount: 2
     });
+    setDepartureKeyword("");
     setDestinationKeyword("");
+    setSelectedDeparturePoint(null);
     setSelectedDestinationPoint(null);
     setCoverPreviewDataUrl(null);
     setWizardStep(1);
@@ -246,8 +255,73 @@ export function DashboardPage() {
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-ink">{t("trip.departure")}</span>
-                  <input className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3" {...form.register("departureText")} />
+                  <input
+                    className="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3"
+                    {...departureField}
+                    onChange={(event) => {
+                      departureField.onChange(event);
+                      const value = event.target.value.trim();
+                      setDepartureKeyword(value);
+                      setSelectedDeparturePoint(null);
+                    }}
+                  />
                   {errors.departureText ? <p className="mt-1 text-xs text-coral">{msgs[errors.departureText.message ?? ""] ?? errors.departureText.message}</p> : null}
+                  {departureSearchActive ? (
+                    <div className="mt-2 rounded-2xl border border-ink/10 bg-white p-3">
+                      <p className="text-xs font-medium text-ink/60">{t("trip.placeSearchHint")}</p>
+                      {isDepartureSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.placeSearching")}</p> : null}
+                      {!isDepartureSearching && departureSuggestions.length === 0 ? (
+                        <p className="mt-2 text-xs text-ink/55">{t("trip.placeNoMatch")}</p>
+                      ) : null}
+                      {departureSuggestions.length > 0 ? (
+                        <div className="mt-2 grid gap-2">
+                          {departureSuggestions.map((place) => (
+                            <button
+                              className="rounded-xl border border-ink/10 px-3 py-2 text-left text-sm text-ink transition hover:border-ink/20 hover:bg-sand/60"
+                              key={place.providerPlaceId}
+                              onClick={() => {
+                                form.setValue("departureText", `${place.name}${place.address ? `, ${place.address}` : ""}`, { shouldDirty: true, shouldValidate: true });
+                                setDepartureKeyword(place.name);
+                                setSelectedDeparturePoint({ lat: place.lat, lng: place.lng });
+                              }}
+                              type="button"
+                            >
+                              <p className="font-medium">{place.name}</p>
+                              <p className="text-xs text-ink/60">{place.address || "-"}</p>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 rounded-xl border border-ink/10 bg-sand/60 p-3">
+                        <p className="text-xs text-ink/65">{t("trip.placeExternalHelp")}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <a
+                            className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(departureValue.trim())}`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            {t("trip.openGoogleMaps")}
+                          </a>
+                          <a
+                            className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
+                            href="https://gemini.google.com/app"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            {t("trip.openGemini")}
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedDeparturePoint ? (
+                    <p className="mt-2 text-xs text-ink/60">
+                      {t("trip.placeCoord")
+                        .replace("{lat}", selectedDeparturePoint.lat.toFixed(6))
+                        .replace("{lng}", selectedDeparturePoint.lng.toFixed(6))}
+                    </p>
+                  ) : null}
                 </label>
                 <label className="block md:col-span-2">
                   <span className="mb-2 block text-sm font-medium text-ink">{t("trip.destination")}</span>
@@ -264,10 +338,10 @@ export function DashboardPage() {
                   {errors.destinationText ? <p className="mt-1 text-xs text-coral">{msgs[errors.destinationText.message ?? ""] ?? errors.destinationText.message}</p> : null}
                   {destinationSearchActive ? (
                     <div className="mt-2 rounded-2xl border border-ink/10 bg-white p-3">
-                      <p className="text-xs font-medium text-ink/60">{t("trip.destinationSearchHint")}</p>
-                      {isDestinationSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.destinationSearching")}</p> : null}
+                      <p className="text-xs font-medium text-ink/60">{t("trip.placeSearchHint")}</p>
+                      {isDestinationSearching ? <p className="mt-2 text-xs text-ink/55">{t("trip.placeSearching")}</p> : null}
                       {!isDestinationSearching && destinationSuggestions.length === 0 ? (
-                        <p className="mt-2 text-xs text-ink/55">{t("trip.destinationNoMatch")}</p>
+                        <p className="mt-2 text-xs text-ink/55">{t("trip.placeNoMatch")}</p>
                       ) : null}
                       {destinationSuggestions.length > 0 ? (
                         <div className="mt-2 grid gap-2">
@@ -289,7 +363,7 @@ export function DashboardPage() {
                         </div>
                       ) : null}
                       <div className="mt-3 rounded-xl border border-ink/10 bg-sand/60 p-3">
-                        <p className="text-xs text-ink/65">{t("trip.destinationExternalHelp")}</p>
+                        <p className="text-xs text-ink/65">{t("trip.placeExternalHelp")}</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <a
                             className="rounded-full border border-ink/15 bg-white px-3 py-1 text-xs font-medium text-ink transition hover:bg-sand"
@@ -313,7 +387,7 @@ export function DashboardPage() {
                   ) : null}
                   {selectedDestinationPoint ? (
                     <p className="mt-2 text-xs text-ink/60">
-                      {t("trip.destinationCoord")
+                      {t("trip.placeCoord")
                         .replace("{lat}", selectedDestinationPoint.lat.toFixed(6))
                         .replace("{lng}", selectedDestinationPoint.lng.toFixed(6))}
                     </p>
