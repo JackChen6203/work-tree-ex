@@ -80,6 +80,13 @@ func TestMagicLinkRequestVerifyAndSession(t *testing.T) {
 		t.Fatalf("expected verify status 200, got %d", verifyW.Code)
 	}
 	sessionCookie := verifyW.Result().Cookies()
+	csrfCookie := findAuthCookie(sessionCookie, csrfCookieName)
+	if csrfCookie == nil || csrfCookie.Value == "" {
+		t.Fatalf("expected csrf cookie after verification")
+	}
+	if csrfCookie.HttpOnly {
+		t.Fatalf("expected csrf cookie to be readable by the frontend")
+	}
 
 	sessionReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
 	for _, cookie := range sessionCookie {
@@ -318,6 +325,15 @@ func mustMarshalAuth(t *testing.T, value any) []byte {
 	}
 
 	return data
+}
+
+func findAuthCookie(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }
 
 func TestRefreshTokenRotation(t *testing.T) {
