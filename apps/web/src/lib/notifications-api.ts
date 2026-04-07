@@ -1,4 +1,4 @@
-import { apiBaseUrl, apiRequest } from "./api";
+import { apiRequest } from "./api";
 
 export interface NotificationItemApi {
   id: string;
@@ -43,37 +43,22 @@ export function listNotifications(options: ListNotificationsOptions = {}) {
   return apiRequest<NotificationItemApi[]>(`/api/v1/notifications${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
-export async function markNotificationRead(notificationId: string) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/${notificationId}/read`, {
-    method: "POST",
-    credentials: "include"
+export function markNotificationRead(notificationId: string) {
+  return apiRequest<void>(`/api/v1/notifications/${notificationId}/read`, {
+    method: "POST"
   });
-
-  if (!response.ok) {
-    throw new Error(`Mark read failed with status ${response.status}`);
-  }
 }
 
-export async function markNotificationUnread(notificationId: string) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/${notificationId}/unread`, {
-    method: "POST",
-    credentials: "include"
+export function markNotificationUnread(notificationId: string) {
+  return apiRequest<void>(`/api/v1/notifications/${notificationId}/unread`, {
+    method: "POST"
   });
-
-  if (!response.ok) {
-    throw new Error(`Mark unread failed with status ${response.status}`);
-  }
 }
 
-export async function markAllNotificationsRead() {
-  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/read-all`, {
-    method: "POST",
-    credentials: "include"
+export function markAllNotificationsRead() {
+  return apiRequest<void>("/api/v1/notifications/read-all", {
+    method: "POST"
   });
-
-  if (!response.ok) {
-    throw new Error(`Mark all read failed with status ${response.status}`);
-  }
 }
 
 export function cleanupReadNotifications() {
@@ -82,15 +67,10 @@ export function cleanupReadNotifications() {
   });
 }
 
-export async function deleteNotification(notificationId: string) {
-  const response = await fetch(`${apiBaseUrl}/api/v1/notifications/${notificationId}`, {
-    method: "DELETE",
-    credentials: "include"
+export function deleteNotification(notificationId: string) {
+  return apiRequest<void>(`/api/v1/notifications/${notificationId}`, {
+    method: "DELETE"
   });
-
-  if (!response.ok) {
-    throw new Error(`Delete notification failed with status ${response.status}`);
-  }
 }
 
 export function registerFcmToken(input: FcmTokenInput) {
