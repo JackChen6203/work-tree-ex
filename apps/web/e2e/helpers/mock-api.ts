@@ -208,6 +208,19 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
       return;
     }
 
+    if (method === "GET" && path === "/api/v1/workspace/summary") {
+      const upcomingTrip = trips[0] ?? null;
+      const quickAccessTrips = trips.slice(0, 3);
+      await route.fulfill(
+        json({
+          upcomingTrip,
+          recentActivities: notifications.slice(0, 4),
+          quickAccessTrips
+        })
+      );
+      return;
+    }
+
     if (method === "POST" && path === "/api/v1/trips") {
       const body = await parseBody(route);
       const created: MockTrip = {
@@ -268,6 +281,96 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
         return;
       }
       await route.fulfill(json(trip));
+      return;
+    }
+
+    if (method === "PATCH" && /^\/api\/v1\/trips\/[^/]+$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const trip = trips.find((item) => item.id === tripId);
+      if (!trip) {
+        await route.fulfill(json({ message: "not found" }, 404));
+        return;
+      }
+      const body = await parseBody(route);
+      const patched = {
+        ...trip,
+        name: String(body.name ?? trip.name),
+        destinationText: String(body.destinationText ?? trip.destinationText),
+        startDate: String(body.startDate ?? trip.startDate),
+        endDate: String(body.endDate ?? trip.endDate),
+        timezone: String(body.timezone ?? trip.timezone),
+        currency: String(body.currency ?? trip.currency),
+        travelersCount: Number(body.travelersCount ?? trip.travelersCount),
+        status: (body.status as MockTrip["status"]) ?? trip.status,
+        version: trip.version + 1,
+        updatedAt: new Date().toISOString()
+      };
+      const idx = trips.findIndex((item) => item.id === tripId);
+      trips[idx] = patched;
+      await route.fulfill(json(patched));
+      return;
+    }
+
+    if (method === "GET" && /^\/api\/v1\/trips\/[^/]+\/members$/.test(path)) {
+      const tripId = path.split("/")[4];
+      await route.fulfill(
+        json([
+          {
+            id: `member-${tripId}-1`,
+            userId: "u-e2e",
+            email: user.email,
+            displayName: user.name,
+            role: "owner",
+            status: "active",
+            joinedAt: now,
+            createdAt: now
+          }
+        ])
+      );
+      return;
+    }
+
+    if (method === "POST" && /^\/api\/v1\/trips\/[^/]+\/members$/.test(path)) {
+      const tripId = path.split("/")[4];
+      const body = await parseBody(route);
+      await route.fulfill(
+        json(
+          {
+            id: `member-${tripId}-new`,
+            userId: "",
+            email: String(body.email ?? "new@example.com"),
+            displayName: String(body.displayName ?? "New Member"),
+            role: String(body.role ?? "viewer"),
+            status: "active",
+            joinedAt: now,
+            createdAt: now
+          },
+          201
+        )
+      );
+      return;
+    }
+
+    if (method === "PATCH" && /^\/api\/v1\/trips\/[^/]+\/members\/[^/]+$/.test(path)) {
+      const memberId = path.split("/")[6];
+      const body = await parseBody(route);
+      await route.fulfill(
+        json({
+          id: memberId,
+          userId: "u-e2e",
+          email: user.email,
+          displayName: user.name,
+          role: String(body.role ?? "owner"),
+          status: "active",
+          joinedAt: now,
+          createdAt: now
+        })
+      );
+      return;
+    }
+
+    if (method === "DELETE" && /^\/api\/v1\/trips\/[^/]+\/members\/[^/]+$/.test(path)) {
+      await route.fulfill({ status: 204, body: "" });
       return;
     }
 
@@ -612,20 +715,21 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
         return;
       }
 
-      if (path === "/api/v1/users/preferences" && method === "GET") {
+      if (path === "/api/v1/users/me/preferences" && method === "GET") {
         await route.fulfill(
           json({
             tripPace: "balanced",
             wakePattern: "normal",
             transportPreference: "transit",
             foodPreference: [],
-            avoidTags: []
+            avoidTags: [],
+            version: 1
           })
         );
         return;
       }
 
-      if (path === "/api/v1/users/notification-preferences" && method === "GET") {
+      if (path === "/api/v1/users/me/notification-preferences" && method === "GET") {
         await route.fulfill(
           json({
             pushEnabled: false,
@@ -635,14 +739,20 @@ export async function installApiMocks(page: Page, options: InstallApiMocksOption
             quietHoursEnd: "07:00",
             tripUpdates: true,
             budgetAlerts: true,
-            aiPlanReadyAlerts: true
+            aiPlanReadyAlerts: true,
+            version: 1
           })
         );
         return;
       }
 
+      if (path === "/api/v1/users/me/llm-providers" && method === "GET") {
+        await route.fulfill(json([]));
+        return;
+      }
+
       if (method === "PUT" || method === "PATCH" || method === "POST" || method === "DELETE") {
-        await route.fulfill(json(null));
+        await route.fulfill(json({}));
         return;
       }
     }

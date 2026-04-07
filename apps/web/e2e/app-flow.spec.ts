@@ -96,3 +96,37 @@ test("responsive screenshots (mobile and desktop)", async ({ page }) => {
   const desktopShot = await page.screenshot({ fullPage: true });
   expect(desktopShot.byteLength).toBeGreaterThan(10_000);
 });
+
+test("menu navigation flow after trip creation", async ({ page }) => {
+  await installApiMocks(page, { authenticated: true });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Create trip|建立旅程/i }).click();
+  await page.locator('input[name="name"]').fill("E2E Menu Trip");
+  await page.locator('input[name="departureText"]').fill("Taipei");
+  await page.locator('input[name="destinationText"]').fill("Kyoto");
+  await page.getByRole("button", { name: /Next|下一步/i }).click();
+  await page.locator('input[name="startDate"]').fill("2026-07-01");
+  await page.locator('input[name="endDate"]').fill("2026-07-03");
+  await page.getByRole("button", { name: /Next|下一步/i }).click();
+  await page.getByRole("button", { name: /Submit|送出/i }).click();
+  await expect(page).toHaveURL(/\/trips\/trip-e2e$/);
+
+  await page.getByRole("link", { name: /Itinerary|行程/i }).click();
+  await expect(page).toHaveURL(/\/trips\/trip-e2e\/itinerary$/);
+
+  await page.getByRole("link", { name: /Budget|預算/i }).click();
+  await expect(page).toHaveURL(/\/trips\/trip-e2e\/budget$/);
+
+  await page.getByRole("link", { name: /Map|地圖/i }).click();
+  await expect(page).toHaveURL(/\/trips\/trip-e2e\/map$/);
+
+  await page.locator('a[href$="/ai-planner"]').first().click();
+  await expect(page).toHaveURL(/\/trips\/trip-e2e\/ai-planner$/);
+
+  await page.getByRole("link", { name: /Inbox|收件匣/i }).click();
+  await expect(page).toHaveURL(/\/notifications$/);
+
+  await page.getByRole("link", { name: /Settings|設定/i }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+});
