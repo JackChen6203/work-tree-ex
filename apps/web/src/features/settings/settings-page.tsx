@@ -10,6 +10,7 @@ import {
   useMyNotificationPreferencesQuery,
   useMyPreferencesQuery,
   useMyProfileQuery,
+  useRequestMagicLinkMutation,
   useTestMyLlmProviderConnectionMutation,
   usePutMyNotificationPreferencesMutation,
   usePatchMyProfileMutation,
@@ -72,6 +73,7 @@ export function SettingsPage() {
   const putNotificationPreferences = usePutMyNotificationPreferencesMutation();
   const createProvider = useCreateMyLlmProviderMutation();
   const testProviderConnection = useTestMyLlmProviderConnectionMutation();
+  const requestMagicLink = useRequestMagicLinkMutation();
   const deleteProvider = useDeleteMyLlmProviderMutation();
   const deleteMyAccount = useDeleteMyAccountMutation();
   const clearUser = useSessionStore((state) => state.clearUser);
@@ -212,8 +214,17 @@ export function SettingsPage() {
     pushToast(t("settings.accountDeleted"));
   };
 
-  const onSendPasswordReset = () => {
-    pushToast(t("settings.resetLinkSent"));
+  const onSendPasswordReset = async () => {
+    if (!profile?.email) {
+      pushToast(t("settings.resetEmailMissing"));
+      return;
+    }
+    try {
+      await requestMagicLink.mutateAsync(profile.email);
+      pushToast(t("settings.resetLinkSent"));
+    } catch {
+      pushToast(t("settings.resetLinkFailed"));
+    }
   };
 
   const toggleProviderBinding = (providerId: string) => {
@@ -388,10 +399,13 @@ export function SettingsPage() {
             <p className="mt-1 text-xs text-ink/60">{t("settings.passwordAuthUnavailable")}</p>
             <button
               className="mt-3 rounded-full border border-ink/15 px-4 py-2 text-xs font-medium text-ink"
-              onClick={onSendPasswordReset}
+              disabled={requestMagicLink.isPending || !profile?.email}
+              onClick={() => {
+                void onSendPasswordReset();
+              }}
               type="button"
             >
-              {t("settings.sendResetLink")}
+              {requestMagicLink.isPending ? t("common.loading") : t("settings.sendResetLink")}
             </button>
           </div>
           <div className="rounded-2xl border border-ink/10 bg-white p-4">

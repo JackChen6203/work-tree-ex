@@ -466,7 +466,9 @@ export const dictionaries = {
     "settings.linkAccount": "綁定",
     "settings.unlinkAccount": "解除綁定",
     "settings.bindingUpdated": "綁定設定已更新",
-    "settings.resetLinkSent": "已寄送重設連結（模擬）",
+    "settings.resetLinkSent": "已寄送重設連結",
+    "settings.resetLinkFailed": "寄送失敗，請稍後重試",
+    "settings.resetEmailMissing": "目前帳號沒有可用的 Email",
 
     // Error boundary
     "errorBoundary.label": "系統防護",
@@ -943,7 +945,9 @@ export const dictionaries = {
     "settings.linkAccount": "Link",
     "settings.unlinkAccount": "Unlink",
     "settings.bindingUpdated": "Binding updated",
-    "settings.resetLinkSent": "Reset link sent (mock)",
+    "settings.resetLinkSent": "Reset link sent",
+    "settings.resetLinkFailed": "Failed to send reset link. Please try again.",
+    "settings.resetEmailMissing": "No account email is available for reset.",
 
     // Error boundary
     "errorBoundary.label": "System guard",
